@@ -294,7 +294,7 @@ if (@errors)
   }
 }
 
-print "---Validating $map\n";
+print "--Validating $map\n";
 $cmd = "qsub -b y -l mem_free=1G -P $qproj -V -e $error_log -o $stdout_log validate_mapping_file.py -m $map -s -o $error_log";
 print "\tcmd=$cmd\n" if $dryRun || $debug;
 system($cmd) == 0 or die "system($cmd) failed:$?\n" if !$dryRun;
@@ -387,7 +387,7 @@ my $r3 = "$wd/$project"."_"."$run"."_"."R3.fastq"; ## change to full path - usr 
 my $barcodes = "$wd/barcodes.fastq"; ## change to full path to full barcodes (flag)
 my $count = 0;
 
-print "---Checking for existence of $barcodes\n";
+print "--Checking for existence of $barcodes\n";
 
 
 my $step1;
@@ -411,14 +411,14 @@ if ($oneStep)
     }
     else
     {
-      print "\r---Copying barcode and index files to $wd\n";
+      print "---Copying barcode and index files to $wd\n";
       $cmd = "zcat $r1file > $r1 | zcat $r2file > $r2 ";
       print "\tcmd=$cmd\n" if $dryRun || $debug;
       system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
       print LOG "$project barcode and index files copied from $r2file and $r3file to $r1 and $r2\n";
     }
     my $start = time;
-    print "\r---Extracting barcodes and index files\n";
+    print "---Extracting barcodes and index files\n";
     ## add in (possible replace) awk version of concatenation 
     $step1 = "extract_barcodes.py";
     @errors = glob("$error_log/$step1.e*");
@@ -437,7 +437,7 @@ if ($oneStep)
     
     check_error_log($error_log, $step1);
 
-    print "\r---Waiting for barcode extraction to complete.\n";
+    print "---Waiting for barcode extraction to complete.\n";
 
     RETURN1:
     if(!(-e $barcodes))
@@ -464,12 +464,12 @@ if ($oneStep)
     if ($count = $nSamples)
     {
       print "---$barcodes already exists and contains $count entries, as expected\n";
-      print LOG "$barcodes already exists and contains $count entries, as expected\n";
+      print LOG "-> $barcodes already exists and contains $count entries, as expected\n";
     }
     else
     {
       print "---$barcodes already exists, but contains $count entries, while there are $nSamples samples\n";
-      print LOG "$barcodes already exists, but contains $count entries, while there are $nSamples samples\n";
+      print LOG "-> $barcodes already exists, but contains $count entries, while there are $nSamples samples\n";
       exit 0;
     }
   }
@@ -490,7 +490,7 @@ else
 
       if ($inDir)
       {
-        print "\r---Copying barcode and index files to $wd\n";
+        print "---Copying barcode and index files to $wd\n";
         $cmd = "zcat $inDir/*R2.fastq.gz > $r2 | zcat $inDir/*R3.fastq.gz > $r3 ";
         print "\tcmd=$cmd\n" if $dryRun || $debug;
         system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
@@ -498,7 +498,7 @@ else
       }
       else
       {
-        print "\r---Copying barcode and index files to $wd\n";
+        print "---Copying barcode and index files to $wd\n";
         $cmd = "zcat $r2file > $r2 | zcat $r3file > $r3 ";
         print "\tcmd=$cmd\n" if $dryRun || $debug;
         system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
@@ -506,7 +506,7 @@ else
     }
 
     my $start = time;
-    print "\r---Extracting barcodes and index files\n";
+    print "---Extracting barcodes and index files\n";
     ## add in (possible replace) awk version of concatenation 
     $step1 = "extract_barcodes.py";
     @errors = glob("$error_log/$step1.e*");
@@ -525,7 +525,7 @@ else
     
     check_error_log($error_log, $step1);
 
-    print "\r---Waiting for barcode extraction to complete.\n";
+    print "---Waiting for barcode extraction to complete.\n";
 
     RETURN1:
     if(!(-e $barcodes))
@@ -552,12 +552,12 @@ else
     if ($count = $nSamples)
     {
       print "---$barcodes already exists and contains $count entries, as expected\n";
-      print LOG "$barcodes already exists and contains $count entries, as expected\n";
+      print LOG "-> $barcodes already exists and contains $count entries, as expected\n";
     }
     else
     {
       print "---$barcodes already exists, but contains $count entries, while there are $nSamples samples. Exiting.\n";
-      print LOG "$barcodes already exists, but contains $count entries, while there are $nSamples samples. Exiting.\n";
+      print LOG "-> $barcodes already exists, but contains $count entries, while there are $nSamples samples. Exiting.\n";
       exit 0;
     }
   }
@@ -598,29 +598,29 @@ my $r4fq = "$r4split/seqs.fastq";
 ## print headers of r1 and r4, comm r1 r4 - to ensure the seqIDs are the same order.
 
 
-print "---Checking for existence of $r1fq and $r4fq\n";
+print "--Checking for existence of $r1fq and $r4fq\n";
 if (!-e $r1fq || !-e $r4fq)
 {
   if ($oneStep)
   {
-    print "\r---Obtaining $project-specific R1 and R2 fastq files\n";
+    print "---Obtaining $project-specific R1 and R2 fastq files\n";
   }
   else
   {
-    print "\r---Obtaining $project-specific R1 and R4 fastq files\n";
+    print "---Obtaining $project-specific R1 and R4 fastq files\n";
     if ($inDir)
     {
       $cmd = "zcat $inDir/*R1.fastq.gz > $r1 | zcat $inDir/*R4.fastq.gz > $r4 ";
       print "\tcmd=$cmd\n" if $dryRun || $debug;
       system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-      print LOG "$project barcode and index files copied from $inDir to $r1 and $r4\n";
+      print LOG "---$project barcode and index files copied from $inDir to $r1 and $r4\n";
     }
     else
     {
       $cmd = "zcat $r1file > $r1 | zcat $r4file > $r4 ";
       print "\tcmd=$cmd\n" if $dryRun || $debug;
       system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-      print LOG "$project barcode and index files copied from $r1file and $r4file to $r1 and $r4\n";
+      print LOG "---$project barcode and index files copied from $r1file and $r4file to $r1 and $r4\n";
     }
   }
     
@@ -666,7 +666,7 @@ if (!-e $r1fq || !-e $r4fq)
   $r1fq = "$r1split/seqs.fastq";
   $r4fq = "$r4split/seqs.fastq";
 
-  print "\r---Waiting for R1 seqs.fastq to complete.\n";
+  print "---Waiting for R1 seqs.fastq to complete.\n";
   RETURN2:
   if(!(-e $r1fq))
   {
@@ -682,11 +682,11 @@ if (!-e $r1fq || !-e $r4fq)
 
   if ($oneStep)
   {
-    print "\r---Waiting for R2 seqs.fastq to complete.\n";
+    print "---Waiting for R2 seqs.fastq to complete.\n";
   }
   else
   {
-    print "\r---Waiting for R4 seqs.fastq to complete.\n";
+    print "---Waiting for R4 seqs.fastq to complete.\n";
   }
   RETURN3:
   if(!(-e $r4fq))
@@ -707,7 +707,7 @@ if (!-e $r1fq || !-e $r4fq)
 }
 else
 {
-  print "\r---$r1fq and $r4fq fastq files already produced\n";
+  print "-> $r1fq and $r4fq fastq files already produced. Demultiplexing ...\n";
 }
 
 ##Check split_library log for 0's
@@ -756,11 +756,11 @@ elsif (scalar @split eq $nSamples)
 
 if ($oneStep)
   {
-    print "\r--Checking if $project R1 & R2 seqs.fastq files were split by sample ID\n";
+    print "--Checking if $project R1 & R2 seqs.fastq files were split by sample ID\n";
   }
 else
   {
-    print "\r--Checking if $project R1 & R4 seqs.fastq files were split by sample ID\n";
+    print "--Checking if $project R1 & R4 seqs.fastq files were split by sample ID\n";
   }
 
 my $r1seqs = "$r1split/split_by_sample_out";
@@ -786,8 +786,8 @@ if (scalar(@filenames) != $newSamNo || scalar(@r4filenames) != $newSamNo)
       system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun; 
     }
   }
-  print "\r---Sample specific files not found or completed... Splitting $project seqs.fastq files by sample ID\n";
-  print LOG "\rThere are ". scalar(@filenames)." sample specific files found (expected $newSamNo)... Splitting $project seqs.fastq files by sample ID\n";
+  print "---Sample specific files not found or completed... Splitting $project seqs.fastq files by sample ID\n";
+  print LOG "There are ". scalar(@filenames)." sample specific files found (expected $newSamNo)... Splitting $project seqs.fastq files by sample ID\n";
   $cmd = "rm -rf $r1seqs; rm -rf $r4seqs";
   print "\tcmd=$cmd\n" if $dryRun || $debug;
   system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
@@ -872,8 +872,8 @@ else
   print LOG "$newSamNo sample-specific files present as expected.\n";
 }
 
-print "\r--Checking if target primers have been removed from $project R1 & R4 sample-specific files..\n";
-print LOG "\rChecking if target primers have been removed from $project R1 & R4 sample-specific files..\n";
+print "--Checking if target primers have been removed from $project R1 & R4 sample-specific files..\n";
+print LOG "Checking if target primers have been removed from $project R1 & R4 sample-specific files..\n";
 my @r1tcfiles = glob("$wd/*R1_tc.fastq");
 my @r4tcfiles = glob("$wd/*R2_tc.fastq");
 
@@ -887,7 +887,7 @@ if (scalar(@r1tcfiles) != $newSamNo || scalar(@r4tcfiles) != $newSamNo)
   {
     if ($var eq "V3V4")
     {
-      print "\rRemoving V3V4 primers from all sequences\n";
+      print "Removing V3V4 primers from all sequences\n";
       my $filename;
       opendir R1, $r1seqs or die "Cannot open directory $r1seqs\n";
       while ( $filename = readdir R1) 
@@ -921,7 +921,7 @@ if (scalar(@r1tcfiles) != $newSamNo || scalar(@r4tcfiles) != $newSamNo)
 
     if ($var eq "V4")
     {
-      print "\r--Removing V4 primers from all sequences\n";
+      print "--Removing V4 primers from all sequences\n";
       my $filename;
       opendir R1, $r1seqs or die "Cannot open directory $r1seqs\n";
       while ( $filename = readdir R1) 
@@ -956,7 +956,7 @@ if (scalar(@r1tcfiles) != $newSamNo || scalar(@r4tcfiles) != $newSamNo)
   {
   	if ($var eq "V3V4")
   	{
-  	  print LOG "\r...Removing V3V4 primers from all sequences.\n";
+  	  print LOG "...Removing V3V4 primers from all sequences.\n";
   	  my $filename;
   	  opendir R1, $r1seqs or die "Cannot open directory $r1seqs\n";
   	  while ( $filename = readdir R1) 
@@ -989,7 +989,7 @@ if (scalar(@r1tcfiles) != $newSamNo || scalar(@r4tcfiles) != $newSamNo)
   	}
   	if ($var eq "V4")
   	{
-  	  print "\r...Removing V4 primers from all sequences.\n";
+  	  print "...Removing V4 primers from all sequences.\n";
   	  my $filename;
   	  opendir R1, $r1seqs or die "Cannot open directory $r1seqs\n";
   	  while ( $filename = readdir R1) 
@@ -1022,7 +1022,7 @@ if (scalar(@r1tcfiles) != $newSamNo || scalar(@r4tcfiles) != $newSamNo)
   	}
     if ($var eq "ITS")
     {
-      print "\r...Removing ITS primers from all sequences.\n";
+      print "...Removing ITS primers from all sequences.\n";
       my $filename;
       opendir R1, $r1seqs or die "Cannot open directory $r1seqs\n";
       while ( $filename = readdir R1) 
@@ -1129,12 +1129,12 @@ else
 my $dada2 = "$wd/dada2_abundance_table.rds";
 if (!-e $dada2)
 {
-  print "\r--Removing old filtered fastq files from previous runs\n";
+  print "--Removing old filtered fastq files from previous runs\n";
   $cmd = "rm -rf $wd/filtered";
   print "\tcmd=$cmd\n" if $dryRun || $debug;
   system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
 
-  print "\rRunning DADA2 with fastq files in $wd\n";
+  print "Running DADA2 with fastq files in $wd\n";
   print LOG "Running DADA2 for $var region";
   chdir $pd;  
   if ($oneStep)
@@ -1601,7 +1601,7 @@ sub check_error_log
   $error = glob("$error_log/$step.e*");
   if (defined $error)
   {
-    print "\r---Checking for errors in $error.\n";
+    print "---Checking for errors in $error.\n";
     open ERROR, "<$error" or die "Can't open $error.\n";
     while (<ERROR>)
     {
