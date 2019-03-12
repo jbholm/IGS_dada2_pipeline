@@ -143,7 +143,8 @@ GetOptions(
   "debug"             => \my $debug,
   "dry-run"           => \my $dryRun,
   "skip-err-thld"     => \my $skipErrThldStr,
-  "dada2-truncLen"    => \my $truncLen,
+  "dada2-truncLen-f|for=i"    => \my $f,
+  "dada2-truncLen-r|rev=i"    => \my $r,
   "dada2-maxN"        => \my $maxN,
   "dada2-maxEE"       => \my $maxEE,
   "dada2-truncQ"      => \my $truncQ,
@@ -198,6 +199,22 @@ if (!$sd)
   pod2usage(verbose => 2,exitstatus => 0);
   exit;
 } 
+
+##"dada2-truncLen-f|f=s"    => \my $truncLenF,
+##"dada2-truncLen-r|r=s"    => \my $truncLenR,
+my $truncLen;
+
+if($f && $r)
+{
+	$truncLen = "c($f,$r)";
+}
+
+if ($f && !$r)
+{
+	print "***\nPlease provide truncation lengths for forward and reverse reads\n";
+  	exit;
+}
+
 
 my $qproj;
 
@@ -722,7 +739,7 @@ while (<SPLIT>)
 		chomp;
 		my ($sample, $nReads) = split, /\t/;
     	chomp $nReads;
-		if ( $nReads == "0")
+		if ( $nReads eq "0")
 		{
 			#print LOG "Adding sample: $sample\n";
 	  		push @split, $sample;
@@ -734,7 +751,7 @@ while (<SPLIT>)
 	}
 }
 close SPLIT;
-pop @split; ## to remove the final line of "Total number seqs written"
+#pop @split; ## to remove the final line of "Total number seqs written" ---commented out on 01/21/19  because it was deleting the last element in the array of samples 
 $newSamNo = $nSamples - scalar @split;
 if (scalar @split ne $nSamples)
 {

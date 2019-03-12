@@ -104,6 +104,7 @@ GetOptions(
   "skip-err-thld"         => \my $skipErrThldStr,
   "notVaginal"            => \my $notVaginal,
   "pecan-silva"           => \my $pecanSilva,
+  "oral"                  => \my $oral
   )
 
   or pod2usage(verbose => 0,exitstatus => 1);
@@ -128,11 +129,14 @@ if ($region eq 'V3V4')
 {
   $models = "/local/projects-t2/jholm/PECAN/v1.0/V3V4/merged_models/";
 }
-if ($region eq 'V4')
+if ($region eq 'V4' && !$oral)
 {
   print "Using SILVA taxonomy only\n";
 }
-
+if ($region eq 'V4' && $oral)
+{
+  print "Using HOMD taxonomy only\n";
+}
 if ($region eq 'ITS')
 {
   print "Using UNITE taxonomy only\n";
@@ -219,8 +223,10 @@ my $abundance = "all_runs_dada2_abundance_table.csv";
 my $projabund = $project ."_". $abundance;
 my $silva = "silva_classification.csv";
 my $unite = "unite_classification.csv";
+my $homd = "homd_classification.csv";    ##########################for HOMD 
 my $projSilva = $project ."_". $silva;
 my $projUNITE = $project ."_". $unite;
+my $projHOMD = $project ."_". $homd;   ##########################for HOMD 
 
 print "---Performing chimera removal on merged tables and classifying amplicon sequence variants (ASVs)\n";
 print LOG "---Performing chimera removal on merged tables and classifying amplicon sequence variants (ASVs)\n";
@@ -243,6 +249,37 @@ if ($region eq 'ITS')
   print "---Renaming UNITE classification file for project\n";
   print LOG "---Renaming UNITE classification file for project\n";
   $cmd = "mv $unite $projUNITE";
+  print "\tcmd=$cmd\n" if $dryRun || $debug;
+  system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
+  print LOG "$cmd\n";
+}
+elsif($oral)
+{
+dada2_combine_and_classifyHOMD($inRuns);
+
+
+  print "---Merged, chimera-removed abundance tables written to all_runs_dada2_abundance_table.csv\n";
+  print "---ASVs classified via HOMD written to homd_classification.csv\n";
+  print "---ASVs classified via RDP written to rdp_classification.csv\n";
+  print "---Final ASVs written to all_runs_dada2_ASV.fasta for classification via PECAN\n";
+  print "---dada2 completed successfully\n";
+
+  print LOG "---Merged, chimera-removed abundance tables written to all_runs_dada2_abundance_table.csv\n";
+  print LOG "---ASVs classified via silva written to homd_classification.csv\n";
+  print LOG "---ASVs classified via RDP written to rdp_classification.csv\n";
+  print LOG "---Final ASVs written to all_runs_dada2_ASV.fasta for classification via PECAN\n";
+  print LOG "---dada2 completed successfully\n";
+
+  print "---Renaming dada2 files for project\n";
+  print LOG "---Renaming dada2 files for project\n";
+  $cmd = "mv $abundance $projabund";
+  print "\tcmd=$cmd\n" if $dryRun || $debug;
+  system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
+  print LOG "$cmd\n";
+
+  print "---Renaming HOMD classification file for project\n";
+  print LOG "---Renaming HOMD classification file for project\n";
+  $cmd = "mv $homd $projHOMD";
   print "\tcmd=$cmd\n" if $dryRun || $debug;
   system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
   print LOG "$cmd\n";
@@ -279,7 +316,7 @@ else
 }
 my $projpecan = $project ."_"."MC_order7_results.txt";
 
-if ($region eq 'V3V4')
+if ($region eq 'V3V4' && !$oral)
 {
   print "---Classifying ASVs with $region PECAN models (located in $models)\n";
   print LOG "---Classifying ASVs with $region PECAN models (located in $models)\n";
@@ -296,6 +333,10 @@ if ($region eq 'V3V4')
   print "\tcmd=$cmd\n" if $dryRun || $debug;
   system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
 }
+#################################################################
+#########APPLY CLASSIFICATIONS TO COUNT TABLE ###################
+#################################################################
+
 
 #### APPLY PECAN+SILVA CLASSIFICATIONS TO COUNT TABLE (V3V4) ####
 #################################################################
@@ -316,8 +357,10 @@ if ($pecanSilva)
 }
 #### APPLY PECAN-ONLY CLASSIFICATIONS TO COUNT TABLE (V3V4) ####
 ################################################################
-elsif ($region eq 'V3V4')
+if (!$oral)
 {
+ if ($region eq 'V3V4')
+ {
   if ($notVaginal) 
   {
     $cmd = "/home/jholm/bin/PECAN_tx_for_ASV.pl -p $projpecan -c $projabund";
@@ -330,15 +373,25 @@ elsif ($region eq 'V3V4')
     print "\tcmd=$cmd\n" if $dryRun || $debug;
     system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
   }
-}
+ }
 
-#### APPLY SILVA-ONLY CLASSIFICATIONS TO COUNT TABLE (V4) ####
+#### APPLY NON-PECAN CLASSIFICATIONS TO COUNT TABLE (V4) ####
 ##############################################################
-if ($region eq 'V4')
-{
+ if ($region eq 'V4')
+ {
   print "---Classifying ASVs with $region with SILVA only\n";
   print LOG "---Classifying ASVs with $region with SILVA only\n";
   $cmd = "/home/jholm/bin/combine_tx_for_ASV.pl -s $projSilva -c $projabund";
+  print "\tcmd=$cmd\n" if $dryRun || $debug;
+  system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
+ }
+}
+
+else
+{
+  print "---Classifying ASVs with $region with HOMD only\n";
+  print LOG "---Classifying ASVs with $region with HOMD only\n";
+  $cmd = "/home/jholm/bin/combine_tx_for_ASV.pl -s $projHOMD -c $projabund";
   print "\tcmd=$cmd\n" if $dryRun || $debug;
   system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
 }
@@ -351,6 +404,7 @@ if ($region eq 'ITS')
   print "\tcmd=$cmd\n" if $dryRun || $debug;
   system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
 }
+
 
 # my $finalStats = $project . "_" . "dada2_final_stats.txt";
 # my $part2Stats = "dada2_part2_stats.txt";
@@ -464,6 +518,77 @@ silva <- assignTaxonomy(seqtab, "/home/jholm/bin/silva_nr_v128_train_set.fa.gz",
 saveRDS(seqtab, "all_runs_dada2_abundance_table.rds") # CHANGE ME to where you want sequence table saved
 write.csv(seqtab, "all_runs_dada2_abundance_table.csv", quote=FALSE)
 write.csv(silva, "silva_classification.csv", quote=FALSE)
+
+fc = file("all_runs_dada2_ASV.fasta")
+fltp = character()
+for( i in 1:ncol(seqtab))
+{
+  fltp <- append(fltp, paste0(">", colnames(seqtab)[i]))
+  fltp <- append(fltp, colnames(seqtab)[i])
+}
+writeLines(fltp, fc)
+rm(fltp)
+close(fc)
+
+track<-as.matrix(rowSums(seqtab))
+colnames(track) <- c("nonchimeric")
+write.table(track, "dada2_part2_stats.txt", quote=FALSE, append=FALSE, sep="\t", row.names=TRUE, col.names=TRUE)
+ ~;
+run_R_script( $Rscript );
+}
+
+sub dada2_combine_and_classifyHOMD
+{
+  my ($inRuns) = shift;
+
+  my $Rscript = qq~
+
+library("dada2")
+packageVersion("dada2")
+path<-getwd()
+
+## list all of the files matching the pattern
+tables<-list.files(path, pattern="-dada2_abundance_table.rds", full.names=TRUE)
+stats<-list.files(path, pattern="-dada2_part1_stats.txt", full.names=TRUE)
+
+## get the run names using splitstring on the tables where - exists
+sample.names <- sapply(strsplit(basename(tables), "-"), `[`, 1)
+##sample.names
+##names(tables) <- sample.names
+
+runs <- vector("list", length(sample.names))
+names(runs) <- sample.names
+for(run in tables) {
+  cat("Reading in:", run, "\n")
+  runs[[run]] <- readRDS(run)
+}
+
+runstats <- vector("list", length(sample.names))
+names(runstats) <- sample.names
+for(run in stats) {
+  cat("Reading in:", run, "\n")
+  runstats[[run]] <- read.delim(run, )
+}
+
+unqs <- unique(c(sapply(runs, colnames), recursive=TRUE))
+n<-sum(unlist(lapply(X=runs, FUN = nrow)))
+st <- matrix(0L, nrow=n, ncol=length(unqs))
+rownames(st) <- c(sapply(runs, rownames), recursive=TRUE)
+colnames(st) <- unqs
+for(sti in runs) {
+  st[rownames(sti), colnames(sti)] <- sti
+}
+st <- st[,order(colSums(st), decreasing=TRUE)]
+
+##st.all<-mergeSequenceTables(runs)
+# Remove chimeras
+seqtab <- removeBimeraDenovo(st, method="consensus", multithread=TRUE)
+# Assign taxonomy
+homd <- assignTaxonomy(seqtab, "/home/jholm/bin/HOMD_v15.1_DADA2_taxonomy_final.txt", multithread=TRUE)
+# Write to disk
+saveRDS(seqtab, "all_runs_dada2_abundance_table.rds") # CHANGE ME to where you want sequence table saved
+write.csv(seqtab, "all_runs_dada2_abundance_table.csv", quote=FALSE)
+write.csv(homd, "homd_classification.csv", quote=FALSE)
 
 fc = file("all_runs_dada2_ASV.fasta")
 fltp = character()
