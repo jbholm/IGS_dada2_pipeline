@@ -2,7 +2,7 @@
 
 =head1 NAME
 
-  part2_illumina_dada2.pl  
+  part2_illumina_dada2_devel.pl  
 
 =head1 DESCRIPTION
 
@@ -132,6 +132,12 @@ if ($region eq 'V4')
 {
   print "Using SILVA taxonomy only\n";
 }
+
+if ($region eq 'ITS')
+{
+  print "Using UNITE taxonomy only\n";
+}
+
 if ($region eq 'V3V4' && !$models)
 {
   print "Please provide a valid variable region\n\n";
@@ -188,7 +194,7 @@ else
 foreach my $i (@runs)
 {
   print LOG "$i\n";
-  my $currTbl = $i ."/dada2_abundance_table.rds";
+  my $currTbl = $i."/dada2_abundance_table.rds";
   my $newTbl = $project ."_". $i . "-dada2_abundance_table.rds";
   my $cmd = "cp $currTbl $newTbl";
   print "\tcmd=$cmd\n" if $dryRun || $debug;
@@ -211,40 +217,66 @@ foreach my $i (@runs)
 
 my $abundance = "all_runs_dada2_abundance_table.csv";
 my $projabund = $project ."_". $abundance;
-
+my $silva = "silva_classification.csv";
+my $unite = "unite_classification.csv";
+my $projSilva = $project ."_". $silva;
+my $projUNITE = $project ."_". $unite;
 
 print "---Performing chimera removal on merged tables and classifying amplicon sequence variants (ASVs)\n";
 print LOG "---Performing chimera removal on merged tables and classifying amplicon sequence variants (ASVs)\n";
-dada2_combine_and_classify($inRuns);
+if ($region eq 'ITS')
+{
+  dada2_combine_and_classifyITS($inRuns);
+  print "---Merged, chimera-removed abundance tables written to all_runs_dada2_abundance_table.csv\n";
+  print "---ASVs classified via UNITE written to unite_classification.csv\n";
+  print "---dada2 completed successfully\n";
+  print LOG "---Merged, chimera-removed abundance tables written to all_runs_dada2_abundance_table.csv\n";
+  print LOG "---ASVs classified via UNITE written to unite_classification.csv\n";
+  print LOG "---dada2 completed successfully\n";
 
-print "---Merged, chimera-removed abundance tables written to all_runs_dada2_abundance_table.csv\n";
-print "---ASVs classified via silva written to silva_classification.csv\n";
-print "---ASVs classified via RDP written to rdp_classification.csv\n";
-print "---Final ASVs written to all_runs_dada2_ASV.fasta for classification via PECAN\n";
-print "---dada2 completed successfully\n";
+  print LOG "---Renaming dada2 files for project\n";
+  $cmd = "mv $abundance $projabund";
+  print "\tcmd=$cmd\n" if $dryRun || $debug;
+  system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
+  print LOG "$cmd\n";
 
-print LOG "---Merged, chimera-removed abundance tables written to all_runs_dada2_abundance_table.csv\n";
-print LOG "---ASVs classified via silva written to silva_classification.csv\n";
-print LOG "---ASVs classified via RDP written to rdp_classification.csv\n";
-print LOG "---Final ASVs written to all_runs_dada2_ASV.fasta for classification via PECAN\n";
-print LOG "---dada2 completed successfully\n";
+  print "---Renaming UNITE classification file for project\n";
+  print LOG "---Renaming UNITE classification file for project\n";
+  $cmd = "mv $unite $projUNITE";
+  print "\tcmd=$cmd\n" if $dryRun || $debug;
+  system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
+  print LOG "$cmd\n";
+}
+else
+{
+  dada2_combine_and_classify($inRuns);
 
-print "---Renaming dada2 files for project\n";
-print LOG "---Renaming dada2 files for project\n";
-$cmd = "mv $abundance $projabund";
-print "\tcmd=$cmd\n" if $dryRun || $debug;
-system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-print LOG "$cmd\n";
+  print "---Merged, chimera-removed abundance tables written to all_runs_dada2_abundance_table.csv\n";
+  print "---ASVs classified via silva written to silva_classification.csv\n";
+  print "---ASVs classified via RDP written to rdp_classification.csv\n";
+  print "---Final ASVs written to all_runs_dada2_ASV.fasta for classification via PECAN\n";
+  print "---dada2 completed successfully\n";
 
-print "---Renaming SILVA classification file for project\n";
-print LOG "---Renaming SILVA classification file for project\n";
-my $silva = "silva_classification.csv";
-my $projSilva = $project ."_". $silva;
-$cmd = "mv $silva $projSilva";
-print "\tcmd=$cmd\n" if $dryRun || $debug;
-system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-print LOG "$cmd\n";
+  print LOG "---Merged, chimera-removed abundance tables written to all_runs_dada2_abundance_table.csv\n";
+  print LOG "---ASVs classified via silva written to silva_classification.csv\n";
+  print LOG "---ASVs classified via RDP written to rdp_classification.csv\n";
+  print LOG "---Final ASVs written to all_runs_dada2_ASV.fasta for classification via PECAN\n";
+  print LOG "---dada2 completed successfully\n";
 
+  print "---Renaming dada2 files for project\n";
+  print LOG "---Renaming dada2 files for project\n";
+  $cmd = "mv $abundance $projabund";
+  print "\tcmd=$cmd\n" if $dryRun || $debug;
+  system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
+  print LOG "$cmd\n";
+
+  print "---Renaming SILVA classification file for project\n";
+  print LOG "---Renaming SILVA classification file for project\n";
+  $cmd = "mv $silva $projSilva";
+  print "\tcmd=$cmd\n" if $dryRun || $debug;
+  system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
+  print LOG "$cmd\n";
+}
 my $projpecan = $project ."_"."MC_order7_results.txt";
 
 if ($region eq 'V3V4')
@@ -284,7 +316,7 @@ if ($pecanSilva)
 }
 #### APPLY PECAN-ONLY CLASSIFICATIONS TO COUNT TABLE (V3V4) ####
 ################################################################
-else
+elsif ($region eq 'V3V4')
 {
   if ($notVaginal) 
   {
@@ -307,6 +339,15 @@ if ($region eq 'V4')
   print "---Classifying ASVs with $region with SILVA only\n";
   print LOG "---Classifying ASVs with $region with SILVA only\n";
   $cmd = "/home/jholm/bin/combine_tx_for_ASV.pl -s $projSilva -c $projabund";
+  print "\tcmd=$cmd\n" if $dryRun || $debug;
+  system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
+}
+
+if ($region eq 'ITS')
+{
+  print "---Classifying ASVs with $region with UNITE only\n";
+  print LOG "---Classifying ASVs with $region with UNITE only\n";
+  $cmd = "/home/jholm/bin/combine_tx_for_ASV.pl -u $projUNITE -c $projabund";
   print "\tcmd=$cmd\n" if $dryRun || $debug;
   system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
 }
@@ -370,6 +411,7 @@ sub readTbl{
 
   return %tbl;
 }
+
 sub dada2_combine_and_classify
 {
   my ($inRuns) = shift;
@@ -421,6 +463,79 @@ silva <- assignTaxonomy(seqtab, "/home/jholm/bin/silva_nr_v128_train_set.fa.gz",
 # Write to disk
 saveRDS(seqtab, "all_runs_dada2_abundance_table.rds") # CHANGE ME to where you want sequence table saved
 write.csv(seqtab, "all_runs_dada2_abundance_table.csv", quote=FALSE)
+write.csv(silva, "silva_classification.csv", quote=FALSE)
+
+fc = file("all_runs_dada2_ASV.fasta")
+fltp = character()
+for( i in 1:ncol(seqtab))
+{
+  fltp <- append(fltp, paste0(">", colnames(seqtab)[i]))
+  fltp <- append(fltp, colnames(seqtab)[i])
+}
+writeLines(fltp, fc)
+rm(fltp)
+close(fc)
+
+track<-as.matrix(rowSums(seqtab))
+colnames(track) <- c("nonchimeric")
+write.table(track, "dada2_part2_stats.txt", quote=FALSE, append=FALSE, sep="\t", row.names=TRUE, col.names=TRUE)
+ ~;
+run_R_script( $Rscript );
+}
+
+sub dada2_combine_and_classifyITS
+{
+  my ($inRuns) = shift;
+
+  my $Rscript = qq~
+
+library("dada2")
+packageVersion("dada2")
+path<-getwd()
+
+## list all of the files matching the pattern
+tables<-list.files(path, pattern="-dada2_abundance_table.rds", full.names=TRUE)
+stats<-list.files(path, pattern="-dada2_part1_stats.txt", full.names=TRUE)
+
+## get the run names using splitstring on the tables where - exists
+sample.names <- sapply(strsplit(basename(tables), "-"), `[`, 1)
+##sample.names
+##names(tables) <- sample.names
+
+runs <- vector("list", length(sample.names))
+names(runs) <- sample.names
+for(run in tables) {
+  cat("Reading in:", run, "\n")
+  runs[[run]] <- readRDS(run)
+}
+
+runstats <- vector("list", length(sample.names))
+names(runstats) <- sample.names
+for(run in stats) {
+  cat("Reading in:", run, "\n")
+  runstats[[run]] <- read.delim(run, )
+}
+
+unqs <- unique(c(sapply(runs, colnames), recursive=TRUE))
+n<-sum(unlist(lapply(X=runs, FUN = nrow)))
+st <- matrix(0L, nrow=n, ncol=length(unqs))
+rownames(st) <- c(sapply(runs, rownames), recursive=TRUE)
+colnames(st) <- unqs
+for(sti in runs) {
+  st[rownames(sti), colnames(sti)] <- sti
+}
+st <- st[,order(colSums(st), decreasing=TRUE)]
+
+##st.all<-mergeSequenceTables(runs)
+# Remove chimeras
+seqtab <- removeBimeraDenovo(st, method="consensus", multithread=TRUE)
+# Assign taxonomy
+unite <- assignTaxonomy(seqtab, "/home/jholm/bin/sh_general_release_dynamic_01.12.2017.fasta", multithread=TRUE)
+silva <- assignTaxonomy(seqtab, "/home/jholm/bin/silva_nr_v128_train_set.fa.gz", multithread=TRUE)
+# Write to disk
+saveRDS(seqtab, "all_runs_dada2_abundance_table.rds") # CHANGE ME to where you want sequence table saved
+write.csv(seqtab, "all_runs_dada2_abundance_table.csv", quote=FALSE)
+write.csv(unite, "unite_classification.csv", quote=FALSE)
 write.csv(silva, "silva_classification.csv", quote=FALSE)
 
 fc = file("all_runs_dada2_ASV.fasta")

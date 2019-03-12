@@ -3,7 +3,7 @@
 
 =head1 NAME
 
-  illumina_dada2_1_step_optional.pl
+  illumina_dada2.pl
 
 =head1 DESCRIPTION
 
@@ -27,39 +27,37 @@
   2. Then enter: 
         export LD_LIBRARY_PATH=/usr/local/packages/gcc/lib64
         source /usr/local/packages/usepackage/share/usepackage/use.bsh
-        use python-2.7.14
+        use python-2.7
         use qiime
   3. then run script as below: 
   
   FOR 2-STEP
-  illumina_dada2_1_step_optional.pl -i <input directory> -p <project name> -r <run ID> -m <mapping file> -v <variable region> -sd <storage directory>
+  illumina_dada2.pl -i <input directory> -p <project name> -r <run ID> -m <mapping file> -v <variable region> -sd <storage directory>
 
   OR
 
-  illumina_dada2_1_step_optional.pl -r1 <full path to raw R1 file> -r2 <full path to raw R2 file>
+  illumina_dada2.pl -r1 <full path to raw R1 file> -r2 <full path to raw R2 file>
                     -r3 <full path to raw R2 file> -r4 <full path to raw R2 file>
                     -p <project name> -r <run ID> -m <mapping file> -v <variable region>
                     -sd <storage directory>
   
   or qsub:
   
-  qsub -cwd -b y -l mem_free=1G -P jravel-lab -q threaded.q -pe thread 4 -V -e <path_to_logs>
-  -o <path_to_logs> /home/jholm/bin/illumina_dada2_1_step_optional.pl -i <path to raw files> -p <project name> 
-  -r <run id> -v <variable region> -m <full path to mapping file> -sd <storage directory>
+  qsub -cwd -b y -l mem_free=1G -P jravel-lab -q threaded.q -pe thread 4 -V -e <path_to_logs> -o <path_to_logs> /home/jholm/bin/illumina_dada2_1_step_optional.pl -i <path to raw files> -p <project name> -r <run id> -v <variable region> -m <full path to mapping file> -sd <storage directory>
 
   FOR 1-STEP
-  illumina_dada2_1_step_optional.pl -i <input directory> -p <project name> -r <run ID> -m <mapping file> -v <variable region> -sd <storage directory> --1Step
+  illumina_dada2.pl -i <input directory> -p <project name> -r <run ID> -m <mapping file> -v <variable region> -sd <storage directory> --1Step
 
   OR
 
-  illumina_dada2_1_step_optional.pl -r1 <full path to raw R1 file> -r2 <full path to raw R2 file>
+  illumina_dada2.pl -r1 <full path to raw R1 file> -r2 <full path to raw R2 file>
                     -r3 <full path to raw R2 file> -r4 <full path to raw R2 file>
                     -p <project name> -r <run ID> -m <mapping file> -v <variable region>
                     -sd <storage directory> --1Step
   or qsub:
   
   qsub -cwd -b y -l mem_free=1G -P jravel-lab -q threaded.q -pe thread 4 -V -e <path_to_logs>
-  -o <path_to_logs> /home/jholm/bin/illumina_dada2_1_step_optional.pl -i <path to raw files> -p <project name> 
+  -o <path_to_logs> /home/jholm/bin/illumina_dada2.pl -i <path to raw files> -p <project name> 
   -r <run id> -v <variable region> -m <full path to mapping file> -sd <storage directory> --1Step
 
 =head1 OPTIONS
@@ -70,16 +68,16 @@
   Single full path to directory containing raw R1, R2, R3, and R4 files
 
 =item B<--raw r1, -r1>
-  Full path to raw R1 read file (.gz).
+  Full path to raw R1 read file (forward read file, or r1) (.gz).
 
 =item B<--raw r2, -r2>
-  Full path to raw R2 read file (.gz).
+  Full path to raw R2 read file (barcode file, or i1) (.gz).
 
 =item B<--raw r3, -r3>
-  Full path to raw R3 read file (.gz).
+  Full path to raw R3 read file (barcode file, or i2) (.gz).
 
 =item B<--raw r4, -r4>
-  Full path to raw R4 read file (.gz).
+  Full path to raw R4 read file (reverse read file, r2 or r4)(.gz).
 
 =item B<--Project-ID, -p>
   The project ID.
@@ -92,7 +90,7 @@
 
 =item B<--input-Directory, -v>
   The targeted variable region current options:
-  V3V4 or V4
+  V3V4 or V4 or ITS
 
 =item B<--1Step, --1Step>
   Use this flag if the data are prepared by 1-Step PCR 
@@ -106,6 +104,10 @@
 
 =item B<-h|--help>
   Print help message and exit successfully.
+
+=item B<--qsub-project, -qp>
+  Indicate which qsub-project space should be used for 
+  all qsubmissions
 
 =back
 
@@ -151,6 +153,7 @@ GetOptions(
   "dada2-minQ"        => \my $minQ,
   "1Step"             => \my $oneStep,
   "storage-dir|sd=s"  => \my $sd,
+  "qsub-project|qp=s" => \my $qp,
   )
 ##add option for final resting place of important data
 
@@ -176,7 +179,7 @@ if (!$map)
 }
 if (!$var)
 {
-  print "\n\tPlease indicate the targeted variable region (-v V3V4 or -v V4)\n\n";
+  print "\n\tPlease indicate the targeted variable region (-v V3V4 or -v V4 or -v ITS)\n\n";
   exit 1;
 }
 my $models;
@@ -184,7 +187,7 @@ if ($var eq 'V3V4')
 {
   $models = "/local/projects-t2/jholm/PECAN/v1.0/V3V4/merged_models/";
 }
-if ($var eq 'V4')
+if ($var eq 'V4' || $var eq 'ITS')
 {
   $models = "PECAN not used.\n";
 }
@@ -195,6 +198,18 @@ if (!$sd)
   pod2usage(verbose => 2,exitstatus => 0);
   exit;
 } 
+
+my $qproj;
+
+if ($qp)
+{
+  $qproj = $qp;
+}
+else
+{
+  print "\nqsub-project ID (--qp) not provided. Using jravel-lab as default\n";
+  $qproj = "jravel-lab";
+}
 
 #local $ENV{use} = "/usr/local/packages/usepackage/share/usepackage/use.bsh";
 #local $ENV{LD_LIBRARY_PATH} = "/usr/local/packages/gcc/lib64";
@@ -255,12 +270,19 @@ my $time = strftime("%Y-%m-%d %H:%M:%S", localtime(time));
 my $log = "$wd/$project"."_".$run."_16S_pipeline_log.txt";
 
 open LOG, ">$log" or die "Cannot open $log for writing: $OS_ERROR";
-print LOG "\n$time\nAdding to the progress of $project run $run 16S amplicon sequences through the illumina_dada2.pl pipeline.\n";
+print LOG "\n$time\n";
+
+###### BEGIN CHECK OF QIIME CONFIGURATION ###########
+#####################################################
+my $qiime = "$wd/$project"."_".$run."_"."qiime_config.txt";
+my $cmd = "print_qiime_config.py > $qiime";
+print "\tcmd=$cmd\n" if $dryRun || $debug;
+system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
 
 ###### BEGIN VALIDATION OF MAPPING FILE ###########
 ################################################
 my @errors;
-my $cmd;
+#my $cmd;
 @errors = glob("$error_log/*.log");
 if (@errors)
 {
@@ -272,8 +294,8 @@ if (@errors)
   }
 }
 
-print "---Validating $map\n";
-$cmd = "qsub -b y -l mem_free=1G -P jravel-lab -V -e $error_log -o $stdout_log validate_mapping_file.py -m $map -s -o $error_log";
+print "--Validating $map\n";
+$cmd = "qsub -b y -l mem_free=1G -P $qproj -V -e $error_log -o $stdout_log validate_mapping_file.py -m $map -s -o $error_log";
 print "\tcmd=$cmd\n" if $dryRun || $debug;
 system($cmd) == 0 or die "system($cmd) failed:$?\n" if !$dryRun;
 
@@ -282,23 +304,18 @@ my $mappingError = glob("$error_log/*.log");
 if ($mappingError)
 {
   open MAPERROR, "<$mappingError" or die "Cannot open $mappingError for reading: $OS_ERROR";
-  while (<MAPERROR>)
+  while ($_ = <MAPERROR>)
   {
+    #print $line;
     chomp;
-    if ($_ =~ /Errors -----------------------------/)
+    if ($_ =~ /No errors or warnings found in mapping file./)
     {
-      my $next = <MAPERROR>;
-      chomp;
-      if ($next =~ /Warnings ----/)
-      {
-        print LOG "---Map passed validation.\n";
-        next;
-      }
-      else
-      {
-        print "***Error in mapping file. See $mappingError for details. Exiting.\n";
-        exit;
-      }
+      print LOG "---Map passed validation.\n";
+    }
+    else
+    {
+      print LOG "***Error in mapping file. See $mappingError for details. Exiting.\n";
+      exit;
     }
   }
 }
@@ -349,12 +366,7 @@ close MAP;
 
 $nSamples = $projSamples + $extctrl + $pcrpos + $pcrneg + $null;
 
-###### BEGIN CHECK OF QIIME CONFIGURATION ###########
-#####################################################
-my $qiime = "$wd/$project"."_".$run."_"."qiime_config.txt";
-$cmd = "/usr/local/packages/python-2.7.14/bin/print_qiime_config.py > $qiime";
-print "\tcmd=$cmd\n" if $dryRun || $debug;
-system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
+
 
 ###### BEGIN EVALUATION OF SAMPLES VIA MAPPING FILE ###########
 ###############################################################
@@ -375,7 +387,7 @@ my $r3 = "$wd/$project"."_"."$run"."_"."R3.fastq"; ## change to full path - usr 
 my $barcodes = "$wd/barcodes.fastq"; ## change to full path to full barcodes (flag)
 my $count = 0;
 
-print LOG "---Checking for existence of $barcodes\n";
+print "--Checking for existence of $barcodes\n";
 
 
 my $step1;
@@ -399,15 +411,14 @@ if ($oneStep)
     }
     else
     {
-      print "\r---Copying barcode and index files to $wd\n";
+      print "---Copying barcode and index files to $wd\n";
       $cmd = "zcat $r1file > $r1 | zcat $r2file > $r2 ";
       print "\tcmd=$cmd\n" if $dryRun || $debug;
       system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-      print LOG "---$project barcode and index files copied from $r2file and $r3file to $wd\n";
+      print LOG "$project barcode and index files copied from $r2file and $r3file to $r1 and $r2\n";
     }
     my $start = time;
-    print LOG "R1 file: $r1\nR2 file: $r2\n";
-    print "\r---Extracting barcodes and index files\n";
+    print "---Extracting barcodes and index files\n";
     ## add in (possible replace) awk version of concatenation 
     $step1 = "extract_barcodes.py";
     @errors = glob("$error_log/$step1.e*");
@@ -420,13 +431,13 @@ if ($oneStep)
         system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun; 
       }
     }
-    $cmd = "qsub -b y -l mem_free=1G -P jravel-lab -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log extract_barcodes.py -f $r1 -r $r2 -c barcode_paired_end --bc1_len 12 --bc2_len 12 -m $map -o $wd";
+    $cmd = "qsub -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log extract_barcodes.py -f $r1 -r $r2 -c barcode_paired_end --bc1_len 12 --bc2_len 12 -m $map -o $wd";
     print "\tcmd=$cmd\n" if $dryRun || $debug;
     system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
     
     check_error_log($error_log, $step1);
 
-    print "\r---Waiting for barcode extraction to complete.\n";
+    print "---Waiting for barcode extraction to complete.\n";
 
     RETURN1:
     if(!(-e $barcodes))
@@ -453,12 +464,12 @@ if ($oneStep)
     if ($count = $nSamples)
     {
       print "---$barcodes already exists and contains $count entries, as expected\n";
-      print LOG "---$barcodes already exists and contains $count entries, as expected\n";
+      print LOG "-> $barcodes already exists and contains $count entries, as expected\n";
     }
     else
     {
       print "---$barcodes already exists, but contains $count entries, while there are $nSamples samples\n";
-      print LOG "---$barcodes already exists, but contains $count entries, while there are $nSamples samples\n";
+      print LOG "-> $barcodes already exists, but contains $count entries, while there are $nSamples samples\n";
       exit 0;
     }
   }
@@ -479,25 +490,23 @@ else
 
       if ($inDir)
       {
-        print "\r---Copying barcode and index files to $wd\n";
+        print "---Copying barcode and index files to $wd\n";
         $cmd = "zcat $inDir/*R2.fastq.gz > $r2 | zcat $inDir/*R3.fastq.gz > $r3 ";
         print "\tcmd=$cmd\n" if $dryRun || $debug;
         system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-        print LOG "---$project barcode and index files copied from $inDir to $wd\n";
+        print LOG "$project barcode and index files copied from $inDir to $r2 and $r3\n";
       }
       else
       {
-        print "\r---Copying barcode and index files to $wd\n";
+        print "---Copying barcode and index files to $wd\n";
         $cmd = "zcat $r2file > $r2 | zcat $r3file > $r3 ";
         print "\tcmd=$cmd\n" if $dryRun || $debug;
         system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-        print LOG "---$project barcode and index files copied from $r2file and $r3file to $wd\n";
       }
     }
 
     my $start = time;
-    print LOG "R2 file: $r2\nR3 file: $r3\n";
-    print "\r---Extracting barcodes and index files\n";
+    print "---Extracting barcodes and index files\n";
     ## add in (possible replace) awk version of concatenation 
     $step1 = "extract_barcodes.py";
     @errors = glob("$error_log/$step1.e*");
@@ -510,13 +519,13 @@ else
         system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun; 
       }
     }
-    $cmd = "qsub -b y -l mem_free=1G -P jravel-lab -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log extract_barcodes.py --input_type barcode_paired_end -f $r2 -r $r3 --bc1_len 8 --bc2_len 8 -o $wd";
+    $cmd = "qsub -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log extract_barcodes.py --input_type barcode_paired_end -f $r2 -r $r3 --bc1_len 8 --bc2_len 8 -o $wd";
     print "\tcmd=$cmd\n" if $dryRun || $debug;
     system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
     
     check_error_log($error_log, $step1);
 
-    print "\r---Waiting for barcode extraction to complete.\n";
+    print "---Waiting for barcode extraction to complete.\n";
 
     RETURN1:
     if(!(-e $barcodes))
@@ -528,7 +537,7 @@ else
       ## try adding else statement, if needed
       my $duration = time - $start;
       print "---Barcode extraction complete\n";
-      print LOG "Duration of barcode extraction: $duration s\n";
+      print LOG "---Duration of barcode extraction: $duration s\n";
       print "---Duration of barcode extraction: $duration s\n";
     }
   }
@@ -543,12 +552,12 @@ else
     if ($count = $nSamples)
     {
       print "---$barcodes already exists and contains $count entries, as expected\n";
-      print LOG "---$barcodes already exists and contains $count entries, as expected\n";
+      print LOG "-> $barcodes already exists and contains $count entries, as expected\n";
     }
     else
     {
-      print "---$barcodes already exists, but contains $count entries, while there are $nSamples samples\n";
-      print LOG "---$barcodes already exists, but contains $count entries, while there are $nSamples samples\n";
+      print "---$barcodes already exists, but contains $count entries, while there are $nSamples samples. Exiting.\n";
+      print LOG "-> $barcodes already exists, but contains $count entries, while there are $nSamples samples. Exiting.\n";
       exit 0;
     }
   }
@@ -589,33 +598,33 @@ my $r4fq = "$r4split/seqs.fastq";
 ## print headers of r1 and r4, comm r1 r4 - to ensure the seqIDs are the same order.
 
 
-print LOG "---Checking for existence of $r1fq and $r4fq\n";
+print "--Checking for existence of $r1fq and $r4fq\n";
 if (!-e $r1fq || !-e $r4fq)
 {
   if ($oneStep)
   {
-    print "\r---Obtaining $project-specific R1 and R2 fastq files\n";
+    print "---Obtaining $project-specific R1 and R2 fastq files\n";
   }
   else
   {
-    print "\r---Obtaining $project-specific R1 and R4 fastq files\n";
+    print "---Obtaining $project-specific R1 and R4 fastq files\n";
     if ($inDir)
     {
       $cmd = "zcat $inDir/*R1.fastq.gz > $r1 | zcat $inDir/*R4.fastq.gz > $r4 ";
       print "\tcmd=$cmd\n" if $dryRun || $debug;
       system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-      print LOG "$project barcode and index files copied from $inDir to $wd\n";
+      print LOG "---$project barcode and index files copied from $inDir to $r1 and $r4\n";
     }
     else
     {
       $cmd = "zcat $r1file > $r1 | zcat $r4file > $r4 ";
       print "\tcmd=$cmd\n" if $dryRun || $debug;
       system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-      print LOG "$project barcode and index files copied from $r1file and  $r4file to $wd\n";
+      print LOG "---$project barcode and index files copied from $r1file and $r4file to $r1 and $r4\n";
     }
   }
     
-  print LOG "---Producing $r1fq and $r4fq\n";
+  print "---Producing $r1fq and $r4fq\n";
   my $start = time;
   $step2 = "split_libraries_fastq.py";
   @errors = glob("$error_log/$step2.e*");
@@ -631,25 +640,25 @@ if (!-e $r1fq || !-e $r4fq)
   ## including the stitch script before so that demultiplex happens by barcode NOT order
   if ($oneStep)
   {
-    $cmd = "qsub -cwd -b y -l mem_free=1G -P jravel-lab -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log split_libraries_fastq.py -i $r1 -o $r1split -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type 24 -r 999 -n 999 -q 0 -p 0.0001";
+    $cmd = "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log split_libraries_fastq.py -i $r1 -o $r1split -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type 24 -r 999 -n 999 -q 0 -p 0.0001";
     print "\tcmd=$cmd\n" if $dryRun || $debug;
     system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-    print LOG "$cmd\n";
-    $cmd = "qsub -cwd -b y -l mem_free=1G -P jravel-lab -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log split_libraries_fastq.py -i $r4 -o $r4split -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type 24 -r 999 -n 999 -q 0 -p 0.0001";
+    print LOG "Demultiplexing command F: \n\t$cmd\n\n";
+    $cmd = "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log split_libraries_fastq.py -i $r4 -o $r4split -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type 24 -r 999 -n 999 -q 0 -p 0.0001";
     print "\tcmd=$cmd\n" if $dryRun || $debug;
     system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-    print LOG "$cmd\n";
+    print LOG "Demultiplexing command R: \n\t$cmd\n\n";
   }
   else
   {
-    $cmd = "qsub -cwd -b y -l mem_free=1G -P jravel-lab -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log split_libraries_fastq.py -i $r1 -o $r1split -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type 16 -r 999 -n 999 -q 0 -p 0.0001";
+    $cmd = "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log split_libraries_fastq.py -i $r1 -o $r1split -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type 16 -r 999 -n 999 -q 0 -p 0.0001";
     print "\tcmd=$cmd\n" if $dryRun || $debug;
     system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-    print LOG "$cmd\n";
-    $cmd = "qsub -cwd -b y -l mem_free=1G -P jravel-lab -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log split_libraries_fastq.py -i $r4 -o $r4split -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type 16 -r 999 -n 999 -q 0 -p 0.0001";
+    print LOG "Demultiplexing command F: \n\t$cmd\n\n";
+    $cmd = "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log split_libraries_fastq.py -i $r4 -o $r4split -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type 16 -r 999 -n 999 -q 0 -p 0.0001";
     print "\tcmd=$cmd\n" if $dryRun || $debug;
     system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-    print LOG "$cmd\n";
+    print LOG "Demultiplexing command R: \n\t$cmd\n\n";
   }
 
   check_error_log($error_log, $step2);
@@ -657,7 +666,7 @@ if (!-e $r1fq || !-e $r4fq)
   $r1fq = "$r1split/seqs.fastq";
   $r4fq = "$r4split/seqs.fastq";
 
-  print "\r---Waiting for R1 seqs.fastq to complete.\n";
+  print "---Waiting for R1 seqs.fastq to complete.\n";
   RETURN2:
   if(!(-e $r1fq))
   {
@@ -668,16 +677,16 @@ if (!-e $r1fq || !-e $r4fq)
 
   }
   my $duration = time - $start;
-  print LOG "Duration of R1 seqs.fastq production: $duration s\n";
+  print LOG "---Duration of R1 seqs.fastq production: $duration s\n";
   print "---Duration of R1 seqs.fastq production: $duration s\n";
 
   if ($oneStep)
   {
-    print "\r---Waiting for R2 seqs.fastq to complete.\n";
+    print "---Waiting for R2 seqs.fastq to complete.\n";
   }
   else
   {
-    print "\r---Waiting for R4 seqs.fastq to complete.\n";
+    print "---Waiting for R4 seqs.fastq to complete.\n";
   }
   RETURN3:
   if(!(-e $r4fq))
@@ -687,7 +696,7 @@ if (!-e $r1fq || !-e $r4fq)
   $duration = time - $start;
   if ($oneStep)
   {
-    print LOG "Duration of R2 seqs.fastq production: $duration s\n";
+    print LOG "---Duration of R2 seqs.fastq production: $duration s\n";
     print "---Duration of R2 seqs.fastq production: $duration s\n";
   }
   else
@@ -698,7 +707,7 @@ if (!-e $r1fq || !-e $r4fq)
 }
 else
 {
-  print "\r---$r1fq and $r4fq fastq files already produced\n";
+  print "-> $r1fq and $r4fq fastq files already produced. Demultiplexing ...\n";
 }
 
 ##Check split_library log for 0's
@@ -727,27 +736,31 @@ while (<SPLIT>)
 close SPLIT;
 pop @split; ## to remove the final line of "Total number seqs written"
 $newSamNo = $nSamples - scalar @split;
-if (@split)
+if (scalar @split ne $nSamples)
 {
-  print LOG "---The following ". scalar @split." samples returned 0 reads, due to either a lack of barcodes or a filtering of those reads in split_libraries_fastq.py:\n";
+  print LOG "The following ". scalar @split." samples returned 0 reads, due to either a lack of barcodes or a filtering of those reads in split_libraries_fastq.py:\n";
   foreach my $x (@split)
   {
     print LOG "   $x\n";
   }
+  print LOG "Number of samples after split_libraries_fastq.py: $newSamNo\n";
 }
-
-print LOG "---Number of samples after split_libraries_fastq.py: $newSamNo\n";
+elsif (scalar @split eq $nSamples)
+{
+  print LOG "No samples were successfully demultiplexed. Is the mapping file correct? Exiting.\n";
+  exit;
+}
 
 ###### BEGIN SPLIT BY SAMPLE ##########
 #######################################
 
 if ($oneStep)
   {
-    print "\r---Checking if $project R1 & R2 seqs.fastq files were split by sample ID\n";
+    print "--Checking if $project R1 & R2 seqs.fastq files were split by sample ID\n";
   }
 else
   {
-    print "\r---Checking if $project R1 & R4 seqs.fastq files were split by sample ID\n";
+    print "--Checking if $project R1 & R4 seqs.fastq files were split by sample ID\n";
   }
 
 my $r1seqs = "$r1split/split_by_sample_out";
@@ -773,8 +786,8 @@ if (scalar(@filenames) != $newSamNo || scalar(@r4filenames) != $newSamNo)
       system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun; 
     }
   }
-  print "\r---Sample specific files not found or completed... Splitting $project seqs.fastq files by sample ID\n";
-  print LOG "\r---There are ". scalar(@filenames)." sample specific files found (expected $newSamNo)... Splitting $project seqs.fastq files by sample ID\n";
+  print "---Sample specific files not found or completed... Splitting $project seqs.fastq files by sample ID\n";
+  print LOG "There are ". scalar(@filenames)." sample specific files found (expected $newSamNo)... Splitting $project seqs.fastq files by sample ID\n";
   $cmd = "rm -rf $r1seqs; rm -rf $r4seqs";
   print "\tcmd=$cmd\n" if $dryRun || $debug;
   system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
@@ -784,7 +797,7 @@ if (scalar(@filenames) != $newSamNo || scalar(@r4filenames) != $newSamNo)
   {
   	goto RETURN4;
   }
-  $cmd = "qsub -cwd -b y -l mem_free=1G -P jravel-lab -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V split_sequence_file_on_sample_ids.py -i $r1fq --file_type fastq -o $r1seqs";
+  $cmd = "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V split_sequence_file_on_sample_ids.py -i $r1fq --file_type fastq -o $r1seqs";
   print "\tcmd=$cmd\n" if $dryRun || $debug;
   system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
   print LOG "$cmd\n";
@@ -794,7 +807,7 @@ if (scalar(@filenames) != $newSamNo || scalar(@r4filenames) != $newSamNo)
   {
   	goto RETURN5;
   }
-  $cmd = "qsub -cwd -b y -l mem_free=1G -P jravel-lab -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V split_sequence_file_on_sample_ids.py -i $r4fq --file_type fastq -o $r4seqs";
+  $cmd = "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V split_sequence_file_on_sample_ids.py -i $r4fq --file_type fastq -o $r4seqs";
   print "\tcmd=$cmd\n" if $dryRun || $debug;
   system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
   print LOG "$cmd\n";
@@ -820,7 +833,7 @@ if (scalar(@filenames) != $newSamNo || scalar(@r4filenames) != $newSamNo)
       }
       else
       {
-        print "---All samples accounted for in $r1seqs\n"
+        print "--All samples accounted for in $r1seqs\n"
       }
     }
     else 
@@ -844,7 +857,7 @@ if (scalar(@filenames) != $newSamNo || scalar(@r4filenames) != $newSamNo)
       }
       else
       {
-        print "---All samples accounted for in $r4seqs\n"
+        print "--All samples accounted for in $r4seqs\n"
       }
     }
     else 
@@ -855,12 +868,12 @@ if (scalar(@filenames) != $newSamNo || scalar(@r4filenames) != $newSamNo)
 }
 else
 {
-  print "---$newSamNo sample-specific files present as expected.\n";
-  print LOG "---$newSamNo sample-specific files present as expected.\n";
+  print "--$newSamNo sample-specific files present as expected.\n";
+  print LOG "$newSamNo sample-specific files present as expected.\n";
 }
 
-print "\r---Checking if $project R1 & R4 sample-specific files are all tag-cleaned\n";
-print LOG "\r---Checking if $project R1 & R4 sample-specific files are all tag-cleaned\n";
+print "--Checking if target primers have been removed from $project R1 & R4 sample-specific files..\n";
+print LOG "Checking if target primers have been removed from $project R1 & R4 sample-specific files..\n";
 my @r1tcfiles = glob("$wd/*R1_tc.fastq");
 my @r4tcfiles = glob("$wd/*R2_tc.fastq");
 
@@ -874,7 +887,7 @@ if (scalar(@r1tcfiles) != $newSamNo || scalar(@r4tcfiles) != $newSamNo)
   {
     if ($var eq "V3V4")
     {
-      print "\r---Removing V3V4 primers from all sequences\n";
+      print "Removing V3V4 primers from all sequences\n";
       my $filename;
       opendir R1, $r1seqs or die "Cannot open directory $r1seqs\n";
       while ( $filename = readdir R1) 
@@ -884,7 +897,7 @@ if (scalar(@r1tcfiles) != $newSamNo || scalar(@r4tcfiles) != $newSamNo)
           my @suffixes = (".fastq",".fq");
           my $Prefix = basename($filename, @suffixes);
           my $tc = "$wd/$Prefix"."_R2_tc";
-          $cmd = "qsub -cwd -b y -l mem_free=200M -P jravel-lab -V -e $error_log/tagcleanerR2_$filename -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r1seqs/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2 -trim_within 50";
+          $cmd = "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log/tagcleanerR2_$filename -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r1seqs/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2 -trim_within 50";
           print "\tcmd=$cmd\n" if $dryRun || $debug;
           system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
           ##print LOG "$cmd\n";
@@ -898,7 +911,7 @@ if (scalar(@r1tcfiles) != $newSamNo || scalar(@r4tcfiles) != $newSamNo)
         my @suffixes = (".fastq",".fq");
         my $Prefix = basename($filename, @suffixes);
         my $tc = "$wd/$Prefix"."_R1_tc";
-        $cmd = "qsub -cwd -b y -l mem_free=200M -P jravel-lab -V -e $error_log/tagcleanerR1_$filename -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r4seqs/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2 -trim_within 50";
+        $cmd = "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log/tagcleanerR1_$filename -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r4seqs/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2 -trim_within 50";
         print "\tcmd=$cmd\n" if $dryRun || $debug;
         system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
         ##print LOG "$cmd\n";
@@ -906,10 +919,9 @@ if (scalar(@r1tcfiles) != $newSamNo || scalar(@r4tcfiles) != $newSamNo)
       close R4;
     }
 
-
     if ($var eq "V4")
     {
-      print "\r---Removing V4 primers from all sequences\n";
+      print "--Removing V4 primers from all sequences\n";
       my $filename;
       opendir R1, $r1seqs or die "Cannot open directory $r1seqs\n";
       while ( $filename = readdir R1) 
@@ -919,10 +931,9 @@ if (scalar(@r1tcfiles) != $newSamNo || scalar(@r4tcfiles) != $newSamNo)
           my @suffixes = (".fastq",".fq");
           my $Prefix = basename($filename, @suffixes);
           my $tc = "$wd/$Prefix"."_R1_tc";
-          $cmd = "perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r1seqs/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG-mm5 2";
+          $cmd = "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r1seqs/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
           print "\tcmd=$cmd\n" if $dryRun || $debug;
           system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-          print LOG "$cmd\n";
         }
       }
       close R1;
@@ -933,10 +944,10 @@ if (scalar(@r1tcfiles) != $newSamNo || scalar(@r4tcfiles) != $newSamNo)
         my @suffixes = (".fastq",".fq");
         my $Prefix = basename($filename, @suffixes);
         my $tc = "$wd/$Prefix"."_R2_tc";
-        $cmd = "/usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r4seqs/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
+        $cmd = "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r4seqs/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
         print "\tcmd=$cmd\n" if $dryRun || $debug;
         system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-        print LOG "$cmd\n";
+        #print LOG "$cmd\n";
       }
       close R4;
     }
@@ -945,7 +956,7 @@ if (scalar(@r1tcfiles) != $newSamNo || scalar(@r4tcfiles) != $newSamNo)
   {
   	if ($var eq "V3V4")
   	{
-  	  print "\r---Removing V3V4 primers from all sequences\n";
+  	  print LOG "...Removing V3V4 primers from all sequences.\n";
   	  my $filename;
   	  opendir R1, $r1seqs or die "Cannot open directory $r1seqs\n";
   	  while ( $filename = readdir R1) 
@@ -955,7 +966,7 @@ if (scalar(@r1tcfiles) != $newSamNo || scalar(@r4tcfiles) != $newSamNo)
   	      my @suffixes = (".fastq",".fq");
   	      my $Prefix = basename($filename, @suffixes);
   	      my $tc = "$wd/$Prefix"."_R1_tc";
-  	      $cmd = "qsub -cwd -b y -l mem_free=200M -P jravel-lab -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r1seqs/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
+  	      $cmd = "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r1seqs/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
   	      print "\tcmd=$cmd\n" if $dryRun || $debug;
   	      system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
   	      ##print LOG "$cmd\n";
@@ -969,18 +980,16 @@ if (scalar(@r1tcfiles) != $newSamNo || scalar(@r4tcfiles) != $newSamNo)
   	    my @suffixes = (".fastq",".fq");
   	    my $Prefix = basename($filename, @suffixes);
   	    my $tc = "$wd/$Prefix"."_R2_tc";
-  	    $cmd = "qsub -cwd -b y -l mem_free=200M -P jravel-lab -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r4seqs/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2";
+  	    $cmd = "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r4seqs/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2";
   	    print "\tcmd=$cmd\n" if $dryRun || $debug;
   	    system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
   	    ##print LOG "$cmd\n";
   	  }
   	  close R4;
   	}
-
-
   	if ($var eq "V4")
   	{
-  	  print "\r---Removing V4 primers from all sequences\n";
+  	  print "...Removing V4 primers from all sequences.\n";
   	  my $filename;
   	  opendir R1, $r1seqs or die "Cannot open directory $r1seqs\n";
   	  while ( $filename = readdir R1) 
@@ -990,10 +999,10 @@ if (scalar(@r1tcfiles) != $newSamNo || scalar(@r4tcfiles) != $newSamNo)
   	      my @suffixes = (".fastq",".fq");
   	      my $Prefix = basename($filename, @suffixes);
   	      my $tc = "$wd/$Prefix"."_R1_tc";
-  	      $cmd = "perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r1seqs/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
+  	      $cmd = "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r1seqs/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
   	      print "\tcmd=$cmd\n" if $dryRun || $debug;
   	      system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-  	      print LOG "$cmd\n";
+  	      #print LOG "$cmd\n";
   	    }
   	  }
   	  close R1;
@@ -1004,13 +1013,56 @@ if (scalar(@r1tcfiles) != $newSamNo || scalar(@r4tcfiles) != $newSamNo)
   	    my @suffixes = (".fastq",".fq");
   	    my $Prefix = basename($filename, @suffixes);
   	    my $tc = "$wd/$Prefix"."_R2_tc";
-  	    $cmd = "/usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r4seqs/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
+  	    $cmd = "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r4seqs/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
   	    print "\tcmd=$cmd\n" if $dryRun || $debug;
   	    system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-  	    print LOG "$cmd\n";
+  	    #print LOG "$cmd\n";
   	  }
   	  close R4;
   	}
+    if ($var eq "ITS")
+    {
+      print "...Removing ITS primers from all sequences.\n";
+      my $filename;
+      opendir R1, $r1seqs or die "Cannot open directory $r1seqs\n";
+      while ( $filename = readdir R1) 
+      {
+        if ($filename =~ /.fastq/)
+        {
+          my @suffixes = (".fastq",".fq");
+          my $Prefix = basename($filename, @suffixes);
+          my $tc = "$wd/$Prefix"."_R1_tc";
+          $cmd = "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r1seqs/$filename -out $tc -line_width 0 -verbose -tag5 CTGCCCTTTGTACACACCGC -mm5 2";
+          print "\tcmd=$cmd\n" if $dryRun || $debug;
+          system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
+          #print LOG "$cmd\n";
+
+          # $cmd = "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $tc -out $tc -line_width 0 -verbose -tag5 CTGCCCTTTGTACACACCGC -mm5 2";
+          # print "\tcmd=$cmd\n" if $dryRun || $debug;
+          # system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
+          # print LOG "$cmd\n";
+
+          # $cmd = "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $tc -out $tc -line_width 0 -verbose -tag5 CTGCCCTTTGTACACACCGC -mm5 2";
+          # print "\tcmd=$cmd\n" if $dryRun || $debug;
+          # system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
+          # print LOG "$cmd\n";
+        }
+      }
+      close R1;
+
+      opendir R4, $r4seqs or die "Cannot open directory $r4seqs\n";
+      while ( $filename = readdir R4) 
+      {
+        my @suffixes = (".fastq",".fq");
+        my $Prefix = basename($filename, @suffixes);
+        my $tc = "$wd/$Prefix"."_R2_tc";
+        $cmd = "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r4seqs/$filename -out $tc -line_width 0 -verbose -tag5 TTTCGCTGCGTTCTTCATCG -mm5 2";
+        print "\tcmd=$cmd\n" if $dryRun || $debug;
+        system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
+        #print LOG "$cmd\n";
+      }
+      close R4;
+    }
   }
 
   COUNT2:
@@ -1062,13 +1114,13 @@ if (scalar(@r1tcfiles) != $newSamNo || scalar(@r4tcfiles) != $newSamNo)
     }
   }
   my $duration = time - $start;
-  print LOG "---$n_tcr4 sample-specific fastq files tagcleaned in $wd\n";
-  print LOG "---Duration of tagcleaning: $duration s\n";
+  print LOG "...Primer sequences removed from $newSamNo samples. Beginning DADA2.\n";
+  print LOG "--Duration of tagcleaning: $duration s\n";
 }
 else
 {
-  print "---$newSamNo sample-specific, tag-cleaned files present as expected.\n";
-  print LOG "---$newSamNo sample-specific, tag-cleaned files present as expected.\n";
+  print "--$newSamNo sample-specific, tag-cleaned files present as expected.\n";
+  print LOG "...$newSamNo sample-specific, tag-cleaned files present as expected. Beginning DADA2.\n";
 }
 
 ###### BEGIN DADA2 ##########
@@ -1077,13 +1129,13 @@ else
 my $dada2 = "$wd/dada2_abundance_table.rds";
 if (!-e $dada2)
 {
-  print "\r---Removing old filtered fastq files from previous runs\n";
+  print "--Removing old filtered fastq files from previous runs\n";
   $cmd = "rm -rf $wd/filtered";
   print "\tcmd=$cmd\n" if $dryRun || $debug;
   system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
 
-  print "\r---Running dada2 with fastq files in $wd\n";
-  print "---Running dada2 for $var region";
+  print "Running DADA2 with fastq files in $wd\n";
+  print LOG "Running DADA2 for $var region";
   chdir $pd;  
   if ($oneStep)
   {
@@ -1236,6 +1288,43 @@ if (!-e $dada2)
       }
       dada2($run, $truncLen, $maxN, $maxEE, $truncQ, $phix, $maxLen, $minLen, $minQ);
     }
+
+    if ($var eq "ITS")
+    { 
+      if (!$truncLen)
+      {
+        $truncLen = 0;
+      }
+      if (!$maxN)
+      {
+        $maxN = 0;
+      }
+      if (!$maxEE)
+      {
+        $maxEE = "1";
+      }
+       if (!$truncQ)
+      {
+        $truncQ = 2;
+      }
+      if (!$phix)
+      {
+        $phix = "TRUE";
+      }
+      if (!$maxLen)
+      {
+        $maxLen = "Inf";
+      }
+      if (!$minLen)
+      {
+        $minLen = 50;
+      }
+      if (!$minQ)
+      {
+        $minQ = 0;
+      }
+      dada2($run, $truncLen, $maxN, $maxEE, $truncQ, $phix, $maxLen, $minLen, $minQ);
+    }
   }
 }
 
@@ -1246,7 +1335,7 @@ if (!-e $projrt)
   $cmd = "mv $rt $projrt";
   print "\tcmd=$cmd\n" if $dryRun || $debug;
   system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-  print LOG "---dada2-specific commands can be found in $projrt\n";
+  print LOG "\tDADA2-specific commands can be found in $projrt\n";
 }
 
 my $rtout = "$wd/dada2_part1_rTmp.Rout";
@@ -1256,7 +1345,7 @@ if (!-e $projrtout)
   $cmd = "mv $rtout $projrtout";
   print "\tcmd=$cmd\n" if $dryRun || $debug;
   system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-  print LOG "---dada2-specific commands can be found in $projrt\n";
+  print LOG "\tDADA2-specific commands with output can be found in $projrtout\n";
 }
 
 ###### EVALUATING DADA2 OUTPUT ##########
@@ -1330,7 +1419,6 @@ else
 {
   print "---dada2 did not complete successfully, something went wrong!\n---Check $projrtout.\n";
 }
-# open DADA, "<$dadaTbl" or die "Cannot open $dadaTbl for reading: $OS_ERROR";
 
 ###### COMPLETING LOG FILE ##############
 #########################################
@@ -1513,7 +1601,7 @@ sub check_error_log
   $error = glob("$error_log/$step.e*");
   if (defined $error)
   {
-    print "\r---Checking for errors in $error.\n";
+    print "---Checking for errors in $error.\n";
     open ERROR, "<$error" or die "Can't open $error.\n";
     while (<ERROR>)
     {
