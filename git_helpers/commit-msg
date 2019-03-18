@@ -6,7 +6,7 @@ chomp(my $wd = `git rev-parse --show-toplevel`);
 my $vFile = "${wd}/VERSION";
 open(VFILE, "<", "$vFile")	or die "Died while reading $vFile";
 my @lines = <VFILE>;
-my $version = $lines[0];
+chomp(my $version = $lines[0]);
 close(VFILE);
 
 
