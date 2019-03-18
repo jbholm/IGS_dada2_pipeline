@@ -288,6 +288,7 @@ if (!-e $stdout_log)
 
 my $time = strftime("%Y-%m-%d %H:%M:%S", localtime(time));
 my $log = "$wd/$project"."_".$run."_16S_pipeline_log.txt";
+truncate $log, 0;
 
 my $perlScript = File::Spec->catfile($pipelineDir, "scripts", "log_version.pl");
 system($^X, $perlScript, $log);
