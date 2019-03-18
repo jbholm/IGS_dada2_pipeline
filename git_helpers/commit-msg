@@ -1,0 +1,19 @@
+#! /usr/bin/perl
+use strict;
+use warnings;
+
+chomp(my $wd = `git rev-parse --show-toplevel`);
+my $vFile = "${wd}/VERSION";
+open(VFILE, "<", "$vFile")	or die "Died while reading $vFile";
+my @lines = <VFILE>;
+my $version = $lines[0];
+close(VFILE);
+
+
+open(FH, "+<", "$ARGV[0]")	or die "Died while opening $ARGV[0] for updating";
+@lines = <FH>;
+$lines[0] = "$lines[0] (v${version})\n";
+seek(FH, 0, 0)			or die "Died while seeking in VERSION";
+print FH @lines 		or die "Died while printing in VERSION";
+truncate(FH, tell(FH)) 	or die "Died while truncating VERSION";
+close(FH)				or die "Died while closing VERSION";

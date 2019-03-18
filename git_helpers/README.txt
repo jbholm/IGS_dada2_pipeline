@@ -1,10 +1,10 @@
-Post-commit and pre-commit are git hooks that help you increment the version number each time you
+pre-commit and commit-msg are git hooks that help you increment the version number each time you
   commit. If you will be contributing to the GitHub repository, please copy these
   files to IGS_dada2_pipeline/.git/hooks and ensure they are executable.
 OSX and Unix:
   cd PATH_TO_REMOTE/IGS_dada2_pipeline
-  cp git_helpers/{post-commit,pre-commit} .git/hooks
-  chmod 755 .git/hooks/{post-commit,pre-commit}
+  cp git_helpers/{pre-commit,commit-msg} .git/hooks
+  chmod 755 .git/hooks/{pre-commit,commit-msg}
 
 To make contributions that require review from other contributors, create a
   new branch on GitHub, clone that branch, and make changes on that branch.
