@@ -1,0 +1,87 @@
+#! /usr/bin/perl
+use strict;
+use warnings;
+
+# Read current version
+chomp(my $wd = `git rev-parse --show-toplevel`);
+my $vFile = "${wd}/VERSION";
+open(FH, "<", "$vFile")	or die "Died while opening $vFile for updating";
+my @lines = <FH>;
+my $version = $lines[0];
+close(FH);
+
+sub getUpdate {
+	# Ask what the update is
+	if($_[0] == 1) {
+		print "Please type 'Major', 'Minor', or 'Patch'\n";
+	} else {
+		print "Please describe the commit:\nMajor - A backwards-incompatible update\nMinor - A new command-line option\nPatch - Any smaller update\nSkip - Only if you manually updated the version already, or called git commit --amend\n";
+	}
+	my $input = `exec < /dev/tty && read input && echo \$input`;
+	chomp $input;
+	$input = uc($input);
+
+	# Don't increment if no changes have been made
+	if ($input eq "MAJOR" || $input eq "MINOR" || $input eq "PATCH") {
+		# Don't change the version number if no changes made.
+		if(not `git diff --staged | grep '^\+'`) {
+			die "You asked to change the version number, but git diff --staged does not show any changes. Aborted.\n";
+		}
+		# Don't change the version number if VERSION has been altered. Suggest discarding changes before retrying commit.
+		if(`git diff --staged | grep '^\-\-\- a/VERSION'`) {
+			die "git diff --staged shows that VERSION has been modified. Please run the following commands to discard changes to VERSION, then commit.\ngit reset HEAD VERSION\ngit checkout -- VERSION\n";
+		}
+	}
+
+	# Would like to enforce this, but no way to check if git commit --amend was called
+	# if ($input eq "SKIP") {
+	# 	# Don't allow no change to version number if actual changes have been made and VERSION has NOT been changed
+	# 	if(`git diff --staged | grep '^\+'` and (not `git diff --staged | grep '^\-\-\- a/VERSION'`)) {
+	# 		die "Skip is not allowed if you've staged changes but none of them are in VERSION.\n";
+	# 	}
+	# }
+
+	# Calculate the new version
+	my @vs = split /\./, $_[1], 3;
+	if ($input eq "MAJOR") {
+		print "Incrementing major version...\n";
+		$vs[0] = $vs[0] + 1;
+		$vs[1] = 0;
+		$vs[2] = 0;
+	} elsif ($input eq "MINOR") {
+		print "Incrementing minor version...\n";
+		$vs[1] = $vs[1] + 1;
+		$vs[2] = 0;
+	} elsif ($input eq "PATCH") {
+		print "Incrementing patch version...\n";
+		$vs[2] = $vs[2] + 1;
+	} elsif ($input eq "SKIP") {
+		print "Doing nothing...\n";
+	} else {
+		# Input was incorrect, so prompt again
+		return 0;
+	}
+	# Here's the new version; write to file if changed
+	my $newVersion = join '.', @vs;
+	print "This commit's version is ${newVersion}\n";
+
+	if(not $newVersion eq $_[1]) {
+		open(FH, "+<", "$_[2]")	or die "Died while opening VERSION for updating";
+		my @lines = <FH>;
+		$lines[0] = "${newVersion}\n";
+		seek(FH, 0, 0)			or die "Died while seeking in VERSION";
+		print FH @lines 		or die "Died while printing in VERSION";
+		truncate(FH, tell(FH)) 	or die "Died while truncating VERSION";
+		close(FH)				or die "Died while closing VERSION";
+	}
+	
+	return 1;
+}
+
+my $updated = getUpdate(0, $version, $vFile);
+while(! $updated) {
+	$updated = getUpdate(1, $version, $vFile);
+}
+
+system('git add -A');
+print "Ready for commit\n";
