@@ -68,7 +68,7 @@ sub getUpdate {
 	if(not $newVersion eq $_[1]) {
 		open(FH, "+<", "$_[2]")	or die "Died while opening VERSION for updating";
 		my @lines = <FH>;
-		$lines[0] = "$newVersion";
+		$lines[0] = "${newVersion}\n";
 		seek(FH, 0, 0)			or die "Died while seeking in VERSION";
 		print FH @lines 		or die "Died while printing in VERSION";
 		truncate(FH, tell(FH)) 	or die "Died while truncating VERSION";
