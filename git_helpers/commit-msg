@@ -12,7 +12,7 @@ close(VFILE);
 
 open(FH, "+<", "$ARGV[0]")	or die "Died while opening $ARGV[0] for updating";
 @lines = <FH>;
-$lines[0] = chomp($lines[0]);
+chomp($lines[0]);
 $lines[0] = "$lines[0] (v${version})\n";
 seek(FH, 0, 0)			or die "Died while seeking in VERSION";
 print FH @lines 		or die "Died while printing in VERSION";
