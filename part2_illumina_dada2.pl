@@ -86,7 +86,11 @@ use Cwd qw(abs_path);
 use File::Temp qw/ tempfile /;
 #use Email::MIME;
 #use Email::Sender::Simple qw(sendmail);
+use File::Spec;
+use File::Basename;
 
+
+my $pipelineDir = dirname(__FILE__);
 $OUTPUT_AUTOFLUSH = 1;
 
 ####################################################################
@@ -171,7 +175,12 @@ if(!$inRuns)
 my @runs = split(",",$inRuns);
 
 my $log = "$project"."_part2_16S_pipeline_log.txt";
-open LOG, ">$log" or die "Cannot open $log for writing: $OS_ERROR";
+truncate $log, 0;
+
+my $perlScript = File::Spec->catfile($pipelineDir, "scripts", "log_version.pl");
+system($^X, $perlScript, $log);
+
+open LOG, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
 print LOG "This file logs the progress of ". scalar(@runs) ." runs for $project 16S amplicon sequences through the illumina_dada2.pl pipeline.\n";
 
 my $cmd = "rm -f *-dada2_abundance_table.rds";
