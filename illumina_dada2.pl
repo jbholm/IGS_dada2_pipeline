@@ -317,10 +317,11 @@ if ( !-e $stdout_log ) {
 }
 
 my $time = strftime( "%Y-%m-%d %H:%M:%S", localtime(time) );
-my $log = "$wd/$project"."_".$run."_16S_pipeline_log.txt";
+my $log  = "$wd/$project" . "_" . $run . "_16S_pipeline_log.txt";
 
-my $perlScript = File::Spec->catfile($pipelineDir, "scripts", "log_version.pl");
-system($^X, $perlScript, $log);
+my $perlScript =
+  File::Spec->catfile( $pipelineDir, "scripts", "log_version.pl" );
+system( $^X, $perlScript, $log );
 
 open my $logFH, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
 print $logFH "$time\n";
@@ -421,20 +422,49 @@ while (<MAP>)
             || $_ =~ "pCR.pos"
             || $_ =~ "POSCTRL"
             || $_ =~ "POS.CTRL"
-            || $_ =~ "POSCON" )
+            || $_ =~ "POSCON"
+            || $_ =~ "posctr" )
         {
             $pcrpos++;
         } elsif ( $_ =~ "PCRNTC"
             || $_ =~ "PCR.NEG"
             || $_ =~ "PCR.NTC"
             || $_ =~ "PCRNEG"
-            || $_ =~ "PCRNEGCTRL" )
+            || $_ =~ "PCRNEGCTRL"
+            || $_ =~ "ntcctr" )
         {
             $pcrneg++;
         } elsif ( $_ =~ /NULL/ ) {
             $null++;
         } else {
-            $projSamples++;
+            if (   $_ =~ "EXTNTC"
+                || $_ =~ "NTC.EXT"
+                || $_ =~ "NTCEXT"
+                || $_ =~ "EXT.NTC"
+                || $_ =~ "NTC"
+                || $_ =~ "EXTNEG" )
+            {
+                $extctrl++;
+            } elsif ( $_ =~ "PCRPOS"
+                || $_ =~ "PCR.pos"
+                || $_ =~ "pCR.pos"
+                || $_ =~ "POSCTRL"
+                || $_ =~ "POS.CTRL"
+                || $_ =~ "POSCON" )
+            {
+                $pcrpos++;
+            } elsif ( $_ =~ "PCRNTC"
+                || $_ =~ "PCR.NEG"
+                || $_ =~ "PCR.NTC"
+                || $_ =~ "PCRNEG"
+                || $_ =~ "PCRNEGCTRL" )
+            {
+                $pcrneg++;
+            } elsif ( $_ =~ /NULL/ ) {
+                $null++;
+            } else {
+                $projSamples++;
+            }
         }
     }
 }
@@ -890,7 +920,7 @@ if ( !$dbg || $dbg eq "demultiplex" ) {
 
         # Count the number of lines in R4split/seqs.fastq
         open R4, "<$r4split/seqs.fastq";
-        while (<R4>) {}
+        while (<R4>) { }
         my $R4lines = $.;
         close R4;
 
@@ -1150,31 +1180,31 @@ if ( !$dbg || $dbg eq "tagclean" ) {
             }
         }
 
-        my @files = glob("$wd/*R1_tc.fastq");
+        my @files  = glob("$wd/*R1_tc.fastq");
         my $nFiles = @files;
-        while($nFiles != $newSamNo) { 
-            @files = glob("$wd/*R1_tc.fastq"); 
+        while ( $nFiles != $newSamNo ) {
+            @files  = glob("$wd/*R1_tc.fastq");
             $nFiles = @files;
         }
         print "---All tagcleaned R1 samples accounted for in $wd\n";
 
-        @files = glob("$wd/*R4_tc.fastq");
+        @files  = glob("$wd/*R4_tc.fastq");
         $nFiles = @files;
-        while($nFiles != $newSamNo) { 
-            @files = glob("$wd/*R2_tc.fastq"); 
+        while ( $nFiles != $newSamNo ) {
+            @files  = glob("$wd/*R2_tc.fastq");
             $nFiles = @files;
         }
         print "---All tagcleaned R4 (R2) samples accounted for in $wd\n";
 
         my $duration = time - $start;
-        print $logFH  "...Primer sequences removed from $newSamNo samples. "
-        . "Beginning DADA2.\n";
+        print $logFH "...Primer sequences removed from $newSamNo samples. "
+          . "Beginning DADA2.\n";
         print $logFH "--Duration of tagcleaning: $duration s\n";
     } else {
         print "--$newSamNo sample-specific, tag-cleaned files present as "
-        . "expected.\n";
+          . "expected.\n";
         print $logFH "...$newSamNo sample-specific, tag-cleaned files present "
-        . "as expected. Beginning DADA2.\n";
+          . "as expected. Beginning DADA2.\n";
     }
 }
 
@@ -1380,7 +1410,7 @@ if ( ( !$dbg ) || $dbg eq "dada2" ) {
           or die "system($cmd) failed with exit code: $?"
           if !$dryRun;
         print $logFH "\tDADA2-specific commands with output can be found in "
-        . "$projrtout\n";
+          . "$projrtout\n";
     }
 
 ###### EVALUATING DADA2 OUTPUT ##########
@@ -1438,15 +1468,15 @@ if ( ( !$dbg ) || $dbg eq "dada2" ) {
     my $dadaTbl = "$wd/dada2_part1_stats.txt";
     if ( -e $dadaTbl ) {
         print $logFH "\nFor $var region, dada2 used the following filtering "
-        . "requirements:\n$truncLen\n$maxN\n$maxEE\n$truncQ\n$phix\n";
+          . "requirements:\n$truncLen\n$maxN\n$maxEE\n$truncQ\n$phix\n";
         print $logFH "dada2 completed successfully!\nAbundance table for "
-        . "$project run $run located at $wd/dada2_abundance_table.rds\n";
+          . "$project run $run located at $wd/dada2_abundance_table.rds\n";
         print $logFH "See $dadaTbl for dada2 table of reads surviving by "
-        . "step\n";
+          . "step\n";
         close $logFH;
     } else {
         print "---dada2 did not complete successfully, something went wrong!\n"
-        . "---Check $projrtout.\n";
+          . "---Check $projrtout.\n";
     }
 }
 ###### COMPLETING $logFH FILE ##############
@@ -1457,7 +1487,7 @@ while (<$logFH>) {
     if ( $_ =~ /dada2 completed successfully!/ ) {
         print "---dada2 completed successfully\n";
         print "---Run-specific abundance table written to "
-        . "$wd/dada2_abundance_table.rds\n";
+          . "$wd/dada2_abundance_table.rds\n";
         print "---See $log for processing details\n";
         print "---Removing original R1, R2, R3, and R4 files from $wd\n";
         $cmd = "rm -rf $r1";
