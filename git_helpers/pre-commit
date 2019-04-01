@@ -2,12 +2,12 @@
 use strict;
 use warnings;
 
-# Read current version
+# Read current version string
 chomp(my $wd = `git rev-parse --show-toplevel`);
 my $vFile = "${wd}/VERSION";
 open(FH, "<", "$vFile")	or die "Died while opening $vFile for updating";
 my @lines = <FH>;
-my $version = $lines[0];
+chomp(my $version = $lines[0]);
 close(FH);
 
 sub getUpdate {
@@ -24,7 +24,7 @@ sub getUpdate {
 	# Don't increment if no changes have been made
 	if ($input eq "MAJOR" || $input eq "MINOR" || $input eq "PATCH" || $input eq "PRE-RELEASE" || !$input) {
 		# Don't change the version number if no changes made.
-		if(not `git diff --staged | grep '^\+'`) {
+		if(not `git diff --staged | grep -E '^(\+|new file)'`) {
 			die "You asked to change the version number, but git diff --staged does not show any changes. Aborted.\n";
 		}
 		# Don't change the version number if VERSION has been altered. Suggest discarding changes before retrying commit.
@@ -42,34 +42,64 @@ sub getUpdate {
 	# }
 
 	# Calculate the new version
-	my @vs = split /\.|-/, $_[1], 4;
+	my @semver_prerelease = split /-/, $_[1], 2; # first split by hyphen
+	# then split first part by period
+	my @semVs = split /\./, $semver_prerelease[0], 3;
+	# split second part by plus
+	my @branch_commit;
+	if(scalar @semver_prerelease == 2) {
+		@branch_commit = split /\+/, $semver_prerelease[1], 2;
+		if (scalar @branch_commit == 1) {
+			push @branch_commit, 0; # the initial nbr of commits
+		}
+	} else {
+		@branch_commit = ("", 0); # master branch has no prerelease
+	}
+
 	if ($input eq "MAJOR") {
 		print "Incrementing major version...\n";
-		$vs[0] = $vs[0] + 1;
-		$vs[1] = 0;
-		$vs[2] = 0;
-		$vs[3] = 0;
+		$semVs[0] = $semVs[0] + 1;
+		$semVs[1] = 0;
+		$semVs[2] = 0;
+		$branch_commit[1] = 0;
 	} elsif ($input eq "MINOR") {
 		print "Incrementing minor version...\n";
-		$vs[1] = $vs[1] + 1;
-		$vs[2] = 0;
-		$vs[3] = 0;
+		$semVs[1] = $semVs[1] + 1;
+		$semVs[2] = 0;
+		$branch_commit[1] = 0;
 	} elsif ($input eq "PATCH") {
 		print "Incrementing patch version...\n";
-		$vs[2] = $vs[2] + 1;
-		$vs[3] = 0;
+		$semVs[2] = $semVs[2] + 1;
+		$branch_commit[1] = 0;
 	} elsif ($input eq "PRE-RELEASE" || !$input) {
+		if (!$branch_commit[0]) {
+			# if version string doesn't have the branch name yet...
+			chomp($branch_commit[0] = `git branch | grep \\* | cut -d ' ' -f2`);
+			my @parts = split '/', $branch_commit[0], 2; # remove the first part if present
+			$branch_commit[0] = $parts[1];
+			if ($branch_commit[0] eq "master") {
+				die "Please do not make pre-release commits on master.";
+			}
+		}
 		print "Incrementing pre-release version...\n";
-		$vs[3] = $vs[3] + 1;
+		$branch_commit[1]++;
 	} elsif ($input eq "SKIP") {
 		print "Doing nothing...\n";
 	} else {
 		# Input was incorrect, so prompt again
 		return 0;
 	}
-	# Here's the new version; write to file if changed
-	my $newVersion = join '.', @vs[0 .. 2];
-	$newVersion = "${newVersion}-" . scalar $vs[3];
+
+	# Calculate the new version string
+	my $newVersion = join '.', @semVs;
+	if ($branch_commit[0]) {
+		$newVersion = "$newVersion-$branch_commit[0]";
+		if ($branch_commit[1]) {
+			$newVersion = "$newVersion+$branch_commit[1]";
+		}
+	}
+
+	# Write to file if changed
 	print "This commit's version is ${newVersion}\n";
 
 	if(not $newVersion eq $_[1]) {
@@ -79,7 +109,7 @@ sub getUpdate {
 		seek(FH, 0, 0)			or die "Died while seeking in VERSION";
 		print FH @lines 		or die "Died while printing in VERSION";
 		truncate(FH, tell(FH)) 	or die "Died while truncating VERSION";
-		close(FH)				or die "Died while closing VERSION";
+		close(FH);
 	}
 	
 	return 1;

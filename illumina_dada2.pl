@@ -320,7 +320,7 @@ my $time = strftime( "%Y-%m-%d %H:%M:%S", localtime(time) );
 my $log = "$wd/$project"."_".$run."_16S_pipeline_log.txt";
 
 my $perlScript = File::Spec->catfile($pipelineDir, "scripts", "log_version.pl");
-system($^X, $perlScript, $log, $dbg);
+system($^X, $perlScript, $log);
 
 open my $logFH, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
 print $logFH "$time\n";

@@ -175,10 +175,9 @@ if(!$inRuns)
 my @runs = split(",",$inRuns);
 
 my $log = "$project"."_part2_16S_pipeline_log.txt";
-truncate $log, 0;
 
 my $perlScript = File::Spec->catfile($pipelineDir, "scripts", "log_version.pl");
-system($^X, $perlScript, $log, $dbg);
+system($^X, $perlScript, $log);
 
 open LOG, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
 print LOG "This file logs the progress of ". scalar(@runs) ." runs for $project 16S amplicon sequences through the illumina_dada2.pl pipeline.\n";
