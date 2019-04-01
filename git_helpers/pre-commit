@@ -13,16 +13,16 @@ close(FH);
 sub getUpdate {
 	# Ask what the update is
 	if($_[0] == 1) {
-		print "Please type 'Major', 'Minor', or 'Patch'\n";
+		print "Please type 'major', 'minor', 'patch', or 'pre-release'. Type nothing for pre-release.\n";
 	} else {
-		print "Please describe the commit:\nMajor - A backwards-incompatible update\nMinor - A new command-line option\nPatch - Any smaller update\nSkip - Only if you manually updated the version already, or called git commit --amend\n";
+		print "Please describe the commit:\nMajor - A backwards-incompatible update\nMinor - A new command-line option\nPatch - Any smaller update\nSkip - Only if you manually updated the version already, or called git commit --amend\nPre-release - commits not on the master branch (DEFAULT)\n";
 	}
 	my $input = `exec < /dev/tty && read input && echo \$input`;
 	chomp $input;
 	$input = uc($input);
 
 	# Don't increment if no changes have been made
-	if ($input eq "MAJOR" || $input eq "MINOR" || $input eq "PATCH") {
+	if ($input eq "MAJOR" || $input eq "MINOR" || $input eq "PATCH" || $input eq "PRE-RELEASE" || !$input) {
 		# Don't change the version number if no changes made.
 		if(not `git diff --staged | grep '^\+'`) {
 			die "You asked to change the version number, but git diff --staged does not show any changes. Aborted.\n";
@@ -42,19 +42,25 @@ sub getUpdate {
 	# }
 
 	# Calculate the new version
-	my @vs = split /\./, $_[1], 3;
+	my @vs = split /\.|-/, $_[1], 4;
 	if ($input eq "MAJOR") {
 		print "Incrementing major version...\n";
 		$vs[0] = $vs[0] + 1;
 		$vs[1] = 0;
 		$vs[2] = 0;
+		$vs[3] = 0;
 	} elsif ($input eq "MINOR") {
 		print "Incrementing minor version...\n";
 		$vs[1] = $vs[1] + 1;
 		$vs[2] = 0;
+		$vs[3] = 0;
 	} elsif ($input eq "PATCH") {
 		print "Incrementing patch version...\n";
 		$vs[2] = $vs[2] + 1;
+		$vs[3] = 0;
+	} elsif ($input eq "PRE-RELEASE" || !$input) {
+		print "Incrementing pre-release version...\n";
+		$vs[3] = $vs[3] + 1;
 	} elsif ($input eq "SKIP") {
 		print "Doing nothing...\n";
 	} else {
@@ -62,7 +68,8 @@ sub getUpdate {
 		return 0;
 	}
 	# Here's the new version; write to file if changed
-	my $newVersion = join '.', @vs;
+	my $newVersion = join '.', @vs[0 .. 2];
+	$newVersion = "${newVersion}-" . scalar $vs[3];
 	print "This commit's version is ${newVersion}\n";
 
 	if(not $newVersion eq $_[1]) {
