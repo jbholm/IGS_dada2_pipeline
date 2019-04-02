@@ -175,7 +175,6 @@ if(!$inRuns)
 my @runs = split(",",$inRuns);
 
 my $log = "$project"."_part2_16S_pipeline_log.txt";
-truncate $log, 0;
 
 my $perlScript = File::Spec->catfile($pipelineDir, "scripts", "log_version.pl");
 system($^X, $perlScript, $log);
