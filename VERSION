@@ -1,5 +1,6 @@
-1.0.2
+1.0.3
 We use semantic versioning:
-First number: Major version. Incremented for a commit that requires a change in how the pipeline is operated.
-Second number: Minor version. Incremented for a commit that adds a new feature (usually a new command-line option).
-Third number: Patch version. Incremented for anything smaller.
+First number: Major version. Incremented for a commit on master that requires a change in how the pipeline is operated.
+Second number: Minor version. Incremented for a commit on master that adds a new feature (usually a new command-line option).
+Third number: Patch version. Incremented for anything smaller on master.
+Hyphenated string: Pre-release version. Incremented for any commit on a non-master branch.
