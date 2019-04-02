@@ -384,30 +384,12 @@ my $extctrl     = 0;
 my $pcrpos      = 0;
 my $pcrneg      = 0;
 my $projSamples = 0;
-my $linecount = 0;
-my $null = 0;
-while (<MAP>)
-{
-  chomp;
-  $linecount++;
-  if ($linecount > 1) ## don't count header as sample
-  {
-    if ($_ =~ "EXTNTC" || $_ =~ "NTC.EXT" || $_ =~ "NTCEXT" || $_ =~ "EXT.NTC" || $_ =~ "NTC" || $_ =~ "EXTNEG")
-    {
-      $extctrl++;
-    }
-    elsif ($_ =~ "PCRPOS" || $_ =~ "PCR.pos" || $_ =~ "pCR.pos" || $_ =~ "POSCTRL" || $_ =~ "POS.CTRL" || $_ =~ "POSCON" || $_ =~ "posctr")    {
-      $pcrpos++;
-    }
-    elsif ($_ =~ "PCRNTC" || $_ =~ "PCR.NEG" || $_ =~ "PCR.NTC"|| $_ =~ "PCRNEG" || $_ =~ "PCRNEGCTRL" || $_ =~ "ntcctr") 
-    {
-      $pcrneg++;
-    }
-    elsif ($_ =~ /NULL/ )
-    {
-      $null++;
-    }
-    else
+my $linecount   = 0;
+my $null        = 0;
+while (<MAP>) {
+    chomp;
+    $linecount++;
+    if ( $linecount > 1 )    ## don't count header as sample
     {
         if (   $_ =~ "EXTNTC"
             || $_ =~ "NTC.EXT"
@@ -437,34 +419,7 @@ while (<MAP>)
         } elsif ( $_ =~ /NULL/ ) {
             $null++;
         } else {
-            if (   $_ =~ "EXTNTC"
-                || $_ =~ "NTC.EXT"
-                || $_ =~ "NTCEXT"
-                || $_ =~ "EXT.NTC"
-                || $_ =~ "NTC"
-                || $_ =~ "EXTNEG" )
-            {
-                $extctrl++;
-            } elsif ( $_ =~ "PCRPOS"
-                || $_ =~ "PCR.pos"
-                || $_ =~ "pCR.pos"
-                || $_ =~ "POSCTRL"
-                || $_ =~ "POS.CTRL"
-                || $_ =~ "POSCON" )
-            {
-                $pcrpos++;
-            } elsif ( $_ =~ "PCRNTC"
-                || $_ =~ "PCR.NEG"
-                || $_ =~ "PCR.NTC"
-                || $_ =~ "PCRNEG"
-                || $_ =~ "PCRNEGCTRL" )
-            {
-                $pcrneg++;
-            } elsif ( $_ =~ /NULL/ ) {
-                $null++;
-            } else {
-                $projSamples++;
-            }
+            $projSamples++;
         }
     }
 }
