@@ -121,7 +121,14 @@ default is jravel-lab.
 
 =item B<-dbg> {qiime_and_validation, extract_barcodes, demultiplex, tagclean, dada2}
 
-Runs only one section of the pipeline and writes every qsub command to the log file.
+Runs the specified section of the pipeline. Multiple -dbg options can be given
+to run multiple consecutive parts of the pipeline, provided that the input to
+the earliest requested step is present. Any non-consecutive steps will be 
+ignored.
+
+=item B<--verbose>
+
+Prints each command to STDOUT,
 
 =back 
 
