@@ -337,13 +337,13 @@ print $logFH "$time\n";
 
 if(@dbg) {
     print "DBG FLAGS: ";
-    print $logFH, "DBG FLAGS: ";
+    print $logFH "DBG FLAGS: ";
     for (@dbg) {
         print "$_ ";
-        print $logFH, "$_ ";
+        print $logFH "$_ ";
     }
     print "\n";
-    print $logFH, "\n";
+    print $logFH "\n";
 }
 
 if ( ( !@dbg ) || grep( /^qiime_and_validation$/, @dbg ) ) {
@@ -1494,6 +1494,7 @@ while (<$logFH>) {
           if !$dryRun;
     }
 }
+print $logFH "\n";
 close $logFH;
 
 ## moving final files to directory created within /local/projects/16S_DATA/projects/
