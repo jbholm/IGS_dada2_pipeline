@@ -44,13 +44,34 @@ part2_illumina_dada2.pl is Part 2 for processing samples through the IGS 16S Pip
   3. then run script as below from within the project directory created in Step 1:
 part2_illumina_dada2.pl -i <comma-separated-input-run-names> -v <variable-region> -p <project-ID>
 
+# To use the lastest version of this pipeline:
+## Terminal
+Choose one of the following options.
+
+-To create a local git clone:
+
+`git clone https://github.com/jbholm/IGS_dada2_pipeline.git`
+
+-To update your local git clone while discarding your local development history:
+
+`git fetch origin master`  
+`git reset --hard FETCH_HEAD`
+
+-To merge the changes into your local git clone:
+
+`git checkout master`  
+`git pull -X patience # Git may not be able to merge all the changes without manual editing`
+
 # To use an earlier version of this pipeline:
 ## Desktop
 Find the desired version on https://github.com/jbholm/IGS_dada2_pipeline/commits/master. Click the "**<>**" button to browse the repository. Click the green "**Clone or download**" dropdown and click "**Download ZIP**" to download this version of the pipeline.
 ## Terminal
-Navigate to a local clone of this repository (should be a directory named "IGS_dada2_pipeline" containing a subdirectory ./.Git/). Enter the following commands to remove all local un-commited changes and checkout a previous commit (change **1.0.0** to your desired version).  
+In a local clone:  
+Enter the following commands to save any existing changes to Git's stash and checkout a previous commit (change **1.0.0** to your desired version).  
 `git add .`  
-`git reset --hard`  
-`git rev-list feature/version --grep='v1.0.0' | head -n 1 | xargs git checkout`  
-If you do not have a local clone already, you will need to provide your GitHub credentials to clone the repository at a command prompt. Follow the desktop instructions to browse the desired version of the repository. Click the green "**Clone or download**" dropdown and copy the HTTPS URL. Then run:
+`git stash # To discard changes instead of stashing them, git reset --hard`  
+`git rev-list master --grep='v1.0.0' | head -n 1 | xargs git checkout`  
+
+To create a local clone:  
+Follow the desktop instructions above to find the desired version of the pipeline. Click the green "**Clone or download**" dropdown and copy the HTTPS URL. Then run:
 `git clone PASTE/HTTPS/URL/HERE`
