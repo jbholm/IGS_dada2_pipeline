@@ -64,23 +64,28 @@ qsub -cwd -b y -l mem_free=1G -P jravel-lab -q threaded.q -pe thread 4 -V
 
 =item B<--raw-path>=path, B<-i> path
 
-Single full path to directory containing raw R1, R2, R3, and R4 files
+Single full path to directory containing raw R1, R2, R3, and R4 files, or R1, 
+R2, I1, and I2 files. Incompatible with -r1, -r2, -r3, and -r4.
 
 =item B<--r1-path>=file, B<-r1> file
 
-Full path to raw R1 read file (forward read file, or r1) (.fastq.gz).
+Full path to raw R1 read file (forward read file, or r1) (.fastq.gz). 
+Incompatible with b<--raw-path, -i>.
 
 =item B<--r2-path>=file, B<-r2> file
 
-Full path to raw R2 read file (barcode file, or i1) (.fastq.gz).
+Full path to raw R2 read file (barcode file, or i1) (.fastq.gz). Incompatible 
+with b<--raw-path, -i>.
 
 =item B<--r3-path>=file, B<-r3> file
 
-Full path to raw R3 read file (barcode file, or i2) (.fastq.gz).
+Full path to raw R3 read file (barcode file, or i2) (.fastq.gz). Incompatible 
+with b<--raw-path, -i>.
 
 =item B<--r4-path>=file, B<-r4> file
 
-Full path to raw R4 read file (reverse read file, r2 or r4) (.fastq.gz).
+Full path to raw R4 read file (reverse read file, r2 or r4) (.fastq.gz). 
+Incompatible with b<--raw-path, -i>.
 
 =item B<--project-name>=name, B<-p> name
 
@@ -936,6 +941,30 @@ if ( !$dbg || $dbg eq "demultiplex" ) {
         print "--$newSamNo sample-specific files present as expected.\n";
         print $logFH "$newSamNo sample-specific files present as expected.\n";
     }
+
+    # Remove temporarily decompressed files
+    print "---Removing decompressed raw files from $wd\n";
+
+    $cmd = "rm -rf $wd/${run}_index1.fastq";
+    print "\tcmd=$cmd\n" if $dbg;
+    system($cmd) == 0
+        or print "system($cmd) failed with exit code: $?"
+        if !$dryRun;
+    $cmd = "rm -rf $wd/${run}_index2.fastq";
+    print "\tcmd=$cmd\n" if $dbg;
+    system($cmd) == 0
+        or print "system($cmd) failed with exit code: $?"
+        if !$dryRun;
+    $cmd = "rm -rf $wd/${run}_reads1.fastq";
+    print "\tcmd=$cmd\n" if $dbg;
+    system($cmd) == 0
+        or print "system($cmd) failed with exit code: $?"
+        if !$dryRun;
+    $cmd = "rm -rf $wd/${run}_reads2.fastq";
+    print "\tcmd=$cmd\n" if $dbg;
+    system($cmd) == 0
+        or print "system($cmd) failed with exit code: $?"
+        if !$dryRun;
 }
 
 if ( $dbg eq "demultiplex" ) {
@@ -1477,27 +1506,6 @@ while (<$logFH>) {
         print "---Run-specific abundance table written to "
           . "$wd/dada2_abundance_table.rds\n";
         print "---See $log for processing details\n";
-        print "---Removing original R1, R2, R3, and R4 files from $wd\n";
-        $cmd = "rm -rf $r1";
-        print "\tcmd=$cmd\n" if $dbg;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
-        $cmd = "rm -rf $r2";
-        print "\tcmd=$cmd\n" if $dbg;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
-        $cmd = "rm -rf $r3";
-        print "\tcmd=$cmd\n" if $dbg;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
-        $cmd = "rm -rf $r4";
-        print "\tcmd=$cmd\n" if $dbg;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
     }
 }
 close $logFH;
