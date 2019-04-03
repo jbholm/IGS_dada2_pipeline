@@ -392,7 +392,7 @@ if ( ( !@dbg ) || grep( /^qiime_and_validation$/, @dbg ) ) {
     } else {
         die "validate_mapping_file.py did not produce an error log";
     }
-    if ( !grep( /^extract_barcodes$/, @dbg ) ) {
+    if ( @dbg && !grep( /^extract_barcodes$/, @dbg ) ) {
         die 
 "Finished printing QIIME configuration and validating mapping file. Terminated "
 . "because -dbg extract_barcodes was not specified.";
@@ -643,7 +643,7 @@ if ( ( !@dbg ) || grep( /^extract_barcodes$/, @dbg ) ) {
           if !$dryRun;
     }
 
-    if ( !grep( /^demultiplex$/, @dbg ) ) {
+    if ( @dbg && !grep( /^demultiplex$/, @dbg ) ) {
         die 
         "Finished extracting barcodes and demultiplexing libraries. Terminated "
 . "because -dbg demultiplex was not specified.";
@@ -925,7 +925,7 @@ if ( !@dbg || grep( /^demultiplex$/, @dbg ) ) {
         print $logFH "$newSamNo sample-specific files present as expected.\n";
     }
 
-    if ( !grep( /^tagclean$/, @dbg ) ) {
+    if ( @dbg && !grep( /^tagclean$/, @dbg ) ) {
         die
 "Finished extracting barcodes and demultiplexing libraries. Terminated "
 . "because -dbg tagclean was not specified.";
@@ -1185,7 +1185,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
           . "as expected. Beginning DADA2.\n";
     }
 
-    if ( !grep( /^dada2$/, @dbg ) ) {
+    if ( @dbg && !grep( /^dada2$/, @dbg ) ) {
         die
 "Finished extracting barcodes and demultiplexing libraries. Terminated "
 . "because -dbg dada2 was not specified.";
