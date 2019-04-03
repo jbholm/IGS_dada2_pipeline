@@ -143,6 +143,7 @@ $OUTPUT_AUTOFLUSH = 1;
 ##                             OPTIONS
 ####################################################################
 
+my @dbg;
 GetOptions(
     "raw-path|i=s"           => \my $inDir,
     "r1-path|r1=s"           => \my $r1file,
@@ -154,7 +155,8 @@ GetOptions(
     "map|m=s"                => \my $map,
     "var-reg|v=s"            => \my $var,
     "help|h!"                => \my $help,
-    "dbg:s"                  => \my $dbg,
+    "dbg:s"                  => \@dbg,
+    "verbose"                => \my $verbose,
     "dry-run"                => \my $dryRun,
     "skip-err-thld"          => \my $skipErrThldStr,
     "dada2-truncLen-f|for:i" => \my $f,
@@ -174,16 +176,16 @@ GetOptions(
 
   or pod2usage( verbose => 0, exitstatus => 1 );
 
-if ($dbg) {
-    if (   $dbg eq "qiime_and_validation"
-        || $dbg eq "extract_barcodes"
-        || $dbg eq "demultiplex"
-        || $dbg eq "tagclean"
-        || $dbg eq "dada2" )
-    {
-        print "DBG = $dbg";
-    } else {
-        die "Illegal debug option: -dbg $dbg";
+if (@dbg) {
+    if (   grep( /^qiime_and_validation$/, @dbg )
+        || grep( /^extract_barcodes$/, @dbg )
+        || grep( /^demultiplex$/, @dbg )
+        || grep( /^tagclean$/, @dbg )
+        || grep( /^dada2$/, @dbg ) )
+    {} else {
+        die 
+"Illegal debug option. Legal debug options are qiime_and_validation, "
+. "extract_barcodes, demultiplex, tagclean, and dada2.";
     }
 }
 
@@ -326,13 +328,24 @@ system( $^X, $perlScript, $log );
 open my $logFH, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
 print $logFH "$time\n";
 
-if ( ( !$dbg ) || $dbg eq "qiime_and_validation" ) {
+if(@dbg) {
+    print "DBG FLAGS: ";
+    print $logFH, "DBG FLAGS: ";
+    for (@dbg) {
+        print "$_ ";
+        print $logFH, "$_ ";
+    }
+    print "\n";
+    print $logFH, "\n";
+}
+
+if ( ( !@dbg ) || grep( /^qiime_and_validation$/, @dbg ) ) {
 
     ###### BEGIN CHECK OF QIIME CONFIGURATION ###########
     #####################################################
     $qiime = "$wd/$project" . "_" . $run . "_" . "qiime_config.txt";
     $cmd   = "print_qiime_config.py > $qiime";
-    print "\tcmd=$cmd\n" if $dbg;
+    print "\tcmd=$cmd\n" if $verbose;
     system($cmd) == 0
       or die "system($cmd) failed with exit code: $?"
       if !$dryRun;
@@ -344,7 +357,7 @@ if ( ( !$dbg ) || $dbg eq "qiime_and_validation" ) {
     if (@errors) {
         foreach my $error (@errors) {
             $cmd = "rm $error";
-            print "\tcmd=$cmd\n" if $dbg;
+            print "\tcmd=$cmd\n" if $verbose;
             system($cmd) == 0
               or die "system($cmd) failed with exit code: $?"
               if !$dryRun;
@@ -353,7 +366,7 @@ if ( ( !$dbg ) || $dbg eq "qiime_and_validation" ) {
 
     print "--Validating $map\n";
     $cmd = "validate_mapping_file.py -m $map -s -o $error_log";
-    print "\tcmd=$cmd\n" if $dbg;
+    print "\tcmd=$cmd\n" if $verbose;
     system($cmd) == 0 or die "system($cmd) failed:$?\n" if !$dryRun;
 
     my $mappingError = glob("$error_log/*.log");
@@ -372,10 +385,11 @@ if ( ( !$dbg ) || $dbg eq "qiime_and_validation" ) {
     } else {
         die "validate_mapping_file.py did not produce an error log";
     }
-}
-
-if ( $dbg eq "qiime_and_validation" ) {
-    die "Finished printing QIIME configuration and validating mapping file.";
+    if ( !grep( /^extract_barcodes$/, @dbg ) ) {
+        die 
+"Finished printing QIIME configuration and validating mapping file. Terminated "
+. "because -dbg extract_barcodes was not specified.";
+    }
 }
 
 open MAP, "<$map" or die "Cannot open $map for reading: $OS_ERROR";
@@ -429,7 +443,7 @@ $nSamples = $projSamples + $extctrl + $pcrpos + $pcrneg + $null;
 
 my $barcodes = "$wd/barcodes.fastq";
 
-if ( ( !$dbg ) || $dbg eq "extract_barcodes" ) {
+if ( ( !@dbg ) || grep( /^extract_barcodes$/, @dbg ) ) {
 
     ###### BEGIN EVALUATION OF SAMPLES VIA MAPPING FILE ###########
     ###############################################################
@@ -468,7 +482,7 @@ if ( ( !$dbg ) || $dbg eq "extract_barcodes" ) {
             } else {
                 print "---Copying barcode and index files to $wd\n";
                 $cmd = "zcat $r1file > $r1 | zcat $r2file > $r2 ";
-                print "\tcmd=$cmd\n" if $dbg;
+                print "\tcmd=$cmd\n" if $verbose;
                 system($cmd) == 0
                   or die "system($cmd) failed with exit code: $?"
                   if !$dryRun;
@@ -484,7 +498,7 @@ if ( ( !$dbg ) || $dbg eq "extract_barcodes" ) {
             if (@errors) {
                 foreach my $error (@errors) {
                     $cmd = "rm $error";
-                    print "\tcmd=$cmd\n" if $dbg;
+                    print "\tcmd=$cmd\n" if $verbose;
                     system($cmd) == 0
                       or die "system($cmd) failed with exit code: $?"
                       if !$dryRun;
@@ -492,7 +506,7 @@ if ( ( !$dbg ) || $dbg eq "extract_barcodes" ) {
             }
             $cmd =
 "qsub -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log extract_barcodes.py -f $r1 -r $r2 -c barcode_paired_end --bc1_len 12 --bc2_len 12 -m $map -o $wd";
-            print "\tcmd=$cmd\n" if $dbg;
+            print "\tcmd=$cmd\n" if $verbose;
             system($cmd) == 0
               or die "system($cmd) failed with exit code: $?"
               if !$dryRun;
@@ -541,7 +555,7 @@ if ( ( !$dbg ) || $dbg eq "extract_barcodes" ) {
                     print "---Copying barcode and index files to $wd\n";
                     $cmd =
 "zcat $inDir/*R2.fastq.gz > $r2 | zcat $inDir/*R3.fastq.gz > $r3 ";
-                    print "\tcmd=$cmd\n" if $dbg;
+                    print "\tcmd=$cmd\n" if $verbose;
                     system($cmd) == 0
                       or die "system($cmd) failed with exit code: $?"
                       if !$dryRun;
@@ -550,7 +564,7 @@ if ( ( !$dbg ) || $dbg eq "extract_barcodes" ) {
                 } else {
                     print "---Copying barcode and index files to $wd\n";
                     $cmd = "zcat $r2file > $r2 | zcat $r3file > $r3 ";
-                    print "\tcmd=$cmd\n" if $dbg;
+                    print "\tcmd=$cmd\n" if $verbose;
                     system($cmd) == 0
                       or die "system($cmd) failed with exit code: $?"
                       if !$dryRun;
@@ -565,7 +579,7 @@ if ( ( !$dbg ) || $dbg eq "extract_barcodes" ) {
             if (@errors) {
                 foreach my $error (@errors) {
                     $cmd = "rm $error";
-                    print "\tcmd=$cmd\n" if $dbg;
+                    print "\tcmd=$cmd\n" if $verbose;
                     system($cmd) == 0
                       or die "system($cmd) failed with exit code: $?"
                       if !$dryRun;
@@ -573,7 +587,7 @@ if ( ( !$dbg ) || $dbg eq "extract_barcodes" ) {
             }
             $cmd =
 "qsub -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log extract_barcodes.py --input_type barcode_paired_end -f $r2 -r $r3 --bc1_len 8 --bc2_len 8 -o $wd";
-            print "\tcmd=$cmd\n" if $dbg;
+            print "\tcmd=$cmd\n" if $verbose;
             system($cmd) == 0
               or die "system($cmd) failed with exit code: $?"
               if !$dryRun;
@@ -611,20 +625,22 @@ if ( ( !$dbg ) || $dbg eq "extract_barcodes" ) {
         my $reads1 = "$wd/reads1.fastq";
         my $reads2 = "$wd/reads2.fastq";
         $cmd = "rm -rf $reads1";
-        print "\tcmd=$cmd\n" if $dbg;
+        print "\tcmd=$cmd\n" if $verbose;
         system($cmd) == 0
           or die "system($cmd) failed with exit code: $?"
           if !$dryRun;
         $cmd = "rm -rf $reads2";
-        print "\tcmd=$cmd\n" if $dbg;
+        print "\tcmd=$cmd\n" if $verbose;
         system($cmd) == 0
           or die "system($cmd) failed with exit code: $?"
           if !$dryRun;
     }
-}
 
-if ( $dbg eq "extract_barcodes" ) {
-    die "Finished extracting barcodes and demultiplexing libraries";
+    if ( !grep( /^demultiplex$/, @dbg ) ) {
+        die 
+        "Finished extracting barcodes and demultiplexing libraries. Terminated "
+. "because -dbg demultiplex was not specified.";
+    }
 }
 
 ###### BEGIN SPLIT LIBRARIES ##########
@@ -632,7 +648,7 @@ if ( $dbg eq "extract_barcodes" ) {
 
 ## think of way to ensure the consistent read order in the r1 and r4 files.
 ## print headers of r1 and r4, comm r1 r4 - to ensure the seqIDs are the same order.
-if ( !$dbg || $dbg eq "demultiplex" ) {
+if ( !@dbg || grep( /^demultiplex$/, @dbg ) ) {
     print "--Checking for existence of $r1fq and $r4fq\n";
     if ( !-e $r1fq || !-e $r4fq ) {
         if ($oneStep) {
@@ -642,7 +658,7 @@ if ( !$dbg || $dbg eq "demultiplex" ) {
             if ($inDir) {
                 $cmd =
 "zcat $inDir/*R1.fastq.gz > $r1 | zcat $inDir/*R4.fastq.gz > $r4 ";
-                print "\tcmd=$cmd\n" if $dbg;
+                print "\tcmd=$cmd\n" if $verbose;
                 system($cmd) == 0
                   or die "system($cmd) failed with exit code: $?"
                   if !$dryRun;
@@ -650,7 +666,7 @@ if ( !$dbg || $dbg eq "demultiplex" ) {
                   . " $inDir to $r1 and $r4\n";
             } else {
                 $cmd = "zcat $r1file > $r1 | zcat $r4file > $r4 ";
-                print "\tcmd=$cmd\n" if $dbg;
+                print "\tcmd=$cmd\n" if $verbose;
                 system($cmd) == 0
                   or die "system($cmd) failed with exit code: $?"
                   if !$dryRun;
@@ -666,7 +682,7 @@ if ( !$dbg || $dbg eq "demultiplex" ) {
         if (@errors) {
             foreach my $error (@errors) {
                 $cmd = "rm $error";
-                print "\tcmd=$cmd\n" if $dbg;
+                print "\tcmd=$cmd\n" if $verbose;
                 system($cmd) == 0
                   or die "system($cmd) failed with exit code: $?"
                   if !$dryRun;
@@ -676,14 +692,14 @@ if ( !$dbg || $dbg eq "demultiplex" ) {
         if ($oneStep) {
             $cmd =
 "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log split_libraries_fastq.py -i $r1 -o $r1split -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type 24 -r 999 -n 999 -q 0 -p 0.0001";
-            print "\tcmd=$cmd\n" if $dbg;
+            print "\tcmd=$cmd\n" if $verbose;
             system($cmd) == 0
               or die "system($cmd) failed with exit code: $?"
               if !$dryRun;
             print $logFH "Demultiplexing command F: \n\t$cmd\n\n";
             $cmd =
 "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log split_libraries_fastq.py -i $r4 -o $r4split -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type 24 -r 999 -n 999 -q 0 -p 0.0001";
-            print "\tcmd=$cmd\n" if $dbg;
+            print "\tcmd=$cmd\n" if $verbose;
             system($cmd) == 0
               or die "system($cmd) failed with exit code: $?"
               if !$dryRun;
@@ -691,14 +707,14 @@ if ( !$dbg || $dbg eq "demultiplex" ) {
         } else {
             $cmd =
 "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log split_libraries_fastq.py -i $r1 -o $r1split -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type 16 -r 999 -n 999 -q 0 -p 0.0001";
-            print "\tcmd=$cmd\n" if $dbg;
+            print "\tcmd=$cmd\n" if $verbose;
             system($cmd) == 0
               or die "system($cmd) failed with exit code: $?"
               if !$dryRun;
             print $logFH "Demultiplexing command F: \n\t$cmd\n\n";
             $cmd =
 "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log split_libraries_fastq.py -i $r4 -o $r4split -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type 16 -r 999 -n 999 -q 0 -p 0.0001";
-            print "\tcmd=$cmd\n" if $dbg;
+            print "\tcmd=$cmd\n" if $verbose;
             system($cmd) == 0
               or die "system($cmd) failed with exit code: $?"
               if !$dryRun;
@@ -800,7 +816,7 @@ if ( !$dbg || $dbg eq "demultiplex" ) {
         if (@errors) {
             foreach my $error (@errors) {
                 $cmd = "rm $error";
-                print "\tcmd=$cmd\n" if $dbg;
+                print "\tcmd=$cmd\n" if $verbose;
                 system($cmd) == 0
                   or die "system($cmd) failed with exit code: " . "$?"
                   if !$dryRun;
@@ -814,7 +830,7 @@ if ( !$dbg || $dbg eq "demultiplex" ) {
           . "files found (expected $newSamNo)... Splitting $project seqs.fastq "
           . "files by sample ID\n";
         $cmd = "rm -rf $r1seqs; rm -rf $r4seqs";
-        print "\tcmd=$cmd\n" if $dbg;
+        print "\tcmd=$cmd\n" if $verbose;
         system($cmd) == 0
           or die "system($cmd) failed with exit code: $?"
           if !$dryRun;
@@ -822,20 +838,18 @@ if ( !$dbg || $dbg eq "demultiplex" ) {
         while ( !( -e $r1fq ) ) { sleep 1; }
         $cmd =
 "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V split_sequence_file_on_sample_ids.py -i $r1fq --file_type fastq -o $r1seqs";
-        print "\tcmd=$cmd\n" if $dbg;
+        print "\tcmd=$cmd\n" if $verbose;
         system($cmd) == 0
           or die "system($cmd) failed with exit code: $?"
           if !$dryRun;
-        print $logFH "$cmd\n" if !$dbg;
 
         while ( !( -e $r4fq ) ) { sleep 1; }
         $cmd =
 "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V split_sequence_file_on_sample_ids.py -i $r4fq --file_type fastq -o $r4seqs";
-        print "\tcmd=$cmd\n" if $dbg;
+        print "\tcmd=$cmd\n" if $verbose;
         system($cmd) == 0
           or die "system($cmd) failed with exit code: $?"
           if !$dryRun;
-        print $logFH "$cmd\n" if !$dbg;
 
         check_error_log( $error_log, $step3 );
 
@@ -903,10 +917,12 @@ if ( !$dbg || $dbg eq "demultiplex" ) {
         print "--$newSamNo sample-specific files present as expected.\n";
         print $logFH "$newSamNo sample-specific files present as expected.\n";
     }
-}
 
-if ( $dbg eq "demultiplex" ) {
-    die "Finished demultiplexing libraries";
+    if ( !grep( /^tagclean$/, @dbg ) ) {
+        die
+"Finished extracting barcodes and demultiplexing libraries. Terminated "
+. "because -dbg tagclean was not specified.";
+    }
 }
 
 print "--Checking if target primers have been removed from $project R1 & R4"
@@ -921,7 +937,7 @@ my @r4tcfiles = glob("$wd/*R2_tc.fastq");
 ###################################
 
 my $start = time;
-if ( !$dbg || $dbg eq "tagclean" ) {
+if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
     if ( !( defined $newSamNo ) ) {
         open SPLIT, "<$split_log"
           or die "Cannot open $split_log for writing: $OS_ERROR";
@@ -957,7 +973,7 @@ if ( !$dbg || $dbg eq "tagclean" ) {
                         my $tc       = "$wd/$Prefix" . "_R2_tc";
                         $cmd =
 "perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r1seqs/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2 -trim_within 50";
-                        print "\tcmd=$cmd\n" if $dbg;
+                        print "\tcmd=$cmd\n" if $verbose;
                         system($cmd) == 0
                           or die "system($cmd) failed with exit code: $?"
                           if !$dryRun;
@@ -972,7 +988,7 @@ if ( !$dbg || $dbg eq "tagclean" ) {
                     my $tc       = "$wd/$Prefix" . "_R1_tc";
                     $cmd =
 "perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r4seqs/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2 -trim_within 50";
-                    print "\tcmd=$cmd\n" if $dbg;
+                    print "\tcmd=$cmd\n" if $verbose;
                     system($cmd) == 0
                       or die "system($cmd) failed with exit code: $?"
                       if !$dryRun;
@@ -991,7 +1007,7 @@ if ( !$dbg || $dbg eq "tagclean" ) {
                         my $tc       = "$wd/$Prefix" . "_R1_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r1seqs/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
-                        print "\tcmd=$cmd\n" if $dbg;
+                        print "\tcmd=$cmd\n" if $verbose;
                         system($cmd) == 0
                           or die "system($cmd) failed with exit code: $?"
                           if !$dryRun;
@@ -1006,7 +1022,7 @@ if ( !$dbg || $dbg eq "tagclean" ) {
                     my $tc       = "$wd/$Prefix" . "_R2_tc";
                     $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r4seqs/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
-                    print "\tcmd=$cmd\n" if $dbg;
+                    print "\tcmd=$cmd\n" if $verbose;
                     system($cmd) == 0
                       or die "system($cmd) failed with exit code: $?"
                       if !$dryRun;
@@ -1025,7 +1041,7 @@ if ( !$dbg || $dbg eq "tagclean" ) {
                         my $tc       = "$wd/$Prefix" . "_R1_tc";
                         $cmd =
 "cp $r1seqs/$filename /home/jolim/redirected_files/R1split/$filename";
-                        print "\tcmd=$cmd\n" if $dbg;
+                        print "\tcmd=$cmd\n" if $verbose;
 
                         system($cmd) == 0
                           or die "system($cmd) failed with exit code: $?"
@@ -1034,7 +1050,7 @@ if ( !$dbg || $dbg eq "tagclean" ) {
                         $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r1seqs/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
 
-                        print "\tcmd=$cmd\n" if $dbg;
+                        print "\tcmd=$cmd\n" if $verbose;
                         system($cmd) == 0
                           or die "system($cmd) failed with exit code: $?"
                           if !$dryRun;
@@ -1050,7 +1066,7 @@ if ( !$dbg || $dbg eq "tagclean" ) {
                         my $tc       = "$wd/$Prefix" . "_R2_tc";
                         $cmd =
 "cp $r4seqs/$filename /home/jolim/redirected_files/R4split/$filename";
-                        print "\tcmd=$cmd\n" if $dbg;
+                        print "\tcmd=$cmd\n" if $verbose;
 
                         system($cmd) == 0
                           or die "system($cmd) failed with exit code: $?"
@@ -1059,7 +1075,7 @@ if ( !$dbg || $dbg eq "tagclean" ) {
                         $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r4seqs/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2";
 
-                        print "\tcmd=$cmd\n" if $dbg;
+                        print "\tcmd=$cmd\n" if $verbose;
                         system($cmd) == 0
                           or die "system($cmd) failed with exit code: $?"
                           if !$dryRun;
@@ -1078,7 +1094,7 @@ if ( !$dbg || $dbg eq "tagclean" ) {
                         my $tc       = "$wd/$Prefix" . "_R1_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r1seqs/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
-                        print "\tcmd=$cmd\n" if $dbg;
+                        print "\tcmd=$cmd\n" if $verbose;
                         system($cmd) == 0
                           or die "system($cmd) failed with exit code: $?"
                           if !$dryRun;
@@ -1093,7 +1109,7 @@ if ( !$dbg || $dbg eq "tagclean" ) {
                     my $tc       = "$wd/$Prefix" . "_R2_tc";
                     $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r4seqs/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
-                    print "\tcmd=$cmd\n" if $dbg;
+                    print "\tcmd=$cmd\n" if $verbose;
                     system($cmd) == 0
                       or die "system($cmd) failed with exit code: $?"
                       if !$dryRun;
@@ -1111,7 +1127,7 @@ if ( !$dbg || $dbg eq "tagclean" ) {
                         my $tc       = "$wd/$Prefix" . "_R1_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r1seqs/$filename -out $tc -line_width 0 -verbose -tag5 CTGCCCTTTGTACACACCGC -mm5 2";
-                        print "\tcmd=$cmd\n" if $dbg;
+                        print "\tcmd=$cmd\n" if $verbose;
                         system($cmd) == 0
                           or die "system($cmd) failed with exit code: $?"
                           if !$dryRun;
@@ -1126,7 +1142,7 @@ if ( !$dbg || $dbg eq "tagclean" ) {
                     my $tc       = "$wd/$Prefix" . "_R2_tc";
                     $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r4seqs/$filename -out $tc -line_width 0 -verbose -tag5 TTTCGCTGCGTTCTTCATCG -mm5 2";
-                    print "\tcmd=$cmd\n" if $dbg;
+                    print "\tcmd=$cmd\n" if $verbose;
                     system($cmd) == 0
                       or die "system($cmd) failed with exit code: $?"
                       if !$dryRun;
@@ -1161,13 +1177,17 @@ if ( !$dbg || $dbg eq "tagclean" ) {
         print $logFH "...$newSamNo sample-specific, tag-cleaned files present "
           . "as expected. Beginning DADA2.\n";
     }
-}
 
-if ( $dbg eq "tagclean" ) { die "tagclean finished"; }
+    if ( !grep( /^dada2$/, @dbg ) ) {
+        die
+"Finished extracting barcodes and demultiplexing libraries. Terminated "
+. "because -dbg dada2 was not specified.";
+    }
+}
 
 ###### BEGIN DADA2 ##########
 #############################
-if ( ( !$dbg ) || $dbg eq "dada2" ) {
+if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
     my $dada2 = "$wd/dada2_abundance_table.rds";
 
     my $truncLen;
@@ -1178,7 +1198,7 @@ if ( ( !$dbg ) || $dbg eq "dada2" ) {
     if ( !-e $dada2 ) {
         print "--Removing old filtered fastq files from previous runs\n";
         $cmd = "rm -rf $wd/filtered";
-        print "\tcmd=$cmd\n" if $dbg;
+        print "\tcmd=$cmd\n" if $verbose;
         system($cmd) == 0
           or die "system($cmd) failed with exit code: $?"
           if !$dryRun;
@@ -1349,7 +1369,7 @@ if ( ( !$dbg ) || $dbg eq "dada2" ) {
     my $projrt = "$wd/$project" . "_" . $run . "_dada2_part1_rTmp.R";
     if ( !-e $projrt ) {
         $cmd = "mv $rt $projrt";
-        print "\tcmd=$cmd\n" if $dbg;
+        print "\tcmd=$cmd\n" if $verbose;
         system($cmd) == 0
           or die "system($cmd) failed with exit code: $?"
           if !$dryRun;
@@ -1360,7 +1380,7 @@ if ( ( !$dbg ) || $dbg eq "dada2" ) {
     my $projrtout = "$wd/$project" . "_" . $run . "_dada2_part1_rTmp.Rout";
     if ( !-e $projrtout ) {
         $cmd = "mv $rtout $projrtout";
-        print "\tcmd=$cmd\n" if $dbg;
+        print "\tcmd=$cmd\n" if $verbose;
         system($cmd) == 0
           or die "system($cmd) failed with exit code: $?"
           if !$dryRun;
@@ -1446,22 +1466,22 @@ while (<$logFH>) {
         print "---See $log for processing details\n";
         print "---Removing original R1, R2, R3, and R4 files from $wd\n";
         $cmd = "rm -rf $r1";
-        print "\tcmd=$cmd\n" if $dbg;
+        print "\tcmd=$cmd\n" if $verbose;
         system($cmd) == 0
           or die "system($cmd) failed with exit code: $?"
           if !$dryRun;
         $cmd = "rm -rf $r2";
-        print "\tcmd=$cmd\n" if $dbg;
+        print "\tcmd=$cmd\n" if $verbose;
         system($cmd) == 0
           or die "system($cmd) failed with exit code: $?"
           if !$dryRun;
         $cmd = "rm -rf $r3";
-        print "\tcmd=$cmd\n" if $dbg;
+        print "\tcmd=$cmd\n" if $verbose;
         system($cmd) == 0
           or die "system($cmd) failed with exit code: $?"
           if !$dryRun;
         $cmd = "rm -rf $r4";
-        print "\tcmd=$cmd\n" if $dbg;
+        print "\tcmd=$cmd\n" if $verbose;
         system($cmd) == 0
           or die "system($cmd) failed with exit code: $?"
           if !$dryRun;
