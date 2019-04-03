@@ -1047,14 +1047,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix   = basename( $filename, @suffixes );
                         my $tc       = "$wd/$Prefix" . "_R1_tc";
-                        $cmd =
-"cp $r1seqs/$filename /home/jolim/redirected_files/R1split/$filename";
-                        print "\tcmd=$cmd\n" if $verbose;
-
-                        system($cmd) == 0
-                          or die "system($cmd) failed with exit code: $?"
-                          if !$dryRun;
-
+                        
                         $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r1seqs/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
 
@@ -1072,13 +1065,6 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix   = basename( $filename, @suffixes );
                         my $tc       = "$wd/$Prefix" . "_R2_tc";
-                        $cmd =
-"cp $r4seqs/$filename /home/jolim/redirected_files/R4split/$filename";
-                        print "\tcmd=$cmd\n" if $verbose;
-
-                        system($cmd) == 0
-                          or die "system($cmd) failed with exit code: $?"
-                          if !$dryRun;
 
                         $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r4seqs/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2";
