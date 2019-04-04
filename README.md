@@ -75,3 +75,9 @@ Enter the following commands to save any existing changes to Git's stash and che
 To create a local clone:  
 Follow the desktop instructions above to find the desired version of the pipeline. Click the green "**Clone or download**" dropdown and copy the HTTPS URL. Then run:
 `git clone PASTE/HTTPS/URL/HERE`
+
+# License
+
+The contents of `taxonomy/` are derived from the Silva database, and reformatted for DADA2 by Benjamin Callahan. They are available under the Silva dual-licensing model for academia and commercial users: https://www.arb-silva.de/silva-license-information/  
+  
+All other files in this respository are available under [GPLv3](https://github.com/jbholm/IGS_dada2_pipeline/blob/master/LICENSE).
