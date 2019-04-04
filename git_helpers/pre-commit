@@ -21,26 +21,12 @@ sub getUpdate {
 	chomp $input;
 	$input = uc($input);
 
-	# Don't increment if no changes have been made
 	if ($input eq "MAJOR" || $input eq "MINOR" || $input eq "PATCH" || $input eq "PRE-RELEASE" || !$input) {
 		# Don't change the version number if no changes made.
 		if(not `git diff --staged | grep -E '^(\+|new file)'`) {
 			die "You asked to change the version number, but git diff --staged does not show any changes. Aborted.\n";
 		}
-		# Commented because we need to increment each time merging onto master branch, and VERSION always has changes from dev branch
-		# Don't change the version number if VERSION has been altered. Suggest discarding changes before retrying commit.
-		# if(`git diff --staged | grep '^\-\-\- a/VERSION'`) {
-		# 	die "git diff --staged shows that VERSION has been modified. Please run the following commands to discard changes to VERSION, then commit.\ngit reset HEAD VERSION\ngit checkout -- VERSION\n";
-		# }
 	}
-
-	# Would like to enforce this, but no way to check if git commit --amend was called
-	# if ($input eq "SKIP") {
-	# 	# Don't allow no change to version number if actual changes have been made and VERSION has NOT been changed
-	# 	if(`git diff --staged | grep '^\+'` and (not `git diff --staged | grep '^\-\-\- a/VERSION'`)) {
-	# 		die "Skip is not allowed if you've staged changes but none of them are in VERSION.\n";
-	# 	}
-	# }
 
 	# Calculate the new version
 	my @semver_prerelease = split /-/, $_[1], 2; # first split by hyphen
@@ -76,14 +62,12 @@ sub getUpdate {
 		$branch_commit[0] = "";
 		$branch_commit[1] = 0;
 	} elsif ($input eq "PRE-RELEASE" || !$input) {
-		if (!$branch_commit[0]) {
-			# if version string doesn't have the branch name yet...
-			chomp($branch_commit[0] = `git branch | grep \\* | cut -d ' ' -f2`);
-			my @parts = split '/', $branch_commit[0], 2; # remove the first part if present
-			$branch_commit[0] = $parts[1];
-			if ($branch_commit[0] eq "master") {
-				die "Please do not make pre-release commits on master.";
-			}
+		# get the name of the checked out branch
+		chomp($branch_commit[0] = `git branch | grep \\* | cut -d ' ' -f2`);
+		my @parts = split '/', $branch_commit[0], 2; # remove the first part if present
+		$branch_commit[0] = $parts[1];
+		if ($branch_commit[0] eq "master") {
+			die "Please do not make pre-release commits on master.";
 		}
 		print "Incrementing pre-release version...\n";
 		$branch_commit[1]++;
