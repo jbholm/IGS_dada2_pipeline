@@ -221,11 +221,6 @@ foreach my $i (@runs)
   print LOG "$cmd\n";
 }
 
-# my $catStats = $project ."_". "dada2_part1_stats.txt";
-# $cmd = "cat *-dada2_part1_stats.txt > $catStats";
-# print "\tcmd=$cmd\n" if $dryRun || $debug;
-# system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-# print LOG "$cmd\n";
 
 my $abundance = "all_runs_dada2_abundance_table.csv";
 my $projabund = $project ."_". $abundance;
@@ -412,29 +407,6 @@ if ($region eq 'ITS')
   print "\tcmd=$cmd\n" if $dryRun || $debug;
   system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
 }
-
-
-# my $finalStats = $project . "_" . "dada2_final_stats.txt";
-# my $part2Stats = "dada2_part2_stats.txt";
-# my %part1 = readTbl($catStats);
-# my %part2 = readTbl($part2Stats);
-# open OUT, ">$finalStats" or die "Cannot open $finalStats for writing: $OS_ERROR";
-# print OUT "SampleID\tInput\tFiltered\tMerged\tNonChimeric\n";
-# foreach my $x (%part1)
-# {
-#   my $p1 = $part1{$x};
-#   my $p2 = $part2{$x};
-#   print "Combining dada2 stats for $x\n";
-#   if (defined $p2 )
-#   {
-#     print OUT "$x\t$p1\t$p2\n";
-#   }
-#   elsif (!defined $p1)
-#   {
-#     print LOG "$x not present in $catStats\n";
-#   }
-# }
-# close OUT;
 
 my $final_merge = glob("*_taxa_only_merged.csv");
 my $final_taxa_only = glob("*_taxa_only.csv");

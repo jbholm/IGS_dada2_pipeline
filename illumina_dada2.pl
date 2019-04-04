@@ -1,7 +1,6 @@
 #!/usr/bin/env perl
 #. /usr/local/packages/usepackage/share/usepackage/use.bsh
 use File::Basename;
-use File::Spec;
 my $pipelineDir = dirname(__FILE__);
 
 =head1 NAME
@@ -136,6 +135,7 @@ use Cwd qw(abs_path);
 use File::Temp qw/ tempfile /;
 use File::Basename;
 use POSIX;
+use File::Spec::Functions;
 
 $OUTPUT_AUTOFLUSH = 1;
 
@@ -192,12 +192,16 @@ if ($help) {
     exit 1;
 }
 
-if ( !$inDir && !$r1file && !$r2file && !$r3file && !$r4file ) {
-    print "\n\tPlease provide the location of the raw sequencing files "
+if ( !$inDir && !($r1file && $r2file && $r3file && $r4file )) {
+    die "\n\tPlease provide the location of the raw sequencing files "
       . "(single directory => -i)\n\t\tOR \n\tFull paths to each R1, R2, R3, "
       . "and R4 file => -r1, -r2, -r3, -r4)\n\n";
-    pod2usage( verbose => 2, exitstatus => 0 );
-    exit 1;
+}
+
+if ( $inDir && ($r1file || $r2file || $r3file || $r4file )) {
+    die
+"\n\tInput directory (-i) and raw files (-r*) were both specified. Please "
+. "provide one or the other.\n\n";
 }
 
 if ( !$map ) {
@@ -217,11 +221,8 @@ if ( $var eq 'V4' || $var eq 'ITS' ) {
     $models = "PECAN not used.\n";
 }
 if ( !$sd ) {
-    print "\n***Please choose a storage directory (-sd), either 'scratch' or "
-      . "'groupshare'.";
-    print "\nOR provide a full path to an existing directory.";
-    pod2usage( verbose => 2, exitstatus => 0 );
-    die;
+    die "\n***Please choose a storage directory (-sd), either 'scratch' or "
+      . "'groupshare'.\nOR provide a full path to an existing directory.";
 }
 
 if ( $f && !$r ) {
@@ -244,6 +245,9 @@ my $R = "/usr/local/packages/r-3.4.0/bin/R";
 ####################################################################
 my $pd;
 my $wd;
+if($inDir) {
+    $inDir =~ s/\/$//;    # remove trailing slash
+}
 
 if ( $sd eq "scratch" ) {
     $pd = "/local/scratch/$project";
@@ -263,6 +267,11 @@ my $stdout_log = "$wd/qsub_stdout_logs";
 
 my $r1split;
 my $r4split;
+
+my $index1 = "$wd/${run}_index1.fastq";
+my $index2 = "$wd/${run}_index2.fastq";
+my $reads1 = "$wd/${run}_reads1.fastq";
+my $reads2 = "$wd/${run}_reads2.fastq";
 
 my $r1 = "$wd/$project" . "_" . "$run" . "_"
   . "R1.fastq";    ## change to full path (flag)
@@ -288,15 +297,16 @@ my $r4fq = "$r4split/seqs.fastq";
 my $r1seqs = "$r1split/split_by_sample_out";
 my $r4seqs = "$r4split/split_by_sample_out";
 my $cmd;
+my @cmds;
 
 my $split_log = "$r1split/split_library_log.txt";
 my @split;
 my $newSamNo;
 
 my @errors;
-my $qiime;
+my $qiime = "$wd/$project" . "_" . $run . "_" . "qiime_config.txt";
 
-###### BEGIN MAKE WORKING DIRECTORIES ##########
+###### BEGIN MAKE WORKING DIRECTORIES / VALIDATE INPUT FILES ##########
 ################################################
 
 if ( !-e $pd ) {
@@ -319,19 +329,117 @@ if ( !-e $stdout_log ) {
 my $time = strftime( "%Y-%m-%d %H:%M:%S", localtime(time) );
 my $log  = "$wd/$project" . "_" . $run . "_16S_pipeline_log.txt";
 
-my $perlScript =
-  File::Spec->catfile( $pipelineDir, "scripts", "log_version.pl" );
+my $perlScript = catfile( $pipelineDir, "scripts", "log_version.pl" );
 system( $^X, $perlScript, $log );
 
 open my $logFH, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
 print $logFH "$time\n";
 
+my $index1input;
+my $index2input;
+my $reads1input;
+my $reads2input;
+
+if ($inDir) {    # Search for raw fastq's
+    if ($oneStep) {
+        my @r1s = glob("$inDir/*R1.fastq $inDir/*R1.fastq.gz");
+        my @r2s = glob("$inDir/*R2.fastq $inDir/*R2.fastq.gz");
+        my @r3s = glob("$inDir/*R3.fastq $inDir/*R3.fastq.gz");
+        my @r4s = glob("$inDir/*R4.fastq $inDir/*R4.fastq.gz");
+
+        if (   scalar @r1s == 1
+            && scalar @r2s == 1
+            && scalar @r3s == 1
+            && scalar @r4s == 1 )
+        {
+            $index1input = $r2s[0];
+            $index2input = $r3s[0];
+            $reads1input = $r1s[0];
+            $reads2input = $r4s[0];
+        } else {
+            print $logFH "Couldn't find input files.\n";
+            print $logFH "Files found in $inDir:\n";
+
+            my $printme = join "\n", @r1s;
+            print $logFH "$printme\n" if $printme;
+            $printme = join "\n", @r2s;
+            print $logFH "$printme\n" if $printme;
+            $printme = join "\n", @r3s;
+            print $logFH "$printme\n" if $printme;
+            $printme = join "\n", @r4s;
+            print $logFH "$printme\n" if $printme;
+            die
+"Could not find a complete and exclusive set of raw files. Input directory must"
+              . "have exactly one R1, R2, R3, and R4 file. See $log for a list of the files"
+              . " found.";
+        }
+    } else {
+        my @i1s = glob("$inDir/*I1.fastq $inDir/*I1.fastq.gz");
+        my @i2s = glob("$inDir/*I2.fastq $inDir/*I2.fastq.gz");
+        my @r1s = glob("$inDir/*R1.fastq $inDir/*R1.fastq.gz");
+        my @r2s = glob("$inDir/*R2.fastq $inDir/*R2.fastq.gz");
+        my @r3s = glob("$inDir/*R3.fastq $inDir/*R3.fastq.gz");
+        my @r4s = glob("$inDir/*R4.fastq $inDir/*R4.fastq.gz");
+
+        if (   scalar @i1s == 1
+            && scalar @i2s == 1
+            && scalar @r1s == 1
+            && scalar @r2s == 1
+            && scalar @r3s == 0
+            && scalar @r4s == 0 )
+        {
+            $index1input = $i1s[0];
+            $index2input = $i2s[0];
+            $reads1input = $r1s[0];
+            $reads2input = $r2s[0];
+        } elsif ( scalar @i1s == 0
+            && scalar @i2s == 0
+            && scalar @r1s == 1
+            && scalar @r2s == 1
+            && scalar @r3s == 1
+            && scalar @r4s == 1 )
+        {
+            $index1input = $r2s[0];
+            $index2input = $r3s[0];
+            $reads1input = $r1s[0];
+            $reads2input = $r4s[0];
+        } else {
+            print $logFH "Couldn't find input files.\n";
+            print $logFH "Files found in $inDir:\n";
+            my $printme = join "\n", @i1s;
+            print $logFH "$printme\n" if $printme;
+            $printme = join "\n", @i2s;
+            print $logFH "$printme\n" if $printme;
+            $printme = join "\n", @r1s;
+            print $logFH "$printme\n" if $printme;
+            $printme = join "\n", @r2s;
+            print $logFH "$printme\n" if $printme;
+            $printme = join "\n", @r3s;
+            print $logFH "$printme\n" if $printme;
+            $printme = join "\n", @r4s;
+            print $logFH "$printme\n" if $printme;
+            die
+"Could not find a complete and exclusive set of raw files. Input directory must"
+              . " contain exactly one set of I1, I2, R1, and R2, OR R1, R2, R3, and R4.\n"
+              . "See $log for a list of the files found.";
+        }
+    }
+} else {
+    if ($oneStep) {
+        $index1input = $r1file;    # Correct???
+        $index2input = $r2file;
+    } else {
+        $index1input = $r2file;
+        $index2input = $r3file;
+    }
+}
+
 if ( ( !$dbg ) || $dbg eq "qiime_and_validation" ) {
 
     ###### BEGIN CHECK OF QIIME CONFIGURATION ###########
     #####################################################
-    $qiime = "$wd/$project" . "_" . $run . "_" . "qiime_config.txt";
-    $cmd   = "print_qiime_config.py > $qiime";
+
+    $cmd = "print_qiime_config.py > $qiime";
     print "\tcmd=$cmd\n" if $dbg;
     system($cmd) == 0
       or die "system($cmd) failed with exit code: $?"
@@ -454,177 +562,102 @@ if ( ( !$dbg ) || $dbg eq "extract_barcodes" ) {
     my $step2;
     my $step3;
 
-    ###### BEGIN 1STEP BARCODES ##########
+    ###### BEGIN BARCODES ##########
     #######################################
 
-    if ($oneStep) {
-        my $r1file = glob("$inDir/*R1.fastq*");
-        my $r2file = glob("$inDir/*R2.fastq*");
-        if ( !-e $barcodes ) {
-            print "---Barcode files not found or were empty\n";
-            if ( $inDir && $r1file != /.gz/ ) {
-                $r1 = $r1file;
-                $r2 = $r2file;
-            } else {
-                print "---Copying barcode and index files to $wd\n";
-                $cmd = "zcat $r1file > $r1 | zcat $r2file > $r2 ";
-                print "\tcmd=$cmd\n" if $dbg;
-                system($cmd) == 0
-                  or die "system($cmd) failed with exit code: $?"
-                  if !$dryRun;
-                print $logFH
-                  "$project barcode and index files copied from $r2file"
-                  . " and $r3file to $r1 and $r2\n";
-            }
-            my $start = time;
-            print "---Extracting barcodes and index files\n";
-            ## add in (possible replace) awk version of concatenation
-            $step1  = "extract_barcodes.py";
-            @errors = glob("$error_log/$step1.e*");
-            if (@errors) {
-                foreach my $error (@errors) {
-                    $cmd = "rm $error";
-                    print "\tcmd=$cmd\n" if $dbg;
-                    system($cmd) == 0
-                      or die "system($cmd) failed with exit code: $?"
-                      if !$dryRun;
-                }
-            }
-            $cmd =
-"qsub -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log extract_barcodes.py -f $r1 -r $r2 -c barcode_paired_end --bc1_len 12 --bc2_len 12 -m $map -o $wd";
-            print "\tcmd=$cmd\n" if $dbg;
-            system($cmd) == 0
-              or die "system($cmd) failed with exit code: $?"
-              if !$dryRun;
-
-            check_error_log( $error_log, $step1 );
-
-            print "---Waiting for barcode extraction to complete.\n";
-            while ( !( -e $barcodes ) ) { sleep 1; }
-
-            ## try adding else statement, if needed
-            my $duration = time - $start;
-            print "---Barcode extraction complete\n";
-            print $logFH "---Duration of barcode extraction: $duration s\n";
-            print "---Duration of barcode extraction: $duration s\n";
-        } else {
-            open BAR, "<$barcodes"
-              or die "Cannot open $barcodes for reading: " . "$OS_ERROR";
-            while (<BAR>) { }
-            if ( $. = $nSamples ) {
-                print "---$barcodes already exists and contains $. entries,"
-                  . " as expected\n";
-                print $logFH "-> $barcodes already exists and contains $. "
-                  . "entries, as expected\n";
-            } else {
-                print "---$barcodes already exists, but contains $. "
-                  . "entries, while there are $nSamples samples. Exiting.\n";
-                print $logFH "-> $barcodes already exists, but contains $."
-                  . " entries, while there are $nSamples samples. Exiting.\n";
-                die;
-            }
-            close BAR;
+    if ( !-e $barcodes ) {    # FIXME test if barcodes is the right size
+        print "---Barcode files not found or were empty\n";
+        my @cmds;
+        if ( $index1input !~ /.gz$/ ) {
+            $index1 =
+              $index1input;    # if the index files aren't .gz, read in place
+        } else {               # otherwise...
+             # discard any existing file in working dir (we can't test if it's complete)
+            unlink $index1;
+            push( @cmds, "zcat $index1input > $index1" )
+              ;    # copy to our working dir
         }
+        if ( $index2input !~ /.gz$/ ) {
+            $index2 = $index2input;
+        } else {
+            unlink $index2;
+            push( @cmds, "zcat $index2input > $index2" );
+        }
+        if ( scalar @cmds > 0 ) {
+            print "---Uncompressing index/barcode file(s) to $wd. Commands:\n";
+            execute_and_log( @cmds, $dryRun );
+            print $logFH
+              "$project barcode/index files:\n\t$index1\n\t$index2\n";
+        }
+
+        my $start = time;
+        print "---Extracting barcodes from index files\n";
+        $step1 = "extract_barcodes.py";
+
+        my $mapOpt = "";
+        my $bcLen  = 8;    # 2-step pcr
+        if ($oneStep) {
+
+            # Was in original code, but maybe unnecessary
+            $mapOpt = " -m \$map";
+
+            $bcLen = 12;    # 1-step pcr
+        }
+        $cmd =
+"qsub -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log extract_barcodes.py -f $index1input -r $index2input -c barcode_paired_end --bc1_len $bcLen --bc2_len $bcLen$mapOpt -o $wd";
+        print "\tcmd=$cmd\n" if $dbg;
+        system($cmd) == 0
+          or die "system($cmd) failed with exit code: $?"
+          if !$dryRun;
+
+        check_error_log( $error_log, $step1 );
+
+        print "---Waiting for barcode extraction to complete.\n";
+
+        #FIXME again, test size of barcodes
+        while ( !( -e $barcodes ) ) { sleep 1; }
+
+        ## try adding else statement, if needed
+        my $duration = time - $start;
+        print "---Barcode extraction complete\n";
+        print $logFH "---Duration of barcode extraction: $duration s\n";
+        print "---Duration of barcode extraction: $duration s\n";
     } else {
-
-        ###### BEGIN 2STEP BARCODES ##########
-        #######################################
-        ## user specified path to barcodes.fastq --- if present, use; if not, then check for existence in cwd, if not, produce
-        if ( !( -e $barcodes ) ) {
-            print "---Barcode files not found or were empty\n";
-            if ( !-e $r2 || !-e $r3 ) {
-                my $r2 = "$wd/$project" . "_" . "$run" . "_"
-                  . "R2.fastq";    ## change to full path (flag)
-                my $r3 = "$wd/$project" . "_" . "$run" . "_" . "R3.fastq";
-
-                if ($inDir) {
-                    print "---Copying barcode and index files to $wd\n";
-                    $cmd =
-"zcat $inDir/*R2.fastq.gz > $r2 | zcat $inDir/*R3.fastq.gz > $r3 ";
-                    print "\tcmd=$cmd\n" if $dbg;
-                    system($cmd) == 0
-                      or die "system($cmd) failed with exit code: $?"
-                      if !$dryRun;
-                    print $logFH
-"$project barcode and index files copied from $inDir to $r2 and $r3\n";
-                } else {
-                    print "---Copying barcode and index files to $wd\n";
-                    $cmd = "zcat $r2file > $r2 | zcat $r3file > $r3 ";
-                    print "\tcmd=$cmd\n" if $dbg;
-                    system($cmd) == 0
-                      or die "system($cmd) failed with exit code: $?"
-                      if !$dryRun;
-                }
-            }
-
-            my $start = time;
-            print "---Extracting barcodes and index files\n";
-            ## add in (possible replace) awk version of concatenation
-            $step1  = "extract_barcodes.py";
-            @errors = glob("$error_log/$step1.e*");
-            if (@errors) {
-                foreach my $error (@errors) {
-                    $cmd = "rm $error";
-                    print "\tcmd=$cmd\n" if $dbg;
-                    system($cmd) == 0
-                      or die "system($cmd) failed with exit code: $?"
-                      if !$dryRun;
-                }
-            }
-            $cmd =
-"qsub -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log extract_barcodes.py --input_type barcode_paired_end -f $r2 -r $r3 --bc1_len 8 --bc2_len 8 -o $wd";
-            print "\tcmd=$cmd\n" if $dbg;
-            system($cmd) == 0
-              or die "system($cmd) failed with exit code: $?"
-              if !$dryRun;
-
-            check_error_log( $error_log, $step1 );
-
-            print "---Waiting for barcode extraction to complete.\n";
-
-            while ( !( -e $barcodes ) ) { sleep 1; }
-
-            ## try adding else statement, if needed
-            my $duration = time - $start;
-            print "---Barcode extraction complete\n";
-            print $logFH "---Duration of barcode extraction: $duration s\n";
-            print "---Duration of barcode extraction: $duration s\n";
+        open BAR, "<$barcodes"
+          or die "Cannot open $barcodes for reading: " . "$OS_ERROR";
+        while (<BAR>) { }
+        if ( $. = $nSamples ) {
+            print "---$barcodes already exists and contains $. entries,"
+              . " as expected\n";
+            print $logFH "-> $barcodes already exists and contains $. "
+              . "entries, as expected\n";
         } else {
-            open BAR, "<$barcodes"
-              or die "Cannot open $barcodes for reading: " . "$OS_ERROR";
-            while (<BAR>) { }
-            if ( $. = $nSamples ) {
-                print "---$barcodes already exists and contains $. entries,"
-                  . " as expected\n";
-                print $logFH "-> $barcodes already exists and contains $. "
-                  . "entries, as expected\n";
-            } else {
-                print "---$barcodes already exists, but contains $. "
-                  . "entries, while there are $nSamples samples. Exiting.\n";
-                print $logFH "-> $barcodes already exists, but contains $."
-                  . " entries, while there are $nSamples samples. Exiting.\n";
-                die;
-            }
-            close BAR;
-        }
 
-        my $reads1 = "$wd/reads1.fastq";
-        my $reads2 = "$wd/reads2.fastq";
-        $cmd = "rm -rf $reads1";
-        print "\tcmd=$cmd\n" if $dbg;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
-        $cmd = "rm -rf $reads2";
-        print "\tcmd=$cmd\n" if $dbg;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
+            # Recover from this?
+            print "---$barcodes already exists, but contains $. "
+              . "entries, while there are $nSamples samples. Exiting.\n";
+            print $logFH "-> $barcodes already exists, but contains $."
+              . " entries, while there are $nSamples samples. Exiting.\n";
+            die;
+        }
+        close BAR;
     }
+
+    # Delete unneeded output of extract_barcodes.py
+    my $reads1 = "$wd/reads1.fastq";
+    my $reads2 = "$wd/reads2.fastq";
+    @cmds = ();
+    if ( -e $reads1 ) {
+        push @cmds, "rm -rf $reads1";
+    }
+    if ( -e $reads2 ) {
+        push @cmds, "rm -rf $reads2";
+    }
+    execute_and_log( @cmds, $dryRun );
 }
 
 if ( $dbg eq "extract_barcodes" ) {
-    die "Finished extracting barcodes and demultiplexing libraries";
+    die "Finished extracting barcodes\n";
 }
 
 ###### BEGIN SPLIT LIBRARIES ##########
@@ -641,7 +674,7 @@ if ( !$dbg || $dbg eq "demultiplex" ) {
             print "---Obtaining $project-specific R1 and R4 fastq files\n";
             if ($inDir) {
                 $cmd =
-"zcat $inDir/*R1.fastq.gz > $r1 | zcat $inDir/*R4.fastq.gz > $r4 ";
+"zcat $reads1input > $r1 | zcat $reads2input > $r4 ";
                 print "\tcmd=$cmd\n" if $dbg;
                 system($cmd) == 0
                   or die "system($cmd) failed with exit code: $?"
@@ -903,6 +936,30 @@ if ( !$dbg || $dbg eq "demultiplex" ) {
         print "--$newSamNo sample-specific files present as expected.\n";
         print $logFH "$newSamNo sample-specific files present as expected.\n";
     }
+
+    # Remove temporarily decompressed files
+    print "---Removing decompressed raw files from $wd\n";
+
+    $cmd = "rm -rf $wd/${run}_index1.fastq";
+    print "\tcmd=$cmd\n" if $dbg;
+    system($cmd) == 0
+        or print "system($cmd) failed with exit code: $?"
+        if !$dryRun;
+    $cmd = "rm -rf $wd/${run}_index2.fastq";
+    print "\tcmd=$cmd\n" if $dbg;
+    system($cmd) == 0
+        or print "system($cmd) failed with exit code: $?"
+        if !$dryRun;
+    $cmd = "rm -rf $wd/${run}_reads1.fastq";
+    print "\tcmd=$cmd\n" if $dbg;
+    system($cmd) == 0
+        or print "system($cmd) failed with exit code: $?"
+        if !$dryRun;
+    $cmd = "rm -rf $wd/${run}_reads2.fastq";
+    print "\tcmd=$cmd\n" if $dbg;
+    system($cmd) == 0
+        or print "system($cmd) failed with exit code: $?"
+        if !$dryRun;
 }
 
 if ( $dbg eq "demultiplex" ) {
@@ -1444,27 +1501,6 @@ while (<$logFH>) {
         print "---Run-specific abundance table written to "
           . "$wd/dada2_abundance_table.rds\n";
         print "---See $log for processing details\n";
-        print "---Removing original R1, R2, R3, and R4 files from $wd\n";
-        $cmd = "rm -rf $r1";
-        print "\tcmd=$cmd\n" if $dbg;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
-        $cmd = "rm -rf $r2";
-        print "\tcmd=$cmd\n" if $dbg;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
-        $cmd = "rm -rf $r3";
-        print "\tcmd=$cmd\n" if $dbg;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
-        $cmd = "rm -rf $r4";
-        print "\tcmd=$cmd\n" if $dbg;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
     }
 }
 close $logFH;
@@ -1637,6 +1673,18 @@ sub check_error_log {
     }
 
     close ERROR;
+}
+
+################################################################################
+# Execute the given commands; the last argument is 1 if this is a dry run
+sub execute_and_log {
+    my $dryRun = pop @_;
+    for (@_) {
+        print "\t$_\n" if $dbg;
+        system($_) == 0
+          or die "system($_) failed with exit code: $?"
+          if !$dryRun;
+    }
 }
 
 exit 0;
