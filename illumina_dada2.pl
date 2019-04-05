@@ -58,6 +58,11 @@ qsub -cwd -b y -l mem_free=1G -P jravel-lab -q threaded.q -pe thread 4 -V
   -p <project name> -r <run ID> -m <mapping file> -v <variable region> 
   -sd <storage directory> --1Step
 
+qsub -cwd -b y -l mem_free=1G -P jravel-lab -q threaded.q -pe thread 4 -V
+  -e <path_to_logs> -o <path_to_logs> illumina_dada2.pl -r1 <path_to_R1_file>
+  -r2 <path_to_R2_file> -p <project name> -r <run ID> -m <mapping file>
+  -v <variable region> -sd <storage directory> --1Step
+
 =head1 OPTIONS
 
 =over
@@ -80,12 +85,12 @@ with b<--raw-path, -i>.
 =item B<--r3-path>=file, B<-r3> file
 
 Full path to raw R3 read file (barcode file, or i2) (.fastq.gz). Incompatible 
-with b<--raw-path, -i>.
+with b<--raw-path, -i>. Ignored when --1Step given.
 
 =item B<--r4-path>=file, B<-r4> file
 
 Full path to raw R4 read file (reverse read file, r2 or r4) (.fastq.gz). 
-Incompatible with b<--raw-path, -i>.
+Incompatible with b<--raw-path, -i>. Ignored when --1Step given.
 
 =item B<--project-name>=name, B<-p> name
 
@@ -197,16 +202,16 @@ if ($help) {
     exit 1;
 }
 
-if ( !$inDir && !($r1file && $r2file && $r3file && $r4file )) {
+if ( !$inDir && !( $r1file && $r2file && $r3file && $r4file ) ) {
     die "\n\tPlease provide the location of the raw sequencing files "
       . "(single directory => -i)\n\t\tOR \n\tFull paths to each R1, R2, R3, "
       . "and R4 file => -r1, -r2, -r3, -r4)\n\n";
 }
 
-if ( $inDir && ($r1file || $r2file || $r3file || $r4file )) {
+if ( $inDir && ( $r1file || $r2file || $r3file || $r4file ) ) {
     die
 "\n\tInput directory (-i) and raw files (-r*) were both specified. Please "
-. "provide one or the other.\n\n";
+      . "provide one or the other.\n\n";
 }
 
 if ( !$map ) {
@@ -250,7 +255,7 @@ my $R = "/usr/local/packages/r-3.4.0/bin/R";
 ####################################################################
 my $pd;
 my $wd;
-if($inDir) {
+if ($inDir) {
     $inDir =~ s/\/$//;    # remove trailing slash
 }
 
@@ -270,41 +275,34 @@ my $stdout_log = "$wd/qsub_stdout_logs";
 ## Instead of working directory, give option for provided directory (or current
 #  working directory)
 
-my $r1split;
-my $r4split;
+my $rForSplit;
+my $rRevSplit;
 
-my $index1 = "$wd/${run}_index1.fastq";
-my $index2 = "$wd/${run}_index2.fastq";
-my $reads1 = "$wd/${run}_reads1.fastq";
-my $reads2 = "$wd/${run}_reads2.fastq";
-
-my $r1 = "$wd/$project" . "_" . "$run" . "_"
-  . "R1.fastq";    ## change to full path (flag)
-my $r2 = "$wd/$project" . "_" . "$run" . "_"
-  . "R2.fastq";    ## change to full path (flag)
-my $r3 = "$wd/$project" . "_" . "$run" . "_"
-  . "R3.fastq";    ## change to full path - usr provides full path (flag)
-my $r4;
+# my $r1 = "$wd/$project" . "_" . "$run" . "_"
+#   . "R1.fastq";    ## change to full path (flag)
+# my $r2 = "$wd/$project" . "_" . "$run" . "_"
+#   . "R2.fastq";    ## change to full path (flag)
+# my $r3 = "$wd/$project" . "_" . "$run" . "_"
+#   . "R3.fastq";    ## change to full path - usr provides full path (flag)
+# my $r4;
 
 if ($oneStep) {
-    $r1split = "$wd/R1split";
-    $r4split = "$wd/R2split";
-    $r4      = "$wd/$project" . "_" . "$run" . "_" . "R2.fastq";
+    $rForSplit = "$wd/R1split";
+    $rRevSplit = "$wd/R2split";
+
+    # $r4      = "$wd/$project" . "_" . "$run" . "_" . "R2.fastq";
 } else {
-    $r1split = "$wd/R1split";
-    $r4split = "$wd/R4split";
-    $r4      = "$wd/$project" . "_" . "$run" . "_" . "R4.fastq";
+    $rForSplit = "$wd/R1split";
+    $rRevSplit = "$wd/R4split";
+
+    # $r4      = "$wd/$project" . "_" . "$run" . "_" . "R4.fastq";
 }
 
-my $r1fq = "$r1split/seqs.fastq";
-my $r4fq = "$r4split/seqs.fastq";
-
-my $r1seqs = "$r1split/split_by_sample_out";
-my $r4seqs = "$r4split/split_by_sample_out";
+my $r1seqs = "$rForSplit/split_by_sample_out";
+my $r4seqs = "$rRevSplit/split_by_sample_out";
 my $cmd;
-my @cmds;
 
-my $split_log = "$r1split/split_library_log.txt";
+my $split_log = "$rForSplit/split_library_log.txt";
 my @split;
 my $newSamNo;
 
@@ -340,27 +338,32 @@ system( $^X, $perlScript, $log );
 open my $logFH, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
 print $logFH "$time\n";
 
-my $index1input;
-my $index2input;
-my $reads1input;
-my $reads2input;
+my $index1Input;    # In one-step runs, these are the SAME files pointed to by
+my $index2Input;    # $readsForInput and $readsRevInput
 
-if ($inDir) {    # Search for raw fastq's
+my $readsForInput;
+my $readsRevInput;
+
+if ($inDir) {       # Search for raw fastq's (or fastq.gz's)
     if ($oneStep) {
+
+        # These are the only input files needed for 1step???
         my @r1s = glob("$inDir/*R1.fastq $inDir/*R1.fastq.gz");
         my @r2s = glob("$inDir/*R2.fastq $inDir/*R2.fastq.gz");
-        my @r3s = glob("$inDir/*R3.fastq $inDir/*R3.fastq.gz");
-        my @r4s = glob("$inDir/*R4.fastq $inDir/*R4.fastq.gz");
 
-        if (   scalar @r1s == 1
+        # my @r3s = glob("$inDir/*R3.fastq $inDir/*R3.fastq.gz");
+        # my @r4s = glob("$inDir/*R4.fastq $inDir/*R4.fastq.gz");
+
+        if (
+               scalar @r1s == 1
             && scalar @r2s == 1
-            && scalar @r3s == 1
-            && scalar @r4s == 1 )
+
+            # && scalar @r3s == 1
+            # && scalar @r4s == 1
+          )
         {
-            $index1input = $r2s[0];
-            $index2input = $r3s[0];
-            $reads1input = $r1s[0];
-            $reads2input = $r4s[0];
+            $index1Input = $readsForInput = $r1s[0];
+            $index2Input = $readsRevInput = $r2s[0];
         } else {
             print $logFH "Couldn't find input files.\n";
             print $logFH "Files found in $inDir:\n";
@@ -369,13 +372,14 @@ if ($inDir) {    # Search for raw fastq's
             print $logFH "$printme\n" if $printme;
             $printme = join "\n", @r2s;
             print $logFH "$printme\n" if $printme;
-            $printme = join "\n", @r3s;
-            print $logFH "$printme\n" if $printme;
-            $printme = join "\n", @r4s;
-            print $logFH "$printme\n" if $printme;
+
+            # $printme = join "\n", @r3s;
+            # print $logFH "$printme\n" if $printme;
+            # $printme = join "\n", @r4s;
+            # print $logFH "$printme\n" if $printme;
             die
-"Could not find a complete and exclusive set of raw files. Input directory must"
-              . "have exactly one R1, R2, R3, and R4 file. See $log for a list of the files"
+"Could not find a complete and exclusive set of raw files. Since --1step given, input directory must"
+              . "have exactly one R1, and R2 file. See $log for a list of the files"
               . " found.";
         }
     } else {
@@ -393,10 +397,10 @@ if ($inDir) {    # Search for raw fastq's
             && scalar @r3s == 0
             && scalar @r4s == 0 )
         {
-            $index1input = $i1s[0];
-            $index2input = $i2s[0];
-            $reads1input = $r1s[0];
-            $reads2input = $r2s[0];
+            $index1Input   = $i1s[0];
+            $index2Input   = $i2s[0];
+            $readsForInput = $r1s[0];
+            $readsRevInput = $r2s[0];
         } elsif ( scalar @i1s == 0
             && scalar @i2s == 0
             && scalar @r1s == 1
@@ -404,10 +408,10 @@ if ($inDir) {    # Search for raw fastq's
             && scalar @r3s == 1
             && scalar @r4s == 1 )
         {
-            $index1input = $r2s[0];
-            $index2input = $r3s[0];
-            $reads1input = $r1s[0];
-            $reads2input = $r4s[0];
+            $index1Input   = $r2s[0];
+            $index2Input   = $r3s[0];
+            $readsForInput = $r1s[0];
+            $readsRevInput = $r4s[0];
         } else {
             print $logFH "Couldn't find input files.\n";
             print $logFH "Files found in $inDir:\n";
@@ -431,12 +435,89 @@ if ($inDir) {    # Search for raw fastq's
     }
 } else {
     if ($oneStep) {
-        $index1input = $r1file;    # Correct???
-        $index2input = $r2file;
+
+  # Correct??? Documentation say that r1 -> R1.fastq and r2, r3, r4 -> R2.fastq.
+  # What actually happened was, R1 and R2 files autofound
+  # from $inDir were used for barcodes, and silently nothing happened for
+  # split_libraries (because the two files were already in the run directory)
+  # pipeline was never coded to run 1-step WITHOUT -i
+        $index1Input = $readsForInput = $r1file;
+        $index2Input = $readsRevInput = $r4file;
     } else {
-        $index1input = $r2file;
-        $index2input = $r3file;
+        $readsForInput = $r1file;
+        $index1Input   = $r2file;
+        $index2Input   = $r3file;
+        $readsRevInput = $r4file;
     }
+}
+
+# In the multidbg branch, combine this section with qiime_and_validate
+
+my @cmds;
+
+# Regardless of one-step/two-step, get forward and reverse reads as .fastq
+if ( $readsForInput !~ /.gz$/ ) { # if the index files aren't .gz, read in place
+} else {                          # otherwise...
+                                  # discard any existing file in working dir
+                                  # (we can't test if it's complete)
+
+    # Rename *[R|I][1|2].fastq.gz to <WD>/<PROJ>_<RUN>_[R|I][1|2].fastq
+    my $dest = File::basename($readsForInput);
+    $dest = substr( $dest, ( length($dest) - 10 ), 8 );  # get suffix (sans .gz)
+    $dest = "$wd/$project" . "_" . "$run" . "_" . $dest;
+    push( @cmds, "gzip --decompress $readsForInput > $dest" )
+      ;    #copy to our working dir
+    $readsForInput = $dest;
+    if ($oneStep) {
+        $index1Input = $dest;
+    }
+}
+if ( $readsRevInput !~ /.gz$/ ) {    # same for reverse reads
+} else {
+    my $dest = File::basename($readsRevInput);
+    $dest = substr( $dest, ( length($dest) - 10 ), 8 );
+    $dest = "$wd/$project" . "_" . "$run" . "_" . $dest;
+    push( @cmds, "gzip --decompress $readsRevInput > $dest" );
+    $readsRevInput = $dest;
+    if ($oneStep) {
+        $index2Input = $dest;
+    }
+}
+
+if ( !$oneStep ) {
+
+    # For two step, we need to do the same for the index files
+    if ( $index1Input !~ /.gz$/ ) {
+    } else {
+        my $dest = File::basename($index1Input);
+        $dest = substr( $dest, ( length($dest) - 10 ), 8 );
+        $dest = "$wd/$project" . "_" . "$run" . "_" . $dest;
+        push( @cmds, "gzip --decompress $index1Input > $dest" );
+        $index1Input = $dest;
+    }
+    if ( $index2Input !~ /.gz$/ ) {    # same for reverse reads
+    } else {
+        my $dest = File::basename($index2Input);
+        $dest = substr( $dest, ( length($dest) - 10 ), 8 );
+        $dest = "$wd/$project" . "_" . "$run" . "_" . $dest;
+        push( @cmds, "gzip --decompress $index2Input > $dest" );
+        $index2Input = $dest;
+    }
+}
+
+# Execute the commands queued above
+if ( scalar @cmds > 0 ) {
+    print "---Uncompressing raw file(s) to $wd. Commands:\n";
+    execute_and_log( @cmds, 0, $dryRun );
+    @cmds = ();
+}
+if ($oneStep) {
+    print $logFH
+      "$project raw reads files:\n\t$readsForInput\n\t$readsRevInput\n";
+} else {
+    print $logFH
+      "$project raw reads files:\n\t$readsForInput\n\t$readsRevInput\n"
+      . "$project raw index files:\n\t$index1Input\n\t$index2Input\n";
 }
 
 if ( ( !$dbg ) || $dbg eq "qiime_and_validation" ) {
@@ -573,43 +654,22 @@ if ( ( !$dbg ) || $dbg eq "extract_barcodes" ) {
     if ( !-e $barcodes ) {    # FIXME test if barcodes is the right size
         print "---Barcode files not found or were empty\n";
         my @cmds;
-        if ( $index1input !~ /.gz$/ ) {
-            $index1 =
-              $index1input;    # if the index files aren't .gz, read in place
-        } else {               # otherwise...
-             # discard any existing file in working dir (we can't test if it's complete)
-            unlink $index1;
-            push( @cmds, "zcat $index1input > $index1" )
-              ;    # copy to our working dir
-        }
-        if ( $index2input !~ /.gz$/ ) {
-            $index2 = $index2input;
-        } else {
-            unlink $index2;
-            push( @cmds, "zcat $index2input > $index2" );
-        }
-        if ( scalar @cmds > 0 ) {
-            print "---Uncompressing index/barcode file(s) to $wd. Commands:\n";
-            execute_and_log( @cmds, $dryRun );
-            print $logFH
-              "$project barcode/index files:\n\t$index1\n\t$index2\n";
-        }
 
         my $start = time;
-        print "---Extracting barcodes from index files\n";
+        print "---Extracting barcodes\n";
         $step1 = "extract_barcodes.py";
 
         my $mapOpt = "";
-        my $bcLen  = 8;    # 2-step pcr
+        my $bcLen  = 8;       # 2-step pcr
         if ($oneStep) {
 
-            # Was in original code, but maybe unnecessary
+            # Was in original code, but maybe unnecessary?
             $mapOpt = " -m \$map";
 
-            $bcLen = 12;    # 1-step pcr
+            $bcLen = 12;      # 1-step pcr
         }
         $cmd =
-"qsub -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log extract_barcodes.py -f $index1input -r $index2input -c barcode_paired_end --bc1_len $bcLen --bc2_len $bcLen$mapOpt -o $wd";
+"qsub -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log extract_barcodes.py -f $index1Input -r $index2Input -c barcode_paired_end --bc1_len $bcLen --bc2_len $bcLen $mapOpt -o $wd";
         print "\tcmd=$cmd\n" if $dbg;
         system($cmd) == 0
           or die "system($cmd) failed with exit code: $?"
@@ -649,16 +709,10 @@ if ( ( !$dbg ) || $dbg eq "extract_barcodes" ) {
     }
 
     # Delete unneeded output of extract_barcodes.py
-    my $reads1 = "$wd/reads1.fastq";
-    my $reads2 = "$wd/reads2.fastq";
     @cmds = ();
-    if ( -e $reads1 ) {
-        push @cmds, "rm -rf $reads1";
-    }
-    if ( -e $reads2 ) {
-        push @cmds, "rm -rf $reads2";
-    }
-    execute_and_log( @cmds, $dryRun );
+    push @cmds, "rm -rf $wd/reads1.fastq";
+    push @cmds, "rm -rf $wd/reads2.fastq";
+    execute_and_log( @cmds, 0, $dryRun );
 }
 
 if ( $dbg eq "extract_barcodes" ) {
@@ -671,106 +725,89 @@ if ( $dbg eq "extract_barcodes" ) {
 ## think of way to ensure the consistent read order in the r1 and r4 files.
 ## print headers of r1 and r4, comm r1 r4 - to ensure the seqIDs are the same order.
 if ( !$dbg || $dbg eq "demultiplex" ) {
-    print "--Checking for existence of $r1fq and $r4fq\n";
-    if ( !-e $r1fq || !-e $r4fq ) {
-        if ($oneStep) {
-            print "---Obtaining $project-specific R1 and R2 fastq files\n";
-        } else {
-            print "---Obtaining $project-specific R1 and R4 fastq files\n";
-            if ($inDir) {
-                $cmd =
-"zcat $reads1input > $r1 | zcat $reads2input > $r4 ";
-                print "\tcmd=$cmd\n" if $dbg;
-                system($cmd) == 0
-                  or die "system($cmd) failed with exit code: $?"
-                  if !$dryRun;
-                print $logFH "---$project barcode and index files copied from"
-                  . " $inDir to $r1 and $r4\n";
-            } else {
-                $cmd = "zcat $r1file > $r1 | zcat $r4file > $r4 ";
-                print "\tcmd=$cmd\n" if $dbg;
-                system($cmd) == 0
-                  or die "system($cmd) failed with exit code: $?"
-                  if !$dryRun;
-                print $logFH "---$project barcode and index files copied from "
-                  . "$r1file and $r4file to $r1 and $r4\n";
-            }
-        }
+    my @cmds;
+    my $rForSeqsFq = "$rForSplit/seqs.fastq";
+    my $rRevSeqsFq = "$rRevSplit/seqs.fastq";
 
-        print "---Producing $r1fq and $r4fq\n";
+    # Just helps with printing
+    my $revName;
+    if ($oneStep) {
+        $revName = "R2";
+    } else {
+        $revName = "R4";
+    }
+
+    if ( !-e $rForSeqsFq || !-e $rRevSeqsFq ) {
+        print "---Producing $rForSeqsFq and $rRevSeqsFq\n";
+
+#         if ($oneStep) {
+#             print "---Obtaining $project-specific R1 and R2 fastq files\n";
+#         } else {
+#             print "---Obtaining $project-specific R1 and R4 fastq files\n";
+#             if ($inDir) {
+#                 $cmd =
+# "zcat $readsForInput > $r1 | zcat $readsRevInput > $r4 ";
+#                 print "\tcmd=$cmd\n" if $dbg;
+#                 system($cmd) == 0
+#                   or die "system($cmd) failed with exit code: $?"
+#                   if !$dryRun;
+#                 print $logFH "---$project barcode and index files copied from"
+#                   . " $inDir to $r1 and $r4\n";
+#             } else {
+#                 $cmd = "zcat $r1file > $r1 | zcat $r4file > $r4 ";
+#                 print "\tcmd=$cmd\n" if $dbg;
+#                 system($cmd) == 0
+#                   or die "system($cmd) failed with exit code: $?"
+#                   if !$dryRun;
+#                 print $logFH "---$project barcode and index files copied from "
+#                   . "$r1file and $r4file to $r1 and $r4\n";
+#             }
+#         }
+
         my $start = time;
         my $step2 = "split_libraries_fastq.py";
         @errors = glob("$error_log/$step2.e*");
         if (@errors) {
             foreach my $error (@errors) {
-                $cmd = "rm $error";
-                print "\tcmd=$cmd\n" if $dbg;
-                system($cmd) == 0
-                  or die "system($cmd) failed with exit code: $?"
-                  if !$dryRun;
+                push @cmds, "rm $error";
             }
+            execute_and_log( @cmds, $dryRun );
+            @cmds = ();
         }
         ## including the stitch script before so that demultiplex happens by barcode NOT order
+        my $barcodeType;
         if ($oneStep) {
-            $cmd =
-"qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log split_libraries_fastq.py -i $r1 -o $r1split -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type 24 -r 999 -n 999 -q 0 -p 0.0001";
-            print "\tcmd=$cmd\n" if $dbg;
-            system($cmd) == 0
-              or die "system($cmd) failed with exit code: $?"
-              if !$dryRun;
-            print $logFH "Demultiplexing command F: \n\t$cmd\n\n";
-            $cmd =
-"qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log split_libraries_fastq.py -i $r4 -o $r4split -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type 24 -r 999 -n 999 -q 0 -p 0.0001";
-            print "\tcmd=$cmd\n" if $dbg;
-            system($cmd) == 0
-              or die "system($cmd) failed with exit code: $?"
-              if !$dryRun;
-            print $logFH "Demultiplexing command R: \n\t$cmd\n\n";
+            $barcodeType = "24";
         } else {
-            $cmd =
-"qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log split_libraries_fastq.py -i $r1 -o $r1split -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type 16 -r 999 -n 999 -q 0 -p 0.0001";
-            print "\tcmd=$cmd\n" if $dbg;
-            system($cmd) == 0
-              or die "system($cmd) failed with exit code: $?"
-              if !$dryRun;
-            print $logFH "Demultiplexing command F: \n\t$cmd\n\n";
-            $cmd =
-"qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log split_libraries_fastq.py -i $r4 -o $r4split -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type 16 -r 999 -n 999 -q 0 -p 0.0001";
-            print "\tcmd=$cmd\n" if $dbg;
-            system($cmd) == 0
-              or die "system($cmd) failed with exit code: $?"
-              if !$dryRun;
-            print $logFH "Demultiplexing command R: \n\t$cmd\n\n";
+            $barcodeType = "16";
         }
+
+        push @cmds,
+"qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log $step2 -i $readsForInput -o $rForSplit -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
+        push @cmds,
+"qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log $step2 -i $readsRevInput -o $rRevSplit -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
+        print $logFH "Demultiplexing commands: \n";
+        execute_and_log( @cmds, $logFH, $dryRun );
+        @cmds = ();
+        print $logFH "\n\n";
 
         check_error_log( $error_log, $step2 );
 
-        $r1fq = "$r1split/seqs.fastq";
-        $r4fq = "$r4split/seqs.fastq";
-
         print "---Waiting for R1 seqs.fastq to complete.\n";
-        while ( !( -e $r1fq ) ) { sleep 1; }
+        while ( !( -e $rForSeqsFq ) ) { sleep 1; }
         my $duration = time - $start;
         print $logFH "---Duration of R1 seqs.fastq production: $duration s\n";
         print "---Duration of R1 seqs.fastq production: $duration s\n";
 
-        if ($oneStep) {
-            print "---Waiting for R2 seqs.fastq to complete.\n";
-        } else {
-            print "---Waiting for R4 seqs.fastq to complete.\n";
-        }
-        while ( !( -e $r4fq ) ) { sleep 1; }
+        print "---Waiting for $revName seqs.fastq to complete.\n";
+        while ( !( -e $rRevSeqsFq ) ) { sleep 1; }
         $duration = time - $start;
-        if ($oneStep) {
-            print $logFH "---Duration of R2 seqs.fastq production: $duration s"
-              . "\n";
-            print "---Duration of R2 seqs.fastq production: $duration s\n";
-        } else {
-            print $logFH "Duration of R4 seqs.fastq production: $duration s\n";
-            print "---Duration of R4 seqs.fastq production: $duration s\n";
-        }
+        print $logFH "---Duration of $revName seqs.fastq production: "
+          . "$duration s\n";
+        print "---Duration of $revName seqs.fastq production: $duration s\n";
+
     } else {
-        print "-> $r1fq and $r4fq fastq files already produced. Demultiplexing "
+        print "-> $rForSeqsFq and $rRevSeqsFq already produced. Demultiplexing "
           . "...\n";
     }
 
@@ -814,66 +851,50 @@ if ( !$dbg || $dbg eq "demultiplex" ) {
     ###### BEGIN SPLIT BY SAMPLE ##########
     #######################################
 
-    if ($oneStep) {
-        print "--Checking if $project R1 & R2 seqs.fastq files were split by "
-          . "sample ID\n";
-    } else {
-        print "--Checking if $project R1 & R4 seqs.fastq files were split by "
-          . "sample ID\n";
-    }
+    print "--Checking if $project R1 & $revName seqs.fastq files were split by "
+      . "sample ID\n";
 
     my $n_fq1 = 0;
 
-    my @filenames   = glob("$r1seqs/*.fastq");
-    my @r4filenames = glob("$r4seqs/*.fastq");
+    my @forFilenames = glob("$r1seqs/*.fastq");
+    my @revFilenames = glob("$r4seqs/*.fastq");
 
-    if ( scalar(@filenames) != $newSamNo || scalar(@r4filenames) != $newSamNo )
+    if (   scalar(@forFilenames) != $newSamNo
+        || scalar(@revFilenames) != $newSamNo )
     {
         print "There are "
-          . scalar @filenames
+          . scalar @forFilenames
           . " split files. Waiting for $newSamNo "
           . "files\n";
         my $step3 = "split_sequence_file_on_sample_ids.py";
         @errors = glob("$error_log/$step3.e*");
         if (@errors) {
             foreach my $error (@errors) {
-                $cmd = "rm $error";
-                print "\tcmd=$cmd\n" if $dbg;
-                system($cmd) == 0
-                  or die "system($cmd) failed with exit code: " . "$?"
-                  if !$dryRun;
+                push( @cmds, "rm $error" );
             }
+            execute_and_log( @cmds, 0, $dryRun );
+            @cmds = ();
         }
         print "---Sample specific files not found or completed... Splitting "
           . "$project seqs.fastq files by sample ID\n";
         print $logFH "There are "
-          . scalar(@filenames)
+          . scalar(@forFilenames)
           . " sample specific "
           . "files found (expected $newSamNo)... Splitting $project seqs.fastq "
           . "files by sample ID\n";
-        $cmd = "rm -rf $r1seqs; rm -rf $r4seqs";
-        print "\tcmd=$cmd\n" if $dbg;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
+        execute_and_log( "rm -rf $r1seqs; rm -rf $r4seqs", 0, $dryRun );
 
-        while ( !( -e $r1fq ) ) { sleep 1; }
-        $cmd =
-"qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V split_sequence_file_on_sample_ids.py -i $r1fq --file_type fastq -o $r1seqs";
-        print "\tcmd=$cmd\n" if $dbg;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
-        print $logFH "$cmd\n" if !$dbg;
+        while ( !( -e $rForSeqsFq ) ) { sleep 1; }
+        execute_and_log(
+"qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $step3 -i $rForSeqsFq --file_type fastq -o $r1seqs",
+            0, $dryRun
+        );
 
-        while ( !( -e $r4fq ) ) { sleep 1; }
-        $cmd =
-"qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V split_sequence_file_on_sample_ids.py -i $r4fq --file_type fastq -o $r4seqs";
-        print "\tcmd=$cmd\n" if $dbg;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
-        print $logFH "$cmd\n" if !$dbg;
+        while ( !( -e $rRevSeqsFq ) ) { sleep 1; }
+        execute_and_log(
+"qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $step3 -i $rRevSeqsFq --file_type fastq -o $r4seqs",
+            0, $dryRun
+        );
 
         check_error_log( $error_log, $step3 );
 
@@ -882,7 +903,7 @@ if ( !$dbg || $dbg eq "demultiplex" ) {
         my $nLines = 0;
 
         # Count the number of lines in R1split/seqs.fastq
-        open R1, "<$r1split/seqs.fastq";
+        open R1, "<$rForSplit/seqs.fastq";
         while (<R1>) { }
         my $R1lines = $.;
         close R1;
@@ -912,7 +933,7 @@ if ( !$dbg || $dbg eq "demultiplex" ) {
         $nLines = 0;
 
         # Count the number of lines in R4split/seqs.fastq
-        open R4, "<$r4split/seqs.fastq";
+        open R4, "<$rRevSplit/seqs.fastq";
         while (<R4>) { }
         my $R4lines = $.;
         close R4;
@@ -945,26 +966,14 @@ if ( !$dbg || $dbg eq "demultiplex" ) {
     # Remove temporarily decompressed files
     print "---Removing decompressed raw files from $wd\n";
 
-    $cmd = "rm -rf $wd/${run}_index1.fastq";
-    print "\tcmd=$cmd\n" if $dbg;
-    system($cmd) == 0
-        or print "system($cmd) failed with exit code: $?"
-        if !$dryRun;
-    $cmd = "rm -rf $wd/${run}_index2.fastq";
-    print "\tcmd=$cmd\n" if $dbg;
-    system($cmd) == 0
-        or print "system($cmd) failed with exit code: $?"
-        if !$dryRun;
-    $cmd = "rm -rf $wd/${run}_reads1.fastq";
-    print "\tcmd=$cmd\n" if $dbg;
-    system($cmd) == 0
-        or print "system($cmd) failed with exit code: $?"
-        if !$dryRun;
-    $cmd = "rm -rf $wd/${run}_reads2.fastq";
-    print "\tcmd=$cmd\n" if $dbg;
-    system($cmd) == 0
-        or print "system($cmd) failed with exit code: $?"
-        if !$dryRun;
+    @cmds = ();
+    push( @cmds, "rm -rf $wd/${run}_R1.fastq" );
+    push( @cmds, "rm -rf $wd/${run}_R2.fastq" );
+    push( @cmds, "rm -rf $wd/${run}_R3.fastq" );
+    push( @cmds, "rm -rf $wd/${run}_R2.fastq" );
+    push( @cmds, "rm -rf $wd/${run}_I1.fastq" );
+    push( @cmds, "rm -rf $wd/${run}_I2.fastq" );
+    execute_and_log( @cmds, 0, $dryRun );
 }
 
 if ( $dbg eq "demultiplex" ) {
@@ -1681,11 +1690,17 @@ sub check_error_log {
 }
 
 ################################################################################
-# Execute the given commands; the last argument is 1 if this is a dry run
+# Execute the given commands;
+# the second to last argument must evaluate false to prevent loggin to log file.
+# the last argument is 1 if this is a dry run
 sub execute_and_log {
     my $dryRun = pop @_;
+    my $logFH  = pop @_;
     for (@_) {
         print "\t$_\n" if $dbg;
+        if ($logFH) {
+            print $logFH "\t$_\n";
+        }
         system($_) == 0
           or die "system($_) failed with exit code: $?"
           if !$dryRun;
