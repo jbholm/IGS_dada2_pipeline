@@ -76,7 +76,7 @@ open( OUTFILE2, ">", $outfile2 ) or die "Could not open file $!";
 
 print OUTFILE2 "sample_id\tinput\tfiltered\tmerged\tnonchimeric\n";
 while ( my $line = <INFILE3> ) {
-    if ( $line !~ m/^\s*input/ ) {
+    if ( !( $line eq "sample_id\tinput\tfiltered\tmerged\tnonchimeric" ) ) {
         chomp $line;
         $line =~ s/\s/\t/g;
         my @info     = split( '\t', $line );
