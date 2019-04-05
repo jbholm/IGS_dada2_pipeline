@@ -79,18 +79,30 @@
 
 use strict;
 use warnings;
+my $scriptsDir;
+my $pipelineDir;
+
+BEGIN {
+  use File::Spec::Functions;
+  use File::Basename;
+
+  $pipelineDir = dirname(__FILE__);
+  $scriptsDir = catdir($pipelineDir, "scripts");
+
+}
+  use lib $scriptsDir; # .pm files in ./scripts/ can be loaded
+
+require Stats_gen;
+
 use Pod::Usage;
 use English qw( -no_match_vars );
 use Getopt::Long qw(:config no_ignore_case no_auto_abbrev pass_through);
-use Cwd qw(abs_path);
+require Cwd;
 use File::Temp qw/ tempfile /;
 #use Email::MIME;
 #use Email::Sender::Simple qw(sendmail);
 use File::Spec;
-use File::Basename;
 
-
-my $pipelineDir = dirname(__FILE__);
 $OUTPUT_AUTOFLUSH = 1;
 
 ####################################################################
@@ -171,6 +183,8 @@ if(!$inRuns)
 ##                               MAIN
 ####################################################################
 
+my $projDir = Cwd::cwd;
+
 ##split the list of runs to an array
 my @runs = split(",",$inRuns);
 
@@ -221,11 +235,6 @@ foreach my $i (@runs)
   print LOG "$cmd\n";
 }
 
-# my $catStats = $project ."_". "dada2_part1_stats.txt";
-# $cmd = "cat *-dada2_part1_stats.txt > $catStats";
-# print "\tcmd=$cmd\n" if $dryRun || $debug;
-# system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-# print LOG "$cmd\n";
 
 my $abundance = "all_runs_dada2_abundance_table.csv";
 my $projabund = $project ."_". $abundance;
@@ -324,6 +333,9 @@ else
 }
 my $projpecan = $project ."_"."MC_order7_results.txt";
 
+# Combine dada2 stats from all runs, and the overall project, into one file
+Stats_gen::combine_dada2_stats($projDir);
+
 if ($region eq 'V3V4' && !$oral)
 {
   print "---Classifying ASVs with $region PECAN models (located in $models)\n";
@@ -412,29 +424,6 @@ if ($region eq 'ITS')
   print "\tcmd=$cmd\n" if $dryRun || $debug;
   system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
 }
-
-
-# my $finalStats = $project . "_" . "dada2_final_stats.txt";
-# my $part2Stats = "dada2_part2_stats.txt";
-# my %part1 = readTbl($catStats);
-# my %part2 = readTbl($part2Stats);
-# open OUT, ">$finalStats" or die "Cannot open $finalStats for writing: $OS_ERROR";
-# print OUT "SampleID\tInput\tFiltered\tMerged\tNonChimeric\n";
-# foreach my $x (%part1)
-# {
-#   my $p1 = $part1{$x};
-#   my $p2 = $part2{$x};
-#   print "Combining dada2 stats for $x\n";
-#   if (defined $p2 )
-#   {
-#     print OUT "$x\t$p1\t$p2\n";
-#   }
-#   elsif (!defined $p1)
-#   {
-#     print LOG "$x not present in $catStats\n";
-#   }
-# }
-# close OUT;
 
 my $final_merge = glob("*_taxa_only_merged.csv");
 my $final_taxa_only = glob("*_taxa_only.csv");
