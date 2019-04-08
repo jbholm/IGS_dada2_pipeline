@@ -1332,10 +1332,14 @@ if ( ( !$dbg ) || $dbg eq "dada2" ) {
             }
         }
         if( !-e $dada2 ) {
+            system(
+                "cp $wd/dada2_part1_rTmp.Rout $wd/dada2_part1_rTmp.Rout.old");
             print "...\n$wd/dada2_part1_rTmp.R failed to create "
-            . "dada2_part1_stats.txt.\nRestarting DADA2...";
+            . "dada2_part1_stats.txt. See $wd/dada2_part1_rTmp.Rout.old for"
+            . " details. \nRestarting DADA2...";
             print $logFH "...\n$wd/dada2_part1_rTmp.R failed to create "
-            . "dada2_part1_stats.txt.\nRestarting DADA2...";
+            . "dada2_part1_stats.txt. See $wd/dada2_part1_rTmp.Rout.old for "
+            . "details. \nRestarting DADA2...";
         } 
     }
 
