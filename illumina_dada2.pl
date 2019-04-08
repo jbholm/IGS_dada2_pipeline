@@ -1154,14 +1154,15 @@ if ( $dbg eq "tagclean" ) { die "tagclean finished"; }
 ###### BEGIN DADA2 ##########
 #############################
 if ( ( !$dbg ) || $dbg eq "dada2" ) {
-    my $dada2 = "$wd/dada2_abundance_table.rds";
+    my $dada2 = "$wd/dada2_part1_stats.txt";
 
     my $truncLen;
     if ( $f && $r ) {
         $truncLen = "c($f,$r)";
     }
 
-    if ( !-e $dada2 ) {
+    # Sometimes DADA2 crashes. Restart until it succeeds.
+    while ( !-e $dada2 ) {
         print "--Removing old filtered fastq files from previous runs\n";
         $cmd = "rm -rf $wd/filtered";
         print "\tcmd=$cmd\n" if $dbg;
@@ -1172,6 +1173,7 @@ if ( ( !$dbg ) || $dbg eq "dada2" ) {
         print "Running DADA2 with fastq files in $wd\n";
         print $logFH "Running DADA2 for $var region";
         chdir $pd;
+
         if ($oneStep) {
             if ( $var eq "V3V4" ) {
 
@@ -1329,8 +1331,15 @@ if ( ( !$dbg ) || $dbg eq "dada2" ) {
                 );
             }
         }
+        if( !-e $dada2 ) {
+            print "...\n$wd/dada2_part1_rTmp.R failed to create "
+            . "dada2_part1_stats.txt.\nRestarting DADA2...";
+            print $logFH "...\n$wd/dada2_part1_rTmp.R failed to create "
+            . "dada2_part1_stats.txt.\nRestarting DADA2...";
+        } 
     }
 
+    # Rename DADA2 R files
     my $rt     = "$wd/dada2_part1_rTmp.R";
     my $projrt = "$wd/$project" . "_" . $run . "_dada2_part1_rTmp.R";
     if ( !-e $projrt ) {
