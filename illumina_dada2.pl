@@ -1602,6 +1602,7 @@ sub run_R_script {
     close OUT;
 
     my $cmd = "$R CMD BATCH $outFile";
+    print "$cmd";
     system($cmd) == 0 or die "system($cmd) failed:$?\n";
 
     my $outR = $outFile . "out";
