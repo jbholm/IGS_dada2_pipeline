@@ -184,15 +184,16 @@ GetOptions(
   or pod2usage( verbose => 0, exitstatus => 1 );
 
 if (@dbg) {
-    if (   grep( /^qiime_and_validation$/, @dbg )
-        || grep( /^extract_barcodes$/, @dbg )
-        || grep( /^demultiplex$/, @dbg )
-        || grep( /^tagclean$/, @dbg )
-        || grep( /^dada2$/, @dbg ) )
-    {} else {
-        die 
-"Illegal debug option. Legal debug options are qiime_and_validation, "
-. "extract_barcodes, demultiplex, tagclean, and dada2.";
+    my $q  = grep( /^qiime_and_validation$/, @dbg );
+    my $e  = grep( /^extract_barcodes$/,     @dbg );
+    my $de = grep( /^demultiplex$/,          @dbg );
+    my $t  = grep( /^tagclean$/,             @dbg );
+    my $da = grep( /^dada2$/,                @dbg );
+    if ( $q + $e + $de + $t + $da == scalar @dbg ) { }
+    else {
+        die
+          "Illegal debug option. Legal debug options are qiime_and_validation, "
+          . "extract_barcodes, demultiplex, tagclean, and dada2.";
     }
 }
 
@@ -335,7 +336,7 @@ system( $^X, $perlScript, $log );
 open my $logFH, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
 print $logFH "$time\n";
 
-if(@dbg) {
+if (@dbg) {
     print "DBG FLAGS: ";
     print $logFH "DBG FLAGS: ";
     for (@dbg) {
@@ -393,9 +394,9 @@ if ( ( !@dbg ) || grep( /^qiime_and_validation$/, @dbg ) ) {
         die "validate_mapping_file.py did not produce an error log";
     }
     if ( @dbg && !grep( /^extract_barcodes$/, @dbg ) ) {
-        die 
+        die
 "Finished printing QIIME configuration and validating mapping file. Terminated "
-. "because -dbg extract_barcodes was not specified.";
+          . "because -dbg extract_barcodes was not specified.";
     }
 }
 
@@ -644,9 +645,9 @@ if ( ( !@dbg ) || grep( /^extract_barcodes$/, @dbg ) ) {
     }
 
     if ( @dbg && !grep( /^demultiplex$/, @dbg ) ) {
-        die 
-        "Finished extracting barcodes and demultiplexing libraries. Terminated "
-. "because -dbg demultiplex was not specified.";
+        die
+"Finished extracting barcodes and demultiplexing libraries. Terminated "
+          . "because -dbg demultiplex was not specified.";
     }
 }
 
@@ -928,7 +929,7 @@ if ( !@dbg || grep( /^demultiplex$/, @dbg ) ) {
     if ( @dbg && !grep( /^tagclean$/, @dbg ) ) {
         die
 "Finished extracting barcodes and demultiplexing libraries. Terminated "
-. "because -dbg tagclean was not specified.";
+          . "because -dbg tagclean was not specified.";
     }
 }
 
@@ -1188,7 +1189,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
     if ( @dbg && !grep( /^dada2$/, @dbg ) ) {
         die
 "Finished extracting barcodes and demultiplexing libraries. Terminated "
-. "because -dbg dada2 was not specified.";
+          . "because -dbg dada2 was not specified.";
     }
 }
 
