@@ -5,7 +5,6 @@ use ()
     eval `/usr/local/packages/usepackage-1.13/bin/usepackage -b $*`
 }
 
-DEBUG=""
 DBG=""
 DRY_RUN=""
 SKIP_ERR_THLD=""
@@ -19,7 +18,7 @@ MAXLEN=""
 MINQ=""
 ONESTEP=""
 PARAMS=""
-while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do
+while [[ ! "$1" == "--" && "$#" != 0 ]]; do
   case "$1" in
     -i) # update the Perl and bash documentation!!!
         RAW_PATH=$2
@@ -61,13 +60,9 @@ while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do
         perldoc "${0%/*}/pipeline.sh"
         exit    
         ;;
-    --debug)
-        DEBUG=$1
-        shift 1
-        ;;
     -dbg)
-        DBG=$1
-        shift 1
+        DBG="$DBG -dbg $2"
+        shift 2
         ;;
     --dry-run)
         DRY_RUN=$1
@@ -126,8 +121,9 @@ while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do
         shift 2
         ;;
     *) # preserve positional arguments even if they fall between other params
+    # note that options and their operands will be separate elements of $PARAMS
       PARAMS="$PARAMS $1"
-      shift
+      shift 1
       ;;
   esac
 done
@@ -154,9 +150,9 @@ DIR="$SD/$PROJECT/$RUN_ID/"
 mkdir -p "$DIR/qsub_error_logs/"
 mkdir -p "$DIR/qsub_stdout_logs/"
 
-CMD=("-cwd" "-b y" "-l mem_free=200M" "-P jravel-lab" "-q threaded.q" "-pe thread 4" "-V" "-o ${DIR}qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${DIR}qsub_error_logs/illumina_dada2.pl.stderr" "/home/jolim/IGS_dada2_pipeline/illumina_dada2.pl" "-r1 $R1" "-r2 $R2" "-r3 $R3" "-r4 $R4" "-p $PROJECT" "-r $RUN_ID" "-sd $SD" "-v $VAR" "-m $MAP" "$DEBUG $DBG" "$DRY_RUN" "$SKIP_ERR_THLD" "$FOR" "$REV" "$MAXN" "$MAXEE" "$TRUNCQ" "$RMPHIX" "$MAXLEN" "$MINLEN" "$MINQ" "$ONESTEP" "$PARAMS")
+CMD=("-cwd" "-b y" "-l mem_free=200M" "-P jravel-lab" "-q threaded.q" "-pe thread 4" "-V" "-o ${DIR}qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${DIR}qsub_error_logs/illumina_dada2.pl.stderr" "/home/jolim/IGS_dada2_pipeline/illumina_dada2.pl" "-r1 $R1" "-r2 $R2" "-i1 $I1" "-i2 $I2" "-p $PROJECT" "-r $RUN_ID" "-sd $SD" "-v $VAR" "-m $MAP" "$DEBUG $DBG" "$DRY_RUN" "$SKIP_ERR_THLD" "$FOR" "$REV" "$MAXN" "$MAXEE" "$TRUNCQ" "$RMPHIX" "$MAXLEN" "$MINLEN" "$MINQ" "$ONESTEP" "$PARAMS")
 
-echo "qsub ${CMD[*]}"
+echo "$ qsub ${CMD[*]}"
 qsub ${CMD[*]}
 
 : <<=cut
