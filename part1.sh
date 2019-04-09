@@ -19,7 +19,7 @@ MAXLEN=""
 MINQ=""
 ONESTEP=""
 PARAMS=""
-echo "Starting"
+
 while [[ ! "$1" == "--" && "$#" != 0 ]]; do
   case "$1" in
     --qsub)
