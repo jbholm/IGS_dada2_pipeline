@@ -2,9 +2,10 @@
 
 use () 
 { 
-    eval `/usr/local/packages/usepackage-1.13/bin/usepackage -b $*`
+    eval `/usr/local/packages/usepackage-1.13/bin/usepackage -b "$*"`
 }
 
+QSUB_ARGS=""
 DBG=""
 DRY_RUN=""
 SKIP_ERR_THLD=""
@@ -18,26 +19,31 @@ MAXLEN=""
 MINQ=""
 ONESTEP=""
 PARAMS=""
+echo "Starting"
 while [[ ! "$1" == "--" && "$#" != 0 ]]; do
   case "$1" in
+    --qsub)
+        QSUB_ARGS="${1#*=}"
+        shift 1
+        ;;
     -i) # update the Perl and bash documentation!!!
-        RAW_PATH=$2
+        RAW_PATH="-i $2"
         shift 2
         ;;
     -r1|--r1)
-        R1=$2
+        R1="-r1 $2"
         shift 2
         ;;
     -r2|--r2)
-        R2=$2
+        R2="-r2 $2"
         shift 2
         ;;
     -i1|--i1)
-        I1=$2
+        I1="-i1 $2"
         shift 2
         ;;
     -i2|--i2)
-        I2=$2
+        I2="-i2 $2"
         shift 2
         ;;
     -p)
@@ -57,7 +63,7 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         shift 2
         ;;
     --help|-h)
-        perldoc "${0%/*}/pipeline.sh"
+        perldoc -F "${0}"
         exit    
         ;;
     -dbg)
@@ -150,7 +156,7 @@ DIR="$SD/$PROJECT/$RUN_ID/"
 mkdir -p "$DIR/qsub_error_logs/"
 mkdir -p "$DIR/qsub_stdout_logs/"
 
-CMD=("-cwd" "-b y" "-l mem_free=200M" "-P jravel-lab" "-q threaded.q" "-pe thread 4" "-V" "-o ${DIR}qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${DIR}qsub_error_logs/illumina_dada2.pl.stderr" "/home/jolim/IGS_dada2_pipeline/illumina_dada2.pl" "-r1 $R1" "-r2 $R2" "-i1 $I1" "-i2 $I2" "-p $PROJECT" "-r $RUN_ID" "-sd $SD" "-v $VAR" "-m $MAP" "$DEBUG $DBG" "$DRY_RUN" "$SKIP_ERR_THLD" "$FOR" "$REV" "$MAXN" "$MAXEE" "$TRUNCQ" "$RMPHIX" "$MAXLEN" "$MINLEN" "$MINQ" "$ONESTEP" "$PARAMS")
+CMD=("$QSUB_ARGS" "-cwd" "-b y" "-l mem_free=200M" "-P jravel-lab" "-q threaded.q" "-pe thread 4" "-V" "-o ${DIR}qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${DIR}qsub_error_logs/illumina_dada2.pl.stderr" "/home/jolim/IGS_dada2_pipeline/illumina_dada2.pl" "$RAW_PATH" "$R1" "$R2" "$I1" "$I2" "-p $PROJECT" "-r $RUN_ID" "-sd $SD" "-v $VAR" "-m $MAP" "$DEBUG $DBG" "$DRY_RUN" "$SKIP_ERR_THLD" "$FOR" "$REV" "$MAXN" "$MAXEE" "$TRUNCQ" "$RMPHIX" "$MAXLEN" "$MINLEN" "$MINQ" "$ONESTEP" "$PARAMS")
 
 echo "$ qsub ${CMD[*]}"
 qsub ${CMD[*]}
@@ -275,6 +281,26 @@ default is jravel-lab.
 =item B<-dbg> {qiime_and_validation, extract_barcodes, demultiplex, tagclean, dada2}
 
 Runs only one section of the pipeline and writes every qsub command to the log file.
+
+=item B<--qsub>="options"
+
+Adds options to the outermost qsub call. By default, qsub is called with the
+following options:
+
+    -cwd
+    -b y
+    -l mem_free=200M 
+    -P jravel-lab 
+    -q threaded.q 
+    -pe thread 4 
+    -V
+    -o <path auto-generated from -sd, -p, and -r>
+    -e <from auto-generated path -sd, -p, and -r>
+
+Additional options may be specified as a single string surrounded by
+double quotes ("), as shown below:
+
+    part1.sh --qsub="-m ea -l excl=true" -p project -r run -sd scratch...
 
 =back 
 

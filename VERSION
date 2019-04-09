@@ -1,4 +1,4 @@
-1.1.0-bash_wrapper+4
+1.1.0-bash_wrapper+5
 We use semantic versioning:
 First number: Major version. Incremented for a commit on master that requires a change in how the pipeline is operated.
 Second number: Minor version. Incremented for a commit on master that adds a new feature (usually a new command-line option).
