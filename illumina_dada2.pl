@@ -1188,8 +1188,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
         $truncLen = "c($f,$r)";
     }
 
-    # Sometimes DADA2 crashes. Restart until it succeeds.
-    while ( !-e $dada2 ) {
+    if ( !-e $dada2 ) {
         print "--Removing old filtered fastq files from previous runs\n";
         $cmd = "rm -rf $wd/filtered";
         print "\tcmd=$cmd\n" if $verbose;
@@ -1200,7 +1199,6 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
         print "Running DADA2 with fastq files in $wd\n";
         print $logFH "Running DADA2 for $var region";
         chdir $pd;
-
         if ($oneStep) {
             if ( $var eq "V3V4" ) {
 
@@ -1358,16 +1356,6 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
                 );
             }
         }
-        if( !-e $dada2 ) {
-            system(
-                "cp $wd/dada2_part1_rTmp.Rout $wd/dada2_part1_rTmp.Rout.old");
-            print "...\n$wd/dada2_part1_rTmp.R failed to create "
-            . "dada2_part1_stats.txt. See $wd/dada2_part1_rTmp.Rout.old for"
-            . " details. \nRestarting DADA2...";
-            print $logFH "...\n$wd/dada2_part1_rTmp.R failed to create "
-            . "dada2_part1_stats.txt. See $wd/dada2_part1_rTmp.Rout.old for "
-            . "details. \nRestarting DADA2...";
-        } 
     }
 
     # Rename DADA2 R files
@@ -1600,27 +1588,55 @@ sub run_R_script {
     print OUT "$Rscript";
     close OUT;
 
-    my $cmd = "$R CMD BATCH $outFile";
-    print "$cmd";
-    system($cmd) == 0 or die "system($cmd) failed:$?\n";
+    my $cmd =
+"qsub -cwd -b y -l mem_free=2.5G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
+    print "\tcmd=$cmd\n" if $dbg;
+    system($cmd) == 0
+      or die "system($cmd) failed with exit code: $?"
+      if !$dryRun;
 
-    my $outR = $outFile . "out";
-    open IN, "$outR" or die "Cannot open $outR for reading: $OS_ERROR\n";
+    my $outR       = $outFile . "out";
     my $exitStatus = 1;
 
-    foreach my $line (<IN>) {
-        if (   $line eq /Error/
-            && $line ne /learnErrors/
-            && $line ne /error rates/
-            && $line ne /errors/ )
-        {
-            print "R script crashed at\n$line";
-            print "check $outR for details\n";
-            $exitStatus = 0;
-            die;
+    while ( $exitStatus = 1 ) {
+
+        # Read the file continually, monitoring for signs of termination
+        if ( -e $outR ) {
+            open IN, "<$outR"
+              or die "Cannot open $outR for reading: $OS_ERROR\n";
+            foreach my $line (<IN>) {
+                if (    # signs of bad termination
+                    (
+                           $line =~ /Error in/
+                        || $line =~ /Execution halted/
+                        || $line =~ /encountered errors/
+                    )
+                    && $line !~ /learnErrors/    # False positives; don't match
+                    && $line !~ /error rates/
+                    && $line !~ /errors/
+                  )
+                {
+                    print "R script crashed at: $line\n";
+
+                    # Preserve the last R log file that errored.
+                    system("cp $outR $outR.old");
+                    print "See $$outR.old for details.\n";
+                    print "Attempting to restart R...\n";
+
+                    my $cmd =
+"qsub -cwd -b y -l mem_free=2.5G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
+                    print "\tcmd=$cmd\n" if $dbg;
+                    system($cmd) == 0
+                      or die "system($cmd) failed with exit code: $?"
+                      if !$dryRun;
+                } elsif ( $line =~ /proc.time()/ ) {
+                    $exitStatus = 0;
+                }
+            }
+            close IN;
         }
     }
-    close IN;
+
 }
 
 sub source {
