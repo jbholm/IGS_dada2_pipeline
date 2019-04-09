@@ -14,12 +14,12 @@ The script can be launched from any location on the IGS server, it automatically
 produces a directory in /local/groupshare/ravel named after the project and run
 ID provided. 
 
-Beginning with the path to four raw Illumina sequencing files (R1, R2, R3, R4),
+Beginning with the path to four raw Illumina sequencing files (R1, R2, I1, I2),
 a mapping file, a project ID, a run ID, and specifying the targeted variable
 region, this script:
   1. Produces individual .fastq files for each sample listed in the mapping file
   2. Performs tag-cleaning of each file
-  3. Runs the R1 (forward) and R4 (later called R2, reverse) files through the dada2 pipeline for either the 16S rRNA gene V3V4 or V4 regions.
+  3. Runs the R1 (forward) and R2 (reverse) files through the dada2 pipeline for either the 16S rRNA gene V3V4 or V4 regions.
 
 A log file is written at <PROJECT>/<RUN>/<PROJECT>_<RUN>_16S_pipeline_log.txt
 
@@ -58,6 +58,12 @@ qsub -cwd -b y -l mem_free=1G -P jravel-lab -q threaded.q -pe thread 4 -V
   -e <path_to_logs> -o <path_to_logs> illumina_dada2.pl -i <input directory>
   -p <project name> -r <run ID> -m <mapping file> -v <variable region> 
   -sd <storage directory> --1Step
+
+OR:
+qsub -cwd -b y -l mem_free=1G -P jravel-lab -q threaded.q -pe thread 4 -V
+  -e <path_to_logs> -o <path_to_logs> illumina_dada2.pl -r1 <path_to_R1_file>
+  -r2 <path_to_R2_file> -p <project name> -r <run ID> -m <mapping file> 
+  -v <variable region> -sd <storage directory> --1Step
 
 =head1 OPTIONS
 
@@ -1023,7 +1029,7 @@ if ( !$dbg || $dbg eq "tagclean" ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix   = basename( $filename, @suffixes );
                         my $tc       = "$wd/$Prefix" . "_R1_tc";
-                        
+
                         $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r1seqs/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
 
