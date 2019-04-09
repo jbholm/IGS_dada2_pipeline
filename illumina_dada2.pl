@@ -1589,8 +1589,8 @@ sub run_R_script {
     close OUT;
 
     my $cmd =
-"qsub -cwd -b y -l mem_free=2.5G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
-    print "\tcmd=$cmd\n" if $dbg;
+"qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
+    print "\tcmd=$cmd\n" if $verbose;
     system($cmd) == 0
       or die "system($cmd) failed with exit code: $?"
       if !$dryRun;
@@ -1598,7 +1598,7 @@ sub run_R_script {
     my $outR       = $outFile . "out";
     my $exitStatus = 1;
 
-    while ( $exitStatus = 1 ) {
+    while ( $exitStatus == 1 ) {
 
         # Read the file continually, monitoring for signs of termination
         if ( -e $outR ) {
@@ -1620,12 +1620,12 @@ sub run_R_script {
 
                     # Preserve the last R log file that errored.
                     system("cp $outR $outR.old");
-                    print "See $$outR.old for details.\n";
+                    print "See $outR.old for details.\n";
                     print "Attempting to restart R...\n";
 
                     my $cmd =
-"qsub -cwd -b y -l mem_free=2.5G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
-                    print "\tcmd=$cmd\n" if $dbg;
+"qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
+                    print "\tcmd=$cmd\n" if $verbose;
                     system($cmd) == 0
                       or die "system($cmd) failed with exit code: $?"
                       if !$dryRun;
