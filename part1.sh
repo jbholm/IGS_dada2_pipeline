@@ -64,7 +64,7 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         ;;
     --help|-h)
         perldoc -F "${0}"
-        exit    
+        exit 0
         ;;
     -dbg)
         DBG="$DBG -dbg $2"
@@ -133,10 +133,102 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
       ;;
   esac
 done
+
 # Normally PARAMS would contain positional parameters, but our script doesn't take any
 if [[ -n $PARAMS ]]; then
-    echo "Passing unknown parameters through to illumina_dada2.pl: $PARAMS"
+    echo "\nPassing unknown parameters through to illumina_dada2.pl: $PARAMS\n"
 fi
+
+# validate -dbg flags
+if [[ -n "$DBG" ]] { # if dbg is non-empty string
+    DBG=${DBG:1:${#DBG}} # Remove the first character (whitespace) from dbg
+    DBG_A=( $DBG ) # Separate on whitespace and convert to array
+    NDBG=$(( ${ #DBG_A[@] } / 2)) # Count the number of dbg flags
+    q=$(grep -c '^qiime_and_validation$' <<< "$DBG" ) # count number of each flag
+    e=$(grep -c '^extract_barcodes$' <<< "$DBG" )
+    de=$(grep -c '^demultiplex$' <<< "$DBG" )
+    t=$(grep -c '^tagclean$' <<< "$DBG" )
+    da=$(grep -c '^dada2$' <<< "$DBG" )
+    if [[ (( q + e + de + t + da )) != "$NDBG" ]]; then
+        echo
+          "\nIllegal debug option. Legal debug options are validate, "\
+          "barcodes, demultiplex, tagclean, and dada2.\n"
+        exit 2
+    fi
+    echo "Debug options checked"
+}
+
+# Validate specification of raw files / directory
+if [[ ! -n "$RAW_PATH"]]; then
+    if [[ -n "$ONESTEP" ]]; then
+        if [[ ! ( -n "$R1" && -n "$R2" ) ]]; then
+        echo "\n\tPlease provide the location of the raw sequencing files "\
+            "(single directory => -i)\n\t\tOR \n\tFull paths to each raw file.\n\t"\
+            "A 1-step run requires -r1 and -r2.\n\n"
+            exit 2
+        elif [[ ! ( -e "$R1" && -e "$R2" ) ]]; then
+            echo "\n\tUnable to find -r1, -r2. Please check spellings and "\
+            "file permissions.\n\n"
+            exit 2
+        fi
+    else
+        if [[ ! ( -n "$R1" && -n "$R2" && -n "$I1" && -n "$I2" ) ]]; then
+            echo "\n\tPlease provide the location of the raw sequencing files "\
+            "(single directory => -i)\n\t\tOR \n\tFull paths to each raw file.\n\t"\
+            "A 2-step run requires -r1, -r2, -i1, and -i2.\n\n"
+            exit 2
+        elif [[ ! ( -e "$R1" && -e "$R2" && -e "$I1" && -e "$I2" ) ]]; then
+            echo "\n\tUnable to find -r1, -r2, -i1, and -i2. Please check "\
+            "spellings and file permissions.\n\n"
+            exit 2
+        fi
+    fi
+elif [[ -n "$R1" || -n "$R2" || -n "$I1" || -n "$I2"]]; then
+    echo "\n\tDo not provide both the input directory (-i) and the input files."\
+    "\n\t(-r1, -r2, -i1, -i2). Only one or the other is needed.\n"
+    exit 2
+elif [[ ! -d "$RAW_PATH" ]]; then
+    echo "\n\tThe input directory does not exist or is inaccessible.\n"
+    exit 2
+fi
+
+# Validate that mapping file was given and exists
+if [[ ! -n "$MAP" ]]; then
+    echo "\n\tPlease provide a full path to the project mapping file (-m)\n\n"
+    exit 2
+elif [[ !-e "$MAP" ]]; then
+    echo "\n\tMapping file (-m) does not exist or is inaccessible.\n\n"
+    exit 2
+fi
+
+# Validate the variable region
+if [[ ! -n "$var" ]]; then
+    echo "\n\tPlease indicate the targeted variable region (-v V3V4 or -v V4"\
+    " or -v ITS)\n\n"
+    exit 2
+elif [[ !( "$var" == "V3V4" || "$var" == "V4" || "$var" == "ITS" ) ]]; then
+    echo "\n\tVariable region was '$var' but only 'V3V4', 'V4', and 'ITS' are"\
+    " supported.\n\n"
+    exit 2
+fi
+
+if [[ ! -n "$sd" ]]; then
+    echo "\n***Please choose a storage directory (-sd), either 'scratch' or "\
+    "'groupshare'.\nOR provide a full path to an existing directory."
+    exit 2
+fi
+
+if [[ ( -n $f && ! -n $r ) || ( -n $r && ! -n $f) ]]; then
+    echo "***\nPlease provide truncation lengths for forward and reverse "\
+    "reads\n";
+    exit 2
+fi
+
+if [[ -n "$qproj" ]]; then
+    echo "\nqsub-project ID (--qsub-project, -qp) not provided. Using "\
+    "jravel-lab as default\n"
+    $qproj = "jravel-lab";
+}
 
 # Acquire binaries
 use sge
@@ -150,9 +242,9 @@ export LD_LIBRARY_PATH=/usr/local/packages/python-2.7.14/lib:/usr/local/packages
 if [ "$SD" = "scratch" ]; then
     SD="/local/scratch/"
 elif [ "$SD" = "groupshare" ]; then
-    SD="/local/groupshare/ravel"
+    SD="/local/groupshare/ravel/"
 fi
-DIR="$SD/$PROJECT/$RUN_ID/"
+DIR="${SD}${PROJECT}/${RUN_ID}/"
 mkdir -p "$DIR/qsub_error_logs/"
 mkdir -p "$DIR/qsub_stdout_logs/"
 

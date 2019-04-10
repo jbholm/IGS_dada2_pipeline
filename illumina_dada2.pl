@@ -14,12 +14,12 @@ The script can be launched from any location on the IGS server, it automatically
 produces a directory in /local/groupshare/ravel named after the project and run
 ID provided. 
 
-Beginning with the path to four raw Illumina sequencing files (R1, R2, I1, I2),
+Beginning with the path to four raw Illumina sequencing files (R1, R2, R3, R4),
 a mapping file, a project ID, a run ID, and specifying the targeted variable
 region, this script:
   1. Produces individual .fastq files for each sample listed in the mapping file
   2. Performs tag-cleaning of each file
-  3. Runs the R1 (forward) and R2 (reverse) files through the dada2 pipeline for either the 16S rRNA gene V3V4 or V4 regions.
+  3. Runs the R1 (forward) and R4 (later called R2, reverse) files through the dada2 pipeline for either the 16S rRNA gene V3V4 or V4 regions.
 
 A log file is written at <PROJECT>/<RUN>/<PROJECT>_<RUN>_16S_pipeline_log.txt
 
@@ -58,12 +58,6 @@ qsub -cwd -b y -l mem_free=1G -P jravel-lab -q threaded.q -pe thread 4 -V
   -e <path_to_logs> -o <path_to_logs> illumina_dada2.pl -i <input directory>
   -p <project name> -r <run ID> -m <mapping file> -v <variable region> 
   -sd <storage directory> --1Step
-
-OR:
-qsub -cwd -b y -l mem_free=1G -P jravel-lab -q threaded.q -pe thread 4 -V
-  -e <path_to_logs> -o <path_to_logs> illumina_dada2.pl -r1 <path_to_R1_file>
-  -r2 <path_to_R2_file> -p <project name> -r <run ID> -m <mapping file> 
-  -v <variable region> -sd <storage directory> --1Step
 
 =head1 OPTIONS
 
@@ -342,7 +336,7 @@ system( $^X, $perlScript, $log );
 open my $logFH, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
 print $logFH "$time\n";
 
-if (@dbg) {
+if(@dbg) {
     print "DBG FLAGS: ";
     print $logFH "DBG FLAGS: ";
     for (@dbg) {
@@ -400,9 +394,9 @@ if ( ( !@dbg ) || grep( /^qiime_and_validation$/, @dbg ) ) {
         die "validate_mapping_file.py did not produce an error log";
     }
     if ( @dbg && !grep( /^extract_barcodes$/, @dbg ) ) {
-        die
+        die 
 "Finished printing QIIME configuration and validating mapping file. Terminated "
-          . "because -dbg extract_barcodes was not specified.";
+. "because -dbg extract_barcodes was not specified.";
     }
 }
 
@@ -651,9 +645,9 @@ if ( ( !@dbg ) || grep( /^extract_barcodes$/, @dbg ) ) {
     }
 
     if ( @dbg && !grep( /^demultiplex$/, @dbg ) ) {
-        die
-"Finished extracting barcodes and demultiplexing libraries. Terminated "
-          . "because -dbg demultiplex was not specified.";
+        die 
+        "Finished extracting barcodes and demultiplexing libraries. Terminated "
+. "because -dbg demultiplex was not specified.";
     }
 }
 
@@ -935,7 +929,7 @@ if ( !@dbg || grep( /^demultiplex$/, @dbg ) ) {
     if ( @dbg && !grep( /^tagclean$/, @dbg ) ) {
         die
 "Finished extracting barcodes and demultiplexing libraries. Terminated "
-          . "because -dbg tagclean was not specified.";
+. "because -dbg tagclean was not specified.";
     }
 }
 
@@ -1053,7 +1047,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix   = basename( $filename, @suffixes );
                         my $tc       = "$wd/$Prefix" . "_R1_tc";
-
+                        
                         $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r1seqs/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
 
@@ -1181,14 +1175,14 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
     if ( @dbg && !grep( /^dada2$/, @dbg ) ) {
         die
 "Finished extracting barcodes and demultiplexing libraries. Terminated "
-          . "because -dbg dada2 was not specified.";
+. "because -dbg dada2 was not specified.";
     }
 }
 
 ###### BEGIN DADA2 ##########
 #############################
 if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
-    my $dada2 = "$wd/dada2_abundance_table.rds";
+    my $dada2 = "$wd/dada2_part1_stats.txt";
 
     my $truncLen;
     if ( $f && $r ) {
@@ -1365,6 +1359,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
         }
     }
 
+    # Rename DADA2 R files
     my $rt     = "$wd/dada2_part1_rTmp.R";
     my $projrt = "$wd/$project" . "_" . $run . "_dada2_part1_rTmp.R";
     if ( !-e $projrt ) {
@@ -1594,27 +1589,56 @@ sub run_R_script {
     print OUT "$Rscript";
     close OUT;
 
-    my $cmd = "$R CMD BATCH $outFile";
-    print "$cmd";
-    system($cmd) == 0 or die "system($cmd) failed:$?\n";
+    my $cmd =
+"qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
+    print "\tcmd=$cmd\n" if $verbose;
+    system($cmd) == 0
+      or die "system($cmd) failed with exit code: $?"
+      if !$dryRun;
 
-    my $outR = $outFile . "out";
-    open IN, "$outR" or die "Cannot open $outR for reading: $OS_ERROR\n";
+    my $outR       = $outFile . "out";
     my $exitStatus = 1;
 
-    foreach my $line (<IN>) {
-        if (   $line eq /Error/
-            && $line ne /learnErrors/
-            && $line ne /error rates/
-            && $line ne /errors/ )
-        {
-            print "R script crashed at\n$line";
-            print "check $outR for details\n";
-            $exitStatus = 0;
-            die;
+    while ( $exitStatus == 1 ) {
+
+        # Read the file continually, monitoring for signs of termination
+        if ( -e $outR ) {
+            open IN, "<$outR"
+              or die "Cannot open $outR for reading: $OS_ERROR\n";
+            foreach my $line (<IN>) {
+                if (    # signs of bad termination
+                    (
+                           $line =~ /Error in/
+                        || $line =~ /Execution halted/
+                        || $line =~ /encountered errors/
+                    )
+                    && $line !~ /learnErrors/    # False positives; don't match
+                    && $line !~ /error rates/
+                    && $line !~ /errors/
+                  )
+                {
+                    print "R script crashed at: $line\n";
+
+                    # Preserve the last R log file that errored.
+                    system("mv $outR $outR.old");
+                    print "See $outR.old for details.\n";
+                    print "Attempting to restart R...\n";
+
+                    my $cmd =
+"qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
+                    print "\tcmd=$cmd\n" if $verbose;
+                    system($cmd) == 0
+                      or die "system($cmd) failed with exit code: $?"
+                      if !$dryRun;
+                } elsif ( $line =~ /proc.time()/ ) {
+                    print "R script completed without errors." if $verbose;
+                    $exitStatus = 0;
+                }
+            }
+            close IN;
         }
     }
-    close IN;
+
 }
 
 sub source {
