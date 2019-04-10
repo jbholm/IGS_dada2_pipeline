@@ -1619,7 +1619,7 @@ sub run_R_script {
                     print "R script crashed at: $line\n";
 
                     # Preserve the last R log file that errored.
-                    system("cp $outR $outR.old");
+                    system("mv $outR $outR.old");
                     print "See $outR.old for details.\n";
                     print "Attempting to restart R...\n";
 
@@ -1630,6 +1630,7 @@ sub run_R_script {
                       or die "system($cmd) failed with exit code: $?"
                       if !$dryRun;
                 } elsif ( $line =~ /proc.time()/ ) {
+                    print "R script completed without errors." if $verbose;
                     $exitStatus = 0;
                 }
             }
