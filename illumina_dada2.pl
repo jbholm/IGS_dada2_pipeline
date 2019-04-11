@@ -329,14 +329,9 @@ if ( !-e $stdout_log ) {
 my $time = strftime( "%Y-%m-%d %H:%M:%S", localtime(time) );
 my $log  = "$wd/$project" . "_" . $run . "_16S_pipeline_log.txt";
 
-my $perlScript =
-  File::Spec->catfile( $pipelineDir, "scripts", "log_version.pl" );
-system( $^X, $perlScript, $log );
-
 open my $logFH, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
-print $logFH "$time\n";
 
-if(@dbg) {
+if (@dbg) {
     print "DBG FLAGS: ";
     print $logFH "DBG FLAGS: ";
     for (@dbg) {
@@ -394,9 +389,9 @@ if ( ( !@dbg ) || grep( /^qiime_and_validation$/, @dbg ) ) {
         die "validate_mapping_file.py did not produce an error log";
     }
     if ( @dbg && !grep( /^extract_barcodes$/, @dbg ) ) {
-        die 
+        die
 "Finished printing QIIME configuration and validating mapping file. Terminated "
-. "because -dbg extract_barcodes was not specified.";
+          . "because -dbg extract_barcodes was not specified.";
     }
 }
 
@@ -645,9 +640,9 @@ if ( ( !@dbg ) || grep( /^extract_barcodes$/, @dbg ) ) {
     }
 
     if ( @dbg && !grep( /^demultiplex$/, @dbg ) ) {
-        die 
-        "Finished extracting barcodes and demultiplexing libraries. Terminated "
-. "because -dbg demultiplex was not specified.";
+        die
+"Finished extracting barcodes and demultiplexing libraries. Terminated "
+          . "because -dbg demultiplex was not specified.";
     }
 }
 
@@ -929,7 +924,7 @@ if ( !@dbg || grep( /^demultiplex$/, @dbg ) ) {
     if ( @dbg && !grep( /^tagclean$/, @dbg ) ) {
         die
 "Finished extracting barcodes and demultiplexing libraries. Terminated "
-. "because -dbg tagclean was not specified.";
+          . "because -dbg tagclean was not specified.";
     }
 }
 
@@ -1047,7 +1042,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix   = basename( $filename, @suffixes );
                         my $tc       = "$wd/$Prefix" . "_R1_tc";
-                        
+
                         $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r1seqs/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
 
@@ -1175,7 +1170,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
     if ( @dbg && !grep( /^dada2$/, @dbg ) ) {
         die
 "Finished extracting barcodes and demultiplexing libraries. Terminated "
-. "because -dbg dada2 was not specified.";
+          . "because -dbg dada2 was not specified.";
     }
 }
 
