@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 use () 
 { 
@@ -31,19 +31,19 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         shift 2
         ;;
     -r1|--r1)
-        R1="-r1 $2"
+        R1="$2"
         shift 2
         ;;
     -r2|--r2)
-        R2="-r2 $2"
+        R2="$2"
         shift 2
         ;;
     -i1|--i1)
-        I1="-i1 $2"
+        I1="$2"
         shift 2
         ;;
     -i2|--i2)
-        I2="-i2 $2"
+        I2="$2"
         shift 2
         ;;
     -p)
@@ -136,99 +136,108 @@ done
 
 # Normally PARAMS would contain positional parameters, but our script doesn't take any
 if [[ -n $PARAMS ]]; then
-    echo "\nPassing unknown parameters through to illumina_dada2.pl: $PARAMS\n"
+    printf "\nPassing unknown parameters through to illumina_dada2.pl: $PARAMS\n"
 fi
 
 # validate -dbg flags
-if [[ -n "$DBG" ]] { # if dbg is non-empty string
+if [[ -n "$DBG" ]]; then # if dbg is non-empty string
     DBG=${DBG:1:${#DBG}} # Remove the first character (whitespace) from dbg
     DBG_A=( $DBG ) # Separate on whitespace and convert to array
-    NDBG=$(( ${ #DBG_A[@] } / 2)) # Count the number of dbg flags
-    q=$(grep -c '^qiime_and_validation$' <<< "$DBG" ) # count number of each flag
-    e=$(grep -c '^extract_barcodes$' <<< "$DBG" )
-    de=$(grep -c '^demultiplex$' <<< "$DBG" )
-    t=$(grep -c '^tagclean$' <<< "$DBG" )
-    da=$(grep -c '^dada2$' <<< "$DBG" )
-    if [[ (( q + e + de + t + da )) != "$NDBG" ]]; then
-        echo
-          "\nIllegal debug option. Legal debug options are validate, "\
-          "barcodes, demultiplex, tagclean, and dada2.\n"
-        exit 2
-    fi
-    echo "Debug options checked"
-}
+
+    for ((WORD=7;WORD<${#DBG_A[@]};WORD++)); do
+        if (( WORD % 2 == 0 )); then
+            if [ ${DBG_A[WORD]} != "validate" ] && \
+            [ ${DBG_A[WORD]} != "barcodes" ] && \
+            [ ${DBG_A[WORD]} != "demultiplex" ] && \
+            [ ${DBG_A[WORD]} != "tagclean" ] && \
+            [ ${DBG_A[WORD]} != "dada2" ]; then
+                printf "\nIllegal debug option. Legal debug options are validate, "\
+                "barcodes, demultiplex, tagclean, and dada2.\n"
+                exit 2
+            fi
+        fi
+    done
+    NDBG="${#DBG_FLAGS[@]}" # Count the number of dbg flags
+    printf "%b" "Debug options validated\n\n"
+fi
 
 # Validate specification of raw files / directory
-if [[ ! -n "$RAW_PATH"]]; then
+if [[ ! -n "$RAW_PATH" ]]; then
     if [[ -n "$ONESTEP" ]]; then
-        if [[ ! ( -n "$R1" && -n "$R2" ) ]]; then
-        echo "\n\tPlease provide the location of the raw sequencing files "\
-            "(single directory => -i)\n\t\tOR \n\tFull paths to each raw file.\n\t"\
-            "A 1-step run requires -r1 and -r2.\n\n"
+        if ! [[ -n "$R1" && -n "$R2" ]]; then
+            printf "%b\n" "Please provide the location of the raw sequencing files (single directory => -i)" \
+            "\tOR" \
+            "Full paths to each raw file. A 1-step run requires -r1 and -r2.\n"
             exit 2
-        elif [[ ! ( -e "$R1" && -e "$R2" ) ]]; then
-            echo "\n\tUnable to find -r1, -r2. Please check spellings and "\
-            "file permissions.\n\n"
+        elif ! [[ -e "$R1" && -e "$R2" ]]; then
+            printf "%b\n" "Unable to find -r1, -r2. Please check spellings and " \
+            "file permissions.\n"
             exit 2
         fi
+        R1="-r1 $R1"
+        R2="-r2 $R2"
     else
-        if [[ ! ( -n "$R1" && -n "$R2" && -n "$I1" && -n "$I2" ) ]]; then
-            echo "\n\tPlease provide the location of the raw sequencing files "\
-            "(single directory => -i)\n\t\tOR \n\tFull paths to each raw file.\n\t"\
-            "A 2-step run requires -r1, -r2, -i1, and -i2.\n\n"
+        if ! [[ -n "$R1" && -n "$R2" && -n "$I1" && -n "$I2" ]]; then
+            printf "%b\n" "Please provide the location of the raw sequencing files (single directory => -i)" \
+            "\tOR" \
+            "Full paths to each raw file. A 2-step run requires -r1, -r2, -i1, and -i2.\n"
             exit 2
-        elif [[ ! ( -e "$R1" && -e "$R2" && -e "$I1" && -e "$I2" ) ]]; then
-            echo "\n\tUnable to find -r1, -r2, -i1, and -i2. Please check "\
-            "spellings and file permissions.\n\n"
+        elif ! [[ -e "$R1" && -e "$R2" && -e "$I1" && -e "$I2" ]]; then
+            printf "%b\n" "Unable to find -r1, -r2, -i1, and -i2. Please check " \
+            "spellings and file permissions.\n"
             exit 2
         fi
+        R1="-r1 $R1"
+        R2="-r2 $R2"
+        I1="-i1 $I1"
+        I2="-i2 $I2"
     fi
-elif [[ -n "$R1" || -n "$R2" || -n "$I1" || -n "$I2"]]; then
-    echo "\n\tDo not provide both the input directory (-i) and the input files."\
-    "\n\t(-r1, -r2, -i1, -i2). Only one or the other is needed.\n"
+elif [[ -n "$R1" || -n "$R2" || -n "$I1" || -n "$I2" ]]; then
+    printf "%b\n" "Do not provide both the input directory (-i) and the input files." \
+    "(-r1, -r2, -i1, -i2). Only one or the other is needed.\n"
     exit 2
 elif [[ ! -d "$RAW_PATH" ]]; then
-    echo "\n\tThe input directory does not exist or is inaccessible.\n"
+    printf "\n\tThe input directory does not exist or is inaccessible.\n"
     exit 2
 fi
 
 # Validate that mapping file was given and exists
 if [[ ! -n "$MAP" ]]; then
-    echo "\n\tPlease provide a full path to the project mapping file (-m)\n\n"
+    printf "\n\tPlease provide a full path to the project mapping file (-m)\n\n"
     exit 2
-elif [[ !-e "$MAP" ]]; then
-    echo "\n\tMapping file (-m) does not exist or is inaccessible.\n\n"
+elif [[ ! -e "$MAP" ]]; then
+    printf "\n\tMapping file (-m) does not exist or is inaccessible.\n\n"
     exit 2
 fi
 
 # Validate the variable region
-if [[ ! -n "$var" ]]; then
-    echo "\n\tPlease indicate the targeted variable region (-v V3V4 or -v V4"\
+if [[ ! -n "$VAR" ]]; then
+    printf "%b" "Please indicate the targeted variable region (-v V3V4 or -v V4" \
     " or -v ITS)\n\n"
     exit 2
-elif [[ !( "$var" == "V3V4" || "$var" == "V4" || "$var" == "ITS" ) ]]; then
-    echo "\n\tVariable region was '$var' but only 'V3V4', 'V4', and 'ITS' are"\
+elif [[ !( "$VAR" == "V3V4" || "$VAR" == "V4" || "$VAR" == "ITS" ) ]]; then
+    printf "\n\tVariable region was '$VAR' but only 'V3V4', 'V4', and 'ITS' are"\
     " supported.\n\n"
     exit 2
 fi
 
-if [[ ! -n "$sd" ]]; then
-    echo "\n***Please choose a storage directory (-sd), either 'scratch' or "\
-    "'groupshare'.\nOR provide a full path to an existing directory."
+if [[ ! -n "$SD" ]]; then
+    printf "%b" "***Please choose a storage directory (-sd), either 'scratch' or "\
+    "'groupshare'.\n\tOR\nprovide a full path to an existing directory.\n\n"
     exit 2
 fi
 
-if [[ ( -n $f && ! -n $r ) || ( -n $r && ! -n $f) ]]; then
-    echo "***\nPlease provide truncation lengths for forward and reverse "\
+if [[ ( -n $FOR && ! -n $REV ) || ( -n $REV && ! -n $FOR ) ]]; then
+    printf "***\nPlease provide truncation lengths for forward and reverse "\
     "reads\n";
     exit 2
 fi
 
 if [[ -n "$qproj" ]]; then
-    echo "\nqsub-project ID (--qsub-project, -qp) not provided. Using "\
+    printf "\nqsub-project ID (--qsub-project, -qp) not provided. Using "\
     "jravel-lab as default\n"
     $qproj = "jravel-lab";
-}
+fi
 
 # Acquire binaries
 use sge
@@ -248,10 +257,18 @@ DIR="${SD}${PROJECT}/${RUN_ID}/"
 mkdir -p "$DIR/qsub_error_logs/"
 mkdir -p "$DIR/qsub_stdout_logs/"
 
+# Begin log (will be continued by illumina_dada2.pl)
+# Print pipeline version, system time, and qsub/illumina_dada2.pl command
+log="$SD/${PROJECT}_${RUN_ID}_16S_pipeline_log.txt";
+MY_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+LOG_VERSION="$MY_DIR/scripts/log_version.pl"
+perl $LOG_VERSION $log
+printf "$time\n" > $log 
+
 CMD=("$QSUB_ARGS" "-cwd" "-b y" "-l mem_free=200M" "-P jravel-lab" "-q threaded.q" "-pe thread 4" "-V" "-o ${DIR}qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${DIR}qsub_error_logs/illumina_dada2.pl.stderr" "/home/jolim/IGS_dada2_pipeline/illumina_dada2.pl" "$RAW_PATH" "$R1" "$R2" "$I1" "$I2" "-p $PROJECT" "-r $RUN_ID" "-sd $SD" "-v $VAR" "-m $MAP" "$DEBUG $DBG" "$DRY_RUN" "$SKIP_ERR_THLD" "$FOR" "$REV" "$MAXN" "$MAXEE" "$TRUNCQ" "$RMPHIX" "$MAXLEN" "$MINLEN" "$MINQ" "$ONESTEP" "$PARAMS")
 
-echo "$ qsub ${CMD[*]}"
-qsub ${CMD[*]}
+printf "Initial qsub command: \n$ qsub ${CMD[*]}\n" > $log
+#qsub ${CMD[*]}
 
 : <<=cut
 =pod
