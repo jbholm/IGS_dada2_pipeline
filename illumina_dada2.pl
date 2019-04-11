@@ -1438,20 +1438,24 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
     if ( -e $dadaTbl ) {
         print $logFH "\nFor $var region, dada2 used the following filtering "
           . "requirements:\n$truncLen\n$maxN\n$maxEE\n$truncQ\n$phix\n";
+        # "dada2 completed successfully" is a key phrase that causes
+        # an appropriate message printed to STDOUT
         print $logFH "dada2 completed successfully!\nAbundance table for "
           . "$project run $run located at $wd/dada2_abundance_table.rds\n";
         print $logFH "See $dadaTbl for dada2 table of reads surviving by "
-          . "step\n";
-        close $logFH;
+          . "step\n\n";
     } else {
         print "---dada2 did not complete successfully, something went wrong!\n"
           . "---Check $projrtout.\n";
+        print $logFH "---dada2 did not complete successfully, something went wrong!\n"
+          . "---Check $projrtout.\n";
     }
 }
+
 ###### COMPLETING $logFH FILE ##############
 #########################################
 
-open $logFH, "<$log" or die "Cannot open $log for reading: $OS_ERROR";
+seek $logFH, 0, 0 or die $!;
 while (<$logFH>) {
     if ( $_ =~ /dada2 completed successfully!/ ) {
         print "---dada2 completed successfully\n";
@@ -1481,7 +1485,6 @@ while (<$logFH>) {
           if !$dryRun;
     }
 }
-print $logFH "\n";
 close $logFH;
 
 ## moving final files to directory created within /local/projects/16S_DATA/projects/
