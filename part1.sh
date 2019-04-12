@@ -1,65 +1,80 @@
 #!/bin/bash
+set -e # exit when any command fails (returns non-0 exit status)
 
 use () 
 { 
     eval `/usr/local/packages/usepackage-1.13/bin/usepackage -b "$*"`
 }
 
-QSUB_ARGS=""
-DBG=""
-DRY_RUN=""
-SKIP_ERR_THLD=""
-FOR=""
-REV=""
-MAXN=''
-MAXEE=""
-TRUNCQ=""
-RMPHIX=""
-MAXLEN=""
-MINQ=""
-ONESTEP=""
-PARAMS=""
+# QSUB_ARGS=""
+# DRY_RUN=""
+# FOR=""
+# REV=""
+# MAXN=''
+# MAXEE=""
+# TRUNCQ=""
+# RMPHIX=""
+# MAXLEN=""
+# MINQ=""
+# ONESTEP=""
+# PARAMS=""
+
+try_assign()
+{
+    if [[ "$3" =~ ^- || ! -n "$3" ]]; then
+        printf "%b" "$2 missing its value. Unable to continue.\n\n"
+        exit 2
+    else 
+        eval "$1='$3'"
+    fi
+    return 0
+}
 
 while [[ ! "$1" == "--" && "$#" != 0 ]]; do
   case "$1" in
-    --qsub)
+    --qsub=*)
         QSUB_ARGS="${1#*=}"
+        if [[ ! -n "$QSUB_ARGS" ]]; then  
+            printf "%b" "--qsub missing value. --qsub=\"\" and --qsub= are " \
+            "not accepted.\n"
+            exit 2
+        fi
         shift 1
         ;;
     -i) # update the Perl and bash documentation!!!
-        RAW_PATH="-i $2"
+        try_assign RAW_PATH "$1" "$2"
         shift 2
         ;;
     -r1|--r1)
-        R1="$2"
+        try_assign R1 "$1" "$2"
         shift 2
         ;;
     -r2|--r2)
-        R2="$2"
+        try_assign R2 "$1" "$2"
         shift 2
         ;;
     -i1|--i1)
-        I1="$2"
+        try_assign I1 "$1" "$2"
         shift 2
         ;;
     -i2|--i2)
-        I2="$2"
+        try_assign I2 "$1" "$2"
         shift 2
         ;;
     -p)
-        PROJECT=$2
+        try_assign PROJECT "$1" "$2"
         shift 2
         ;;
     -r)
-        RUN_ID=$2
+        try_assign RUN_ID "$1" "$2"
         shift 2
         ;;
     -m)
-        MAP=$2
+        try_assign MAP "$1" "$2"
         shift 2
         ;;
     -v)
-        VAR=$2
+        try_assign VAR "$1" "$2"
         shift 2
         ;;
     --help|-h)
@@ -67,8 +82,13 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         exit 0
         ;;
     -dbg)
-        DBG="$DBG -dbg $2"
-        shift 2
+        if [[ "$2" =~ ^- || ! -n "$2" ]]; then
+            printf "%b" "-dbg missing its value. Unable to continue.\n\n"
+            exit 2
+        else 
+            DBG="$DBG -dbg $2"
+            shift 2
+        fi
         ;;
     --dry-run)
         DRY_RUN=$1
@@ -78,52 +98,52 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         SKIP_ERR_THLD=$1
         shift 1
         ;;
-    --dada2-truncLen-f|--for)
-        FOR="$1 $2"
+    --dada2-truncLen-F|--for)
+        try_assign FOR "$1" "$2"
         shift 2
         ;;
     --dada2-truncLen-R|--rev)
-        REV="$1 $2"
+        try_assign REV "$1" "$2"
         shift 2
         ;;
     --dada2-maxN)
-        MAXN="$1 $2"
+        try_assign MAXN "$1" "$2"
         shift 2
         ;;
     --dada2-maxEE)
-        MAXEE="$1 $2"
+        try_assign MAXEE "$1" "$2"
         shift 2
         ;;
     --dada2-truncQ)
-        TRUNCQ="$1 $2"
+        try_assign TRUNCQ "$1" "$2"
         shift 2
         ;;
     --dada2-rmPhix)
-        RMPHIX=$1
-        shift 1
+        try_assign RMPHIX "$1" "$2"
+        shift 2
         ;;
     --dada2-maxLen)
-        MAXLEN="$1 $2"
+        try_assign MAXLEN "$1" "$2"
         shift 2
         ;;
     --dada2-minLen)
-        MINLEN="$1 $2"
+        try_assign MINLEN "$1" "$2"
         shift 2
         ;;
     --dada2-minQ)
-        MINQ="$1 $2"
+        try_assign MINQ "$1" "$2"
         shift 2
         ;;
     --1Step)
         ONESTEP=$1
         shift 1
         ;;
-    --storage-dir|--sd|-sd)
-        SD=$2
+    --storage-dir|-sd)
+        try_assign SD "$1" "$2"
         shift 2
         ;;
     -qp|--qp)
-        QP=$2
+        try_assign QP "$1" "$2"
         shift 2
         ;;
     *) # preserve positional arguments even if they fall between other params
@@ -265,7 +285,7 @@ LOG_VERSION="$MY_DIR/scripts/log_version.pl"
 perl $LOG_VERSION $log
 printf "$time\n" > $log 
 
-CMD=("$QSUB_ARGS" "-cwd" "-b y" "-l mem_free=200M" "-P jravel-lab" "-q threaded.q" "-pe thread 4" "-V" "-o ${DIR}qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${DIR}qsub_error_logs/illumina_dada2.pl.stderr" "/home/jolim/IGS_dada2_pipeline/illumina_dada2.pl" "$RAW_PATH" "$R1" "$R2" "$I1" "$I2" "-p $PROJECT" "-r $RUN_ID" "-sd $SD" "-v $VAR" "-m $MAP" "$DEBUG $DBG" "$DRY_RUN" "$SKIP_ERR_THLD" "$FOR" "$REV" "$MAXN" "$MAXEE" "$TRUNCQ" "$RMPHIX" "$MAXLEN" "$MINLEN" "$MINQ" "$ONESTEP" "$PARAMS")
+CMD=("$QSUB_ARGS" "-cwd" "-b y" "-l mem_free=200M" "-P jravel-lab" "-q threaded.q" "-pe thread 4" "-V" "-o ${DIR}qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${DIR}qsub_error_logs/illumina_dada2.pl.stderr" "/home/jolim/IGS_dada2_pipeline/illumina_dada2.pl" "$RAW_PATH" "$R1" "$R2" "$I1" "$I2" "-p $PROJECT" "-r $RUN_ID" "-sd $SD" "-v $VAR" "-m $MAP" "$DBG" "$DRY_RUN" "$SKIP_ERR_THLD" "$FOR" "$REV" "$MAXN" "$MAXEE" "$TRUNCQ" "$RMPHIX" "$MAXLEN" "$MINLEN" "$MINQ" "$ONESTEP" "$PARAMS")
 
 printf "Initial qsub command: \n$ qsub ${CMD[*]}\n" > $log
 #qsub ${CMD[*]}
@@ -407,9 +427,10 @@ following options:
     -e <from auto-generated path -sd, -p, and -r>
 
 Additional options may be specified as a single string surrounded by
-double quotes ("), as shown below:
+double quotes ("), as shown below. Qsub allows many options including -P to be 
+provided more than once, in which case only the last value will be used. 
 
-    part1.sh --qsub="-m ea -l excl=true" -p project -r run -sd scratch...
+    part1.sh --qsub="-m ea -l excl=true" -P project -r run -sd /other/path...
 
 =back 
 
