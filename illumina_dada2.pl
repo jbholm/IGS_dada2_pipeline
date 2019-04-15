@@ -186,13 +186,15 @@ GetOptions(
 if (@dbg) {
     if (   grep( /^qiime_and_validation$/, @dbg )
         || grep( /^extract_barcodes$/, @dbg )
-        || grep( /^demultiplex$/, @dbg )
-        || grep( /^tagclean$/, @dbg )
-        || grep( /^dada2$/, @dbg ) )
-    {} else {
-        die 
-"Illegal debug option. Legal debug options are qiime_and_validation, "
-. "extract_barcodes, demultiplex, tagclean, and dada2.";
+        || grep( /^demultiplex$/,      @dbg )
+        || grep( /^tagclean$/,         @dbg )
+        || grep( /^dada2$/,            @dbg ) )
+    {
+    }
+    else {
+        die
+          "Illegal debug option. Legal debug options are qiime_and_validation, "
+          . "extract_barcodes, demultiplex, tagclean, and dada2.";
     }
 }
 
@@ -335,7 +337,7 @@ system( $^X, $perlScript, $log );
 open my $logFH, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
 print $logFH "$time\n";
 
-if(@dbg) {
+if (@dbg) {
     print "DBG FLAGS: ";
     print $logFH "DBG FLAGS: ";
     for (@dbg) {
@@ -393,9 +395,9 @@ if ( ( !@dbg ) || grep( /^qiime_and_validation$/, @dbg ) ) {
         die "validate_mapping_file.py did not produce an error log";
     }
     if ( @dbg && !grep( /^extract_barcodes$/, @dbg ) ) {
-        die 
+        die
 "Finished printing QIIME configuration and validating mapping file. Terminated "
-. "because -dbg extract_barcodes was not specified.";
+          . "because -dbg extract_barcodes was not specified.";
     }
 }
 
@@ -644,9 +646,9 @@ if ( ( !@dbg ) || grep( /^extract_barcodes$/, @dbg ) ) {
     }
 
     if ( @dbg && !grep( /^demultiplex$/, @dbg ) ) {
-        die 
-        "Finished extracting barcodes and demultiplexing libraries. Terminated "
-. "because -dbg demultiplex was not specified.";
+        die
+"Finished extracting barcodes and demultiplexing libraries. Terminated "
+          . "because -dbg demultiplex was not specified.";
     }
 }
 
@@ -928,7 +930,7 @@ if ( !@dbg || grep( /^demultiplex$/, @dbg ) ) {
     if ( @dbg && !grep( /^tagclean$/, @dbg ) ) {
         die
 "Finished extracting barcodes and demultiplexing libraries. Terminated "
-. "because -dbg tagclean was not specified.";
+          . "because -dbg tagclean was not specified.";
     }
 }
 
@@ -1046,7 +1048,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix   = basename( $filename, @suffixes );
                         my $tc       = "$wd/$Prefix" . "_R1_tc";
-                        
+
                         $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r1seqs/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
 
@@ -1174,7 +1176,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
     if ( @dbg && !grep( /^dada2$/, @dbg ) ) {
         die
 "Finished extracting barcodes and demultiplexing libraries. Terminated "
-. "because -dbg dada2 was not specified.";
+          . "because -dbg dada2 was not specified.";
     }
 }
 
@@ -1189,15 +1191,6 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
     }
 
     if ( !-e $dada2 ) {
-        print "--Removing old filtered fastq files from previous runs\n";
-        $cmd = "rm -rf $wd/filtered";
-        print "\tcmd=$cmd\n" if $verbose;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
-
-        print "Running DADA2 with fastq files in $wd\n";
-        print $logFH "Running DADA2 for $var region";
         chdir $pd;
         if ($oneStep) {
             if ( $var eq "V3V4" ) {
@@ -1228,7 +1221,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
                 }
                 dada2(
                     $run,  $truncLen, $maxN,   $maxEE, $truncQ,
-                    $phix, $maxLen,   $minLen, $minQ
+                    $phix, $maxLen,   $minLen, $minQ,  $logFH
                 );
             }
 
@@ -1259,7 +1252,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
                 }
                 dada2(
                     $run,  $truncLen, $maxN,   $maxEE, $truncQ,
-                    $phix, $maxLen,   $minLen, $minQ
+                    $phix, $maxLen,   $minLen, $minQ,  $logFH
                 );
             }
         } else {
@@ -1290,7 +1283,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
                 }
                 dada2(
                     $run,  $truncLen, $maxN,   $maxEE, $truncQ,
-                    $phix, $maxLen,   $minLen, $minQ
+                    $phix, $maxLen,   $minLen, $minQ,  $logFH
                 );
             }
 
@@ -1321,7 +1314,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
                 }
                 dada2(
                     $run,  $truncLen, $maxN,   $maxEE, $truncQ,
-                    $phix, $maxLen,   $minLen, $minQ
+                    $phix, $maxLen,   $minLen, $minQ,  $logFH
                 );
             }
 
@@ -1352,7 +1345,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
                 }
                 dada2(
                     $run,  $truncLen, $maxN,   $maxEE, $truncQ,
-                    $phix, $maxLen,   $minLen, $minQ
+                    $phix, $maxLen,   $minLen, $minQ,  $logFH
                 );
             }
         }
@@ -1438,6 +1431,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
     if ( -e $dadaTbl ) {
         print $logFH "\nFor $var region, dada2 used the following filtering "
           . "requirements:\n$truncLen\n$maxN\n$maxEE\n$truncQ\n$phix\n";
+
         # "dada2 completed successfully" is a key phrase that causes
         # an appropriate message printed to STDOUT
         print $logFH "dada2 completed successfully!\nAbundance table for "
@@ -1447,7 +1441,8 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
     } else {
         print "---dada2 did not complete successfully, something went wrong!\n"
           . "---Check $projrtout.\n";
-        print $logFH "---dada2 did not complete successfully, something went wrong!\n"
+        print $logFH
+          "---dada2 did not complete successfully, something went wrong!\n"
           . "---Check $projrtout.\n";
     }
 }
@@ -1578,18 +1573,32 @@ sub dada2 {
   colnames(track) <- c("input", "filtered", "merged")
   write.table(track, "dada2_part1_stats.txt", quote=FALSE, append=FALSE, sep=\t, row.names=TRUE, col.names=TRUE)
   ~;
-    run_R_script($Rscript);
+    run_R_script( $Rscript, $logFH );
 }
 
 sub run_R_script {
-
-    chdir $wd;
     my $Rscript = shift;
+    my $logFH   = shift;
+    chdir $wd;
 
     my $outFile = "dada2_part1_rTmp.R";
     open OUT, ">$outFile", or die "cannot write to $outFile: $!\n";
     print OUT "$Rscript";
     close OUT;
+
+    print
+"--Removing old filtered fastq files, stats, and Rout files from previous runs\n";
+    $cmd = "rm -rf $wd/filtered";
+    print "\tcmd=$cmd\n" if $verbose;
+    system($cmd) == 0
+      or die "system($cmd) failed with exit code: $?"
+      if !$dryRun;
+
+    print "Running DADA2 with fastq files in $wd\n";
+    print $logFH "Running DADA2 for $var region";
+    my $outR  = $outFile . "out";
+    my $stats = "$wd/dada2_part1_stats.txt";
+    unlink( $outR, $stats );
 
     my $cmd =
 "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
@@ -1598,7 +1607,6 @@ sub run_R_script {
       or die "system($cmd) failed with exit code: $?"
       if !$dryRun;
 
-    my $outR       = $outFile . "out";
     my $exitStatus = 1;
 
     while ( $exitStatus == 1 ) {
