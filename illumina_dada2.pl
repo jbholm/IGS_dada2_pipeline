@@ -292,9 +292,6 @@ if ($oneStep) {
     $r4      = "$wd/$project" . "_" . "$run" . "_" . "R4.fastq";
 }
 
-my $r1fq = "$r1split/seqs.fastq";
-my $r4fq = "$r4split/seqs.fastq";
-
 my $r1seqs = "$r1split/split_by_sample_out";
 my $r4seqs = "$r4split/split_by_sample_out";
 my $cmd;
@@ -331,7 +328,7 @@ my $log  = "$wd/$project" . "_" . $run . "_16S_pipeline_log.txt";
 
 open my $logFH, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
 
-if(@dbg) {
+if (@dbg) {
     print "DBG FLAGS: ";
     print $logFH "DBG FLAGS: ";
     for (@dbg) {
@@ -389,9 +386,9 @@ if ( ( !@dbg ) || grep( /^qiime_and_validation$/, @dbg ) ) {
         die "validate_mapping_file.py did not produce an error log";
     }
     if ( @dbg && !grep( /^extract_barcodes$/, @dbg ) ) {
-        die 
+        die
 "Finished printing QIIME configuration and validating mapping file. Terminated "
-. "because -dbg extract_barcodes was not specified.";
+          . "because -dbg extract_barcodes was not specified.";
     }
 }
 
@@ -640,9 +637,9 @@ if ( ( !@dbg ) || grep( /^extract_barcodes$/, @dbg ) ) {
     }
 
     if ( @dbg && !grep( /^demultiplex$/, @dbg ) ) {
-        die 
-        "Finished extracting barcodes and demultiplexing libraries. Terminated "
-. "because -dbg demultiplex was not specified.";
+        die
+"Finished extracting barcodes and demultiplexing libraries. Terminated "
+          . "because -dbg demultiplex was not specified.";
     }
 }
 
@@ -652,6 +649,10 @@ if ( ( !@dbg ) || grep( /^extract_barcodes$/, @dbg ) ) {
 ## think of way to ensure the consistent read order in the r1 and r4 files.
 ## print headers of r1 and r4, comm r1 r4 - to ensure the seqIDs are the same order.
 if ( !@dbg || grep( /^demultiplex$/, @dbg ) ) {
+
+    my $r1fq = "$r1split/seqs.fastq";
+    my $r4fq = "$r4split/seqs.fastq";
+
     print "--Checking for existence of $r1fq and $r4fq\n";
     if ( !-e $r1fq || !-e $r4fq ) {
         if ($oneStep) {
@@ -750,6 +751,24 @@ if ( !@dbg || grep( /^demultiplex$/, @dbg ) ) {
             print $logFH "Duration of R4 seqs.fastq production: $duration s\n";
             print "---Duration of R4 seqs.fastq production: $duration s\n";
         }
+
+        ###### BEGIN FASTQC ON SEQS.FASTQ #####
+        #######################################
+
+        # Replace this with calls to execute_and_log after merging in master
+        $cmd =
+"qsub -cwd -b y -l mem_free=300M -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log fastqc --outdir $r1split $r1fq";
+        print "\tcmd=$cmd\n" if $verbose;
+        system($cmd) == 0
+          or die "system($cmd) failed with exit code: $?"
+          if !$dryRun;
+        $cmd =
+"qsub -cwd -b y -l mem_free=300M -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log fastqc --outdir $r4split $r4fq";
+        print "\tcmd=$cmd\n" if $verbose;
+        system($cmd) == 0
+          or die "system($cmd) failed with exit code: $?"
+          if !$dryRun;
+
     } else {
         print "-> $r1fq and $r4fq fastq files already produced. Demultiplexing "
           . "...\n";
@@ -924,7 +943,7 @@ if ( !@dbg || grep( /^demultiplex$/, @dbg ) ) {
     if ( @dbg && !grep( /^tagclean$/, @dbg ) ) {
         die
 "Finished extracting barcodes and demultiplexing libraries. Terminated "
-. "because -dbg tagclean was not specified.";
+          . "because -dbg tagclean was not specified.";
     }
 }
 
@@ -1042,7 +1061,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix   = basename( $filename, @suffixes );
                         my $tc       = "$wd/$Prefix" . "_R1_tc";
-                        
+
                         $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $r1seqs/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
 
@@ -1170,7 +1189,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
     if ( @dbg && !grep( /^dada2$/, @dbg ) ) {
         die
 "Finished extracting barcodes and demultiplexing libraries. Terminated "
-. "because -dbg dada2 was not specified.";
+          . "because -dbg dada2 was not specified.";
     }
 }
 
