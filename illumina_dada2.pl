@@ -564,21 +564,16 @@ if ( ( !@dbg ) || grep( /^extract_barcodes$/, @dbg ) ) {
 
             # if the index files aren't .gz, just read in place.
         } else {    # Otherwise...
-            my $dest = $localNames{"index1"};
-
             # decompress to our project/run directory
-            push( @cmds, "gzip --decompress --force < $index1Input > $dest" );
+            push( @cmds, "gzip --decompress --force < $index1Input > $localNames{\"index1\"}" );
             print $logFH
-"---Decompressing $project barcode and index file from $index1Input to $dest\n";
-            $index1Input = $dest;
+"---Decompressing $project barcode and index file from $index1Input to $localNames{\"index1\"}\n";
         }
         if ( $index2Input !~ /.gz$/ ) {    # same for reverse reads
         } else {
-            my $dest = $localNames{"index2"};
-            push( @cmds, "gzip --decompress --force < $index2Input > $dest" );
+            push( @cmds, "gzip --decompress --force < $index2Input > $localNames{\"index2\"}" );
             print $logFH
-"---Decompressing $project barcode and index file from $index2Input to $dest\n";
-            $index2Input = $dest;
+"---Decompressing $project barcode and index file from $index2Input to $localNames{\"index2\"}\n";
         }
 
         # Execute the commands queued above
@@ -598,7 +593,7 @@ if ( ( !@dbg ) || grep( /^extract_barcodes$/, @dbg ) ) {
             $bcLen = 12;    # 1-step pcr
         }
         $cmd =
-"extract_barcodes.py -f $index1Input -r $index2Input -c barcode_paired_end --bc1_len $bcLen --bc2_len $bcLen $mapOpt -o $wd";
+"extract_barcodes.py -f $localNames{\"index1\"} -r $localNames{\"index2\"} -c barcode_paired_end --bc1_len $bcLen --bc2_len $bcLen $mapOpt -o $wd";
         print "\tcmd=$cmd\n" if $verbose;
         print "---Waiting for barcode extraction to complete.\n";
 
@@ -612,17 +607,27 @@ if ( ( !@dbg ) || grep( /^extract_barcodes$/, @dbg ) ) {
         print $logFH "---Duration of barcode extraction: $duration s\n";
         print "---Duration of barcode extraction: $duration s\n";
 
-    # Delete unneeded output of extract_barcodes.py
-    my @cmds = ();
-    push @cmds, "rm -rf $wd/reads1.fastq";
-    push @cmds, "rm -rf $wd/reads2.fastq";
-    execute_and_log( @cmds, 0, $dryRun );
-}
+        # Delete unneeded output of extract_barcodes.py
+        @cmds = ();
+        push @cmds, "rm -rf $wd/reads1.fastq";
+        push @cmds, "rm -rf $wd/reads2.fastq";
+        # If two-step, delete the temporarily decompressed index files now
+        if( ! $oneStep ) {
+            if ( $index1Input =~ /.gz$/ ) {
+                push @cmds, "rm -rf $localNames{\"index1\"}";
+            }
+            if ( $index2Input =~ /.gz$/ ) {
+                push @cmds, "rm -rf $localNames{\"index2\"}";
+            }
+        }
+        execute_and_log( @cmds, 0, $dryRun );
+    }
 
-if ( @dbg && !grep( /^demultiplex$/, @dbg ) ) {
-    die
+    if ( @dbg && !grep( /^demultiplex$/, @dbg ) ) {
+        die
 "Finished extracting barcodes and demultiplexing libraries. Terminated "
-        . "because -dbg demultiplex was not specified.";
+          . "because -dbg demultiplex was not specified.";
+    }
 }
 
 ###### BEGIN SPLIT LIBRARIES ##########
@@ -674,7 +679,7 @@ if ( !@dbg || grep( /^demultiplex$/, @dbg ) ) {
             foreach my $error (@errors) {
                 push @cmds, "rm $error";
             }
-            execute_and_log( @cmds, $dryRun );
+            execute_and_log( @cmds, 0, $dryRun );
             @cmds = ();
         }
         ## including the stitch script before so that demultiplex happens by barcode NOT order
@@ -694,23 +699,22 @@ if ( !@dbg || grep( /^demultiplex$/, @dbg ) ) {
         @cmds = ();
         print $logFH "\n\n";
 
+        print "---Waiting for R1 and $revName seqs.fastq to complete....\n";
+        print "---Monitoring $step2 error logs....\n";
         check_error_log( $error_log, $step2 );
-
-        print "---Waiting for R1 seqs.fastq to complete.\n";
-        while ( !( -e $rForSeqsFq ) ) { sleep 1; }
+        while ( !( -e $rForSeqsFq ) || !( -e $rRevSeqsFq ) ) {
+            sleep 1; 
+            # check_error_log allows pipeline to terminate if the qsubbed
+            # split_libraries_fastq.py prints error
+            check_error_log( $error_log, $step2 );
+        }
         my $duration = time - $start;
-        print $logFH "---Duration of R1 seqs.fastq production: $duration s\n";
-        print "---Duration of R1 seqs.fastq production: $duration s\n";
-
-        print "---Waiting for $revName seqs.fastq to complete.\n";
-        while ( !( -e $rRevSeqsFq ) ) { sleep 1; }
-        $duration = time - $start;
-        print $logFH "---Duration of $revName seqs.fastq production: "
-          . "$duration s\n";
-        print "---Duration of $revName seqs.fastq production: $duration s\n";
+        print $logFH "---Duration of R1 and $revName seqs.fastq production: $duration s\n";
+        print "---Duration of R1 and $revName seqs.fastq production: $duration s\n";
 
     } else {
-        print "-> $rForSeqsFq and $rRevSeqsFq already produced. Demultiplexing "
+        print
+          "-> $rForSeqsFq and $rRevSeqsFq already produced. Demultiplexing "
           . "...\n";
     }
 
@@ -754,7 +758,8 @@ if ( !@dbg || grep( /^demultiplex$/, @dbg ) ) {
     ###### BEGIN SPLIT BY SAMPLE ##########
     #######################################
 
-    print "--Checking if $project R1 & $revName seqs.fastq files were split by "
+    print
+      "--Checking if $project R1 & $revName seqs.fastq files were split by "
       . "sample ID\n";
 
     my $n_fq1 = 0;
@@ -859,7 +864,8 @@ if ( !@dbg || grep( /^demultiplex$/, @dbg ) ) {
 
         check_error_log( $error_log, $step3 );
 
-        print "--All samples ($n_fq) and reads (@{[$nLines / 4]}) accounted for"
+        print
+          "--All samples ($n_fq) and reads (@{[$nLines / 4]}) accounted for"
           . " in $r4seqs\n";
     } else {
         print "--$newSamNo sample-specific files present as expected.\n";
@@ -924,7 +930,8 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
             if ( $var eq "V3V4" ) {
                 print "Removing V3V4 primers from all sequences\n";
                 my $filename;
-                opendir R1, $r1seqs or die "Cannot open directory $r1seqs\n";
+                opendir R1, $r1seqs
+                  or die "Cannot open directory $r1seqs\n";
                 while ( $filename = readdir R1 ) {
                     if ( $filename =~ /.fastq/ ) {
                         my @suffixes = ( ".fastq", ".fq" );
@@ -941,7 +948,8 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 }
                 close R1;
 
-                opendir R4, $r4seqs or die "Cannot open directory $r4seqs\n";
+                opendir R4, $r4seqs
+                  or die "Cannot open directory $r4seqs\n";
                 while ( $filename = readdir R4 ) {
                     my @suffixes = ( ".fastq", ".fq" );
                     my $Prefix =
@@ -960,7 +968,8 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
             if ( $var eq "V4" ) {
                 print "--Removing V4 primers from all sequences\n";
                 my $filename;
-                opendir R1, $r1seqs or die "Cannot open directory $r1seqs\n";
+                opendir R1, $r1seqs
+                  or die "Cannot open directory $r1seqs\n";
                 while ( $filename = readdir R1 ) {
                     if ( $filename =~ /.fastq/ ) {
                         my @suffixes = ( ".fastq", ".fq" );
@@ -977,7 +986,8 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 }
                 close R1;
 
-                opendir R4, $r4seqs or die "Cannot open directory $r4seqs\n";
+                opendir R4, $r4seqs
+                  or die "Cannot open directory $r4seqs\n";
                 while ( $filename = readdir R4 ) {
                     my @suffixes = ( ".fastq", ".fq" );
                     my $Prefix =
@@ -996,7 +1006,8 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
             if ( $var eq "V3V4" ) {
                 print $logFH "...Removing V3V4 primers from all sequences.\n";
                 my $filename;
-                opendir R1, $r1seqs or die "Cannot open directory $r1seqs\n";
+                opendir R1, $r1seqs
+                  or die "Cannot open directory $r1seqs\n";
                 while ( $filename = readdir R1 ) {
                     if ( $filename =~ /.fastq/ ) {
                         my @suffixes = ( ".fastq", ".fq" );
@@ -1015,7 +1026,8 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 }
                 close R1;
 
-                opendir R4, $r4seqs or die "Cannot open directory $r4seqs\n";
+                opendir R4, $r4seqs
+                  or die "Cannot open directory $r4seqs\n";
                 while ( $filename = readdir R4 ) {
                     if ( $filename =~ /.fastq/ ) {
                         my @suffixes = ( ".fastq", ".fq" );
@@ -1037,7 +1049,8 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
             if ( $var eq "V4" ) {
                 print "...Removing V4 primers from all sequences.\n";
                 my $filename;
-                opendir R1, $r1seqs or die "Cannot open directory $r1seqs\n";
+                opendir R1, $r1seqs
+                  or die "Cannot open directory $r1seqs\n";
                 while ( $filename = readdir R1 ) {
                     if ( $filename =~ /.fastq/ ) {
                         my @suffixes = ( ".fastq", ".fq" );
@@ -1054,7 +1067,8 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 }
                 close R1;
 
-                opendir R4, $r4seqs or die "Cannot open directory $r4seqs\n";
+                opendir R4, $r4seqs
+                  or die "Cannot open directory $r4seqs\n";
                 while ( $filename = readdir R4 ) {
                     my @suffixes = ( ".fastq", ".fq" );
                     my $Prefix =
@@ -1072,7 +1086,8 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
             if ( $var eq "ITS" ) {
                 print "...Removing ITS primers from all sequences.\n";
                 my $filename;
-                opendir R1, $r1seqs or die "Cannot open directory $r1seqs\n";
+                opendir R1, $r1seqs
+                  or die "Cannot open directory $r1seqs\n";
                 while ( $filename = readdir R1 ) {
                     if ( $filename =~ /.fastq/ ) {
                         my @suffixes = ( ".fastq", ".fq" );
@@ -1089,7 +1104,8 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 }
                 close R1;
 
-                opendir R4, $r4seqs or die "Cannot open directory $r4seqs\n";
+                opendir R4, $r4seqs
+                  or die "Cannot open directory $r4seqs\n";
                 while ( $filename = readdir R4 ) {
                     my @suffixes = ( ".fastq", ".fq" );
                     my $Prefix =
@@ -1435,7 +1451,8 @@ close $logFH;
 # @param 0 mapping file path
 sub count_samples {
     my $map = shift;
-    open my $mapFH, "<$map" or die "Cannot open $map for reading: $OS_ERROR";
+    open my $mapFH, "<$map"
+      or die "Cannot open $map for reading: $OS_ERROR";
     while (<$mapFH>) { }
     my $ans = $. - 1;
     close $mapFH;
@@ -1705,23 +1722,23 @@ sub source {
 sub check_error_log {
     my $error_log = shift;
     my $step      = shift;
-    print "---Checking for $step errors\n";
     my $error;
     ## make $error array so that goes through all errors for that step.
   RECHECK:
     $error = glob("$error_log/$step.e*");
     if ( defined $error ) {
-        print "---Checking for errors in $error.\n";
         open ERROR, "<$error" or die "Can't open $error.\n";
         while (<ERROR>) {
             if ( $_ =~ /error/ || $_ =~ /Error/ || $_ =~ /ERROR/ ) {
                 print "Error in $step. See $error.\n";
                 print $logFH "Error in $step. See $error.\n";
-                die;
-            } else {
-                print "---No errors found in $step.\n";
-                print $logFH "---No errors found in $step.\n";
-            }
+                seek(ERROR, 0, 0);
+                my $errorMessage = do { local $/; <ERROR> };
+                die $errorMessage;
+            }# else {
+                #print "---No errors found in $step.\n";
+                #print $logFH "---No errors found in $step.\n";
+            #}
         }
     } else {
         ##print "---Re-checking for $step error file\n";
