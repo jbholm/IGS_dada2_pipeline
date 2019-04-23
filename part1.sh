@@ -66,7 +66,7 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         shift 2
         ;;
     -r)
-        try_assign RUN_ID "$1" "$2"
+        try_assign RUN "$1" "$2"
         shift 2
         ;;
     -m)
@@ -92,6 +92,10 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         ;;
     --dry-run)
         DRY_RUN=$1
+        shift 1
+        ;;
+    --verbose)
+        VERBOSE=$1
         shift 1
         ;;
     --skip-err-thld)
@@ -159,26 +163,10 @@ if [[ -n $PARAMS ]]; then
     printf "\nPassing unknown parameters through to illumina_dada2.pl: $PARAMS\n"
 fi
 
-# validate -dbg flags
-if [[ -n "$DBG" ]]; then # if dbg is non-empty string
-    DBG=${DBG:1:${#DBG}} # Remove the first character (whitespace) from dbg
-    DBG_A=( $DBG ) # Separate on whitespace and convert to array
-
-    for ((WORD=7;WORD<${#DBG_A[@]};WORD++)); do
-        if (( WORD % 2 == 0 )); then
-            if [ ${DBG_A[WORD]} != "validate" ] && \
-            [ ${DBG_A[WORD]} != "barcodes" ] && \
-            [ ${DBG_A[WORD]} != "demultiplex" ] && \
-            [ ${DBG_A[WORD]} != "tagclean" ] && \
-            [ ${DBG_A[WORD]} != "dada2" ]; then
-                printf "\nIllegal debug option. Legal debug options are validate, "\
-                "barcodes, demultiplex, tagclean, and dada2.\n"
-                exit 2
-            fi
-        fi
-    done
-    NDBG="${#DBG_FLAGS[@]}" # Count the number of dbg flags
-    printf "%b" "Debug options validated\n\n"
+if [[ -n "$ONESTEP" ]]; then
+    printf "RUN TYPE: One-step\n"
+else
+    printf "RUN TYPE: Two-step\n"
 fi
 
 # Validate specification of raw files / directory
@@ -194,8 +182,8 @@ if [[ ! -n "$RAW_PATH" ]]; then
             "file permissions.\n"
             exit 2
         fi
-        R1="-r1 $R1"
-        R2="-r2 $R2"
+        printf "FWD READS: $R1\nREV READS:$R2\n"
+        INPUT="-r1 $R1 -r2 $R2"
     else
         if ! [[ -n "$R1" && -n "$R2" && -n "$I1" && -n "$I2" ]]; then
             printf "%b\n" "Please provide the location of the raw sequencing files (single directory => -i)" \
@@ -207,18 +195,24 @@ if [[ ! -n "$RAW_PATH" ]]; then
             "spellings and file permissions.\n"
             exit 2
         fi
-        R1="-r1 $R1"
-        R2="-r2 $R2"
-        I1="-i1 $I1"
-        I2="-i2 $I2"
+        printf "%b\n" "FWD READS: $R1" \
+            "REV READS: $R2" \
+            "INDEX 1: $I1" \
+            "INDEX 2: $I2"
+        INPUT="-r1 $R1 -r2 $R2 -i1 $I1 -i2 $I2"
     fi
-elif [[ -n "$R1" || -n "$R2" || -n "$I1" || -n "$I2" ]]; then
-    printf "%b\n" "Do not provide both the input directory (-i) and the input files." \
-    "(-r1, -r2, -i1, -i2). Only one or the other is needed.\n"
-    exit 2
-elif [[ ! -d "$RAW_PATH" ]]; then
-    printf "\n\tThe input directory does not exist or is inaccessible.\n"
-    exit 2
+else
+    if [[ -n "$R1" || -n "$R2" || -n "$I1" || -n "$I2" ]]; then
+        printf "%b\n" "Do not provide both the input directory (-i) and the input files." \
+        "(-r1, -r2, -i1, -i2). Only one or the other is needed.\n"
+        exit 2
+    elif [[ ! -d "$RAW_PATH" ]]; then
+        printf "\n\tThe input directory does not exist or is inaccessible.\n"
+        exit 2
+    else
+        printf "INPUT DIRECTORY: $RAW_PATH\n"
+    fi
+    INPUT="-i $RAW_PATH"
 fi
 
 # Validate that mapping file was given and exists
@@ -229,34 +223,78 @@ elif [[ ! -e "$MAP" ]]; then
     printf "\n\tMapping file (-m) does not exist or is inaccessible.\n\n"
     exit 2
 fi
+printf "MAPPING FILE: $MAP\n"
 
-# Validate the variable region
-if [[ ! -n "$VAR" ]]; then
-    printf "%b" "Please indicate the targeted variable region (-v V3V4 or -v V4" \
-    " or -v ITS)\n\n"
-    exit 2
-elif [[ !( "$VAR" == "V3V4" || "$VAR" == "V4" || "$VAR" == "ITS" ) ]]; then
-    printf "\n\tVariable region was '$VAR' but only 'V3V4', 'V4', and 'ITS' are"\
-    " supported.\n\n"
+# -p is mandatory
+if [[ ! -n "$PROJECT" ]]; then
+    printf "-p <project> required.\n\n"
     exit 2
 fi
 
-if [[ ! -n "$SD" ]]; then
-    printf "%b" "***Please choose a storage directory (-sd), either 'scratch' or "\
-    "'groupshare'.\n\tOR\nprovide a full path to an existing directory.\n\n"
+# -r is mandatory
+if [[ ! -n "$RUN" ]]; then
+    printf "-r <run ID> required.\n\n"
     exit 2
+fi
+
+# Validate the variable region
+if [[ ! -n "$VAR" ]]; then
+    VAR="V3V4"
+elif [[ !( "$VAR" == "V3V4" || "$VAR" == "V4" || "$VAR" == "ITS" ) ]]; then
+    printf "%b" "\nVariable region was '$VAR' but only 'V3V4', 'V4', and 'ITS'"\
+    " are supported.\n\n"
+    exit 2
+fi
+printf "VARIABLE REGION: $VAR\n"
+
+# Validate the storage directory
+if [[ ! -n "$SD" || "$SD" == "scratch" ]]; then
+    SD="/local/scratch"
+elif [[ "$SD" == "groupshare" ]]; then
+    SD="/local/groupshare/ravel"
+elif [[ ! -d "$SD" ]]; then
+    printf "$SD does not exist!\n" # A custom storage directory must exist
+    exit 2
+else
+    SD="${SD%\/}" # Remove any trailing slash
+fi
+SD="$SD/$PROJECT/$RUN" # But we'll automatically make these subfolders
+printf "%b" "WORKING DIRECTORY: $SD\n"
+mkdir -p "$SD/qsub_error_logs/"
+mkdir -p "$SD/qsub_stdout_logs/"
+
+# validate -dbg flags
+if [[ -n "$DBG" ]]; then # if dbg is non-empty string
+    DBG=${DBG:1:${#DBG}} # Remove the first character (whitespace) from dbg
+    DBG_A=( $DBG ) # Separate on whitespace and convert to array
+
+    for ((WORD=7;WORD<${#DBG_A[@]};WORD++)); do
+        if (( WORD % 2 == 0 )); then
+            if [ ${DBG_A[WORD]} != "validate" ] && \
+            [ ${DBG_A[WORD]} != "barcodes" ] && \
+            [ ${DBG_A[WORD]} != "demux" ] && \
+            [ ${DBG_A[WORD]} != "tagclean" ] && \
+            [ ${DBG_A[WORD]} != "dada2" ]; then
+                printf "\nIllegal debug option. Legal debug options are validate, "\
+                "barcodes, demux, tagclean, and dada2.\n"
+                exit 2
+            else
+                printf "DEBUG: ${DBG_A[WORD]}\n"
+            fi
+        fi
+    done
+    #NDBG="${#DBG_FLAGS[@]}" # Count the number of dbg flags
+fi
+
+if [[ -n "$VERBOSE" ]]; then
+    printf "%b\n" "Running verbose..." \
+    "All qsub commands will be printed to: ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout"
 fi
 
 if [[ ( -n $FOR && ! -n $REV ) || ( -n $REV && ! -n $FOR ) ]]; then
     printf "***\nPlease provide truncation lengths for forward and reverse "\
     "reads\n";
     exit 2
-fi
-
-if [[ -n "$qproj" ]]; then
-    printf "\nqsub-project ID (--qsub-project, -qp) not provided. Using "\
-    "jravel-lab as default\n"
-    $qproj = "jravel-lab";
 fi
 
 # Acquire binaries
@@ -267,28 +305,20 @@ export PATH=/usr/local/packages/python-2.7.14/bin:$PATH
 export LD_LIBRARY_PATH=/usr/local/packages/python-2.7.14/lib:/usr/local/packages/gcc/lib64:$LD_LIBRARY_PATH
 . /usr/local/packages/usepackage/share/usepackage/use.bsh
 
-# Housekeeping
-if [ "$SD" = "scratch" ]; then
-    SD="/local/scratch/"
-elif [ "$SD" = "groupshare" ]; then
-    SD="/local/groupshare/ravel/"
-fi
-DIR="${SD}${PROJECT}/${RUN_ID}/"
-mkdir -p "$DIR/qsub_error_logs/"
-mkdir -p "$DIR/qsub_stdout_logs/"
-
 # Begin log (will be continued by illumina_dada2.pl)
 # Print pipeline version, system time, and qsub/illumina_dada2.pl command
-log="$SD/${PROJECT}_${RUN_ID}_16S_pipeline_log.txt";
+log="$SD/${PROJECT}_${RUN}_16S_pipeline_log.txt";
 MY_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 LOG_VERSION="$MY_DIR/scripts/log_version.pl"
 perl $LOG_VERSION $log
-printf "$time\n" > $log 
+printf "`date`\n" >> $log 
 
-CMD=("$QSUB_ARGS" "-cwd" "-b y" "-l mem_free=200M" "-P jravel-lab" "-q threaded.q" "-pe thread 4" "-V" "-o ${DIR}qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${DIR}qsub_error_logs/illumina_dada2.pl.stderr" "/home/jolim/IGS_dada2_pipeline/illumina_dada2.pl" "$RAW_PATH" "$R1" "$R2" "$I1" "$I2" "-p $PROJECT" "-r $RUN_ID" "-sd $SD" "-v $VAR" "-m $MAP" "$DBG" "$DRY_RUN" "$SKIP_ERR_THLD" "$FOR" "$REV" "$MAXN" "$MAXEE" "$TRUNCQ" "$RMPHIX" "$MAXLEN" "$MINLEN" "$MINQ" "$ONESTEP" "$PARAMS")
-
-printf "Initial qsub command: \n$ qsub ${CMD[*]}\n" > $log
-#qsub ${CMD[*]}
+CMD=("$QSUB_ARGS" "-cwd" "-b y" "-l mem_free=200M" "-P jravel-lab" "-q threaded.q" "-pe thread 4" "-V" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "/home/jolim/IGS_dada2_pipeline/illumina_dada2.pl" "$INPUT" "-wd $SD" "-v $VAR" "-m $MAP" "$DBG" "$VERBOSE" "$DRY_RUN" "$SKIP_ERR_THLD" "$FOR" "$REV" "$MAXN" "$MAXEE" "$TRUNCQ" "$RMPHIX" "$MAXLEN" "$MINLEN" "$MINQ" "$ONESTEP" "$PARAMS")
+printf "$ qsub${CMD[*]}\n"
+if [[ -n $VERBOSE ]]; then
+    printf "$ qsub${CMD[*]}\n" >> $log
+fi
+qsub ${CMD[*]}
 
 : <<=cut
 =pod
@@ -303,49 +333,23 @@ The script can be launched from any location on the IGS server, it automatically
 produces a directory in /local/groupshare/ravel named after the project and run
 ID provided. 
 
-Beginning with the path to four raw Illumina sequencing files (R1, R2, I1, I2),
+Beginning with a set of raw Illumina sequencing files (usually R1, R2, I1, and I2),
 a mapping file, a project ID, a run ID, and specifying the targeted variable
 region, this script:
-  1. Produces individual .fastq files for each sample listed in the mapping file
-  2. Performs tag-cleaning of each file
-  3. Runs the R1 (forward) and R2 (reverse) files through the dada2 pipeline for either the 16S rRNA gene V3V4 or V4 regions.
+  1. Extracts barcodes from the raw files.
+  2. Demultiplexes the raw reads into fastq files containing reads specific to 
+  this project.
+  3. Produces individual .fastq files for each sample listed in the mapping file
+  4. Performs tag-cleaning of each file
+  5. Runs the forward and reverse reads through the dada2 pipeline for the 
+  specified 16S rRNA gene region.
 
 A log file is written at <PROJECT>/<RUN>/<PROJECT>_<RUN>_16S_pipeline_log.txt
 
+
 =head1 SYNOPSIS
 
-THE FOLLOWING STEPS ARE REQUIRED BEFORE THIS SCRIPT WILL RUN:
-
-1. Qlogin to RHEL7 if you ssh'd onto a non-RHEL7 host: 
-
-  qlogin -P jravel-lab -l mem_free=500M -q interactive.q -V
-
-2. Execute from bash: 
-
-  export LD_LIBRARY_PATH=/usr/local/packages/gcc/lib64
-  source /usr/local/packages/usepackage/share/usepackage/use.bsh
-  use python-2.7
-  use qiime
-
-3. then run script as below: 
-
-FOR 2-STEP:
-part1.sh -i <path to raw files> -p <project name> -r <run id> 
-  -v <variable region> -m <full path to mapping file> -sd <storage directory>
-
-OR:
-part1.sh -r1 <path_to_R1_file> -r2 <path_to_R2_file> -i1 <path_to_I1_file>
-  -i2 <path_to_I2_file> -p <project name> -r <run id> -v <variable region> 
-  -m <full path to mapping file> -sd <storage directory>
-
-FOR 1-STEP:
-part1.sh -i <input directory> -p <project name> -r <run ID> -m <mapping file>
-  -v <variable region> -sd <storage directory> --1Step
-
-OR:
-part1.sh -r1 <path_to_R1_file> -r2 <path_to_R2_file> -p <project name> 
-  -r <run ID> -m <mapping file> -v <variable region> -sd <storage directory> 
-  --1Step
+part1.sh [-i <input directory> | -r1 <fwd reads> -r2 <rev reads> [-i1 <index 1> -i2 <index 2>]] -p <project> -r <run> -m <map> [-v <variable region>] [--1Step] [<options>]
 
 =head1 OPTIONS
 
@@ -353,23 +357,41 @@ part1.sh -r1 <path_to_R1_file> -r2 <path_to_R2_file> -p <project name>
 
 =item B<--raw-path>=path, B<-i> path
 
-Single full path to directory containing raw R1, R2, R3, and R4 files
+Single full path to directory containing raw files. File names must have the 
+pattern *AA.fastq[.gz], where AA is either R1, R2, R3, R4, I1, or I2, and gzip 
+compression is optional. B<--raw-path> is incompatible with B<-r1>, B<-r2>, B<-i1>, and B<-i2>.
 
-=item B<--r1-path>=file, B<-r1> file
+Three combinations of files are allowed:
 
-Full path to raw R1 read file (forward read file, or r1) (.fastq.gz).
+    DEFAULT (TWO-STEP PCR):
+    R1, R2, I1, I2
 
-=item B<--r2-path>=file, B<-r2> file
+    OLD TWO-STEP NAMING STYLE (automatically detected):
+    R1, R2, R3, R4 
+    (R1 and R4 are fwd and rev reads, respectively. R2 and R3 are index 1 
+    and index 2, respectively.)
 
-Full path to raw R2 read file (barcode file, or i1) (.fastq.gz).
+    ONE-STEP PCR (<--1step> MUST BE GIVEN):
+    R1, R2
 
-=item B<--r3-path>=file, B<-r3> file
+=item B<-r1> file
 
-Full path to raw R3 read file (barcode file, or i2) (.fastq.gz).
+Full path to raw foward read file (R1). Gzip compression optional.
 
-=item B<--r4-path>=file, B<-r4> file
+=item B<-r2> file
 
-Full path to raw R4 read file (reverse read file, r2 or r4) (.fastq.gz).
+Full path to raw reverse read file (R2, or R4 in old naming scheme). Gzip 
+compression optional.
+
+=item B<-i1> file
+
+Full path to raw index 1 file (I1, or R2 in old naming scheme). Incompatible 
+with B<--1step>. Gzip compression optional.
+
+=item B<-i2> file
+
+Full path to raw index 2 file (I2, or R3 in old naming scheme). Incompatible 
+with B<--1step>. Gzip compression optional.
 
 =item B<--project-name>=name, B<-p> name
 
@@ -407,7 +429,7 @@ Print help message and exit successfully.
 Indicate which qsub-project space should be used for all qsubmissions. The
 default is jravel-lab.
 
-=item B<-dbg> {qiime_and_validation, extract_barcodes, demultiplex, tagclean, dada2}
+=item B<-dbg> {validate, barcodes, demux, tagclean, dada2}
 
 Runs only one section of the pipeline and writes every qsub command to the log file.
 
@@ -427,10 +449,9 @@ following options:
     -e <from auto-generated path -sd, -p, and -r>
 
 Additional options may be specified as a single string surrounded by
-double quotes ("), as shown below. Qsub allows many options including -P to be 
-provided more than once, in which case only the last value will be used. 
+double quotes ("), as shown below. Most options will override this script's defaults.
 
-    part1.sh --qsub="-m ea -l excl=true" -P project -r run -sd /other/path...
+    part1.sh --qsub="-m ea -l excl=true" -p project -r run -sd /other/path...
 
 =back 
 
