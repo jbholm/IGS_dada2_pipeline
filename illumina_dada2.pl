@@ -806,6 +806,7 @@ if ( !@dbg || grep( /^demux$/, @dbg ) ) {
                     close SAMPLE;
                 }
             }
+            check_error_log( $error_log, $step3 );
         }
 
         print "--All samples ($n_fq) and reads (@{[$nLines / 4]}) accounted"
@@ -836,9 +837,9 @@ if ( !@dbg || grep( /^demux$/, @dbg ) ) {
                     close SAMPLE;
                 }
             }
+            check_error_log( $error_log, $step3 );
         }
 
-        check_error_log( $error_log, $step3 );
 
         print
           "--All samples ($n_fq) and reads (@{[$nLines / 4]}) accounted for"
@@ -902,6 +903,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
     my @fwdTcFiles = glob("$wd/*R1_tc.fastq");
     my @revTcFiles = glob("$wd/*R2_tc.fastq");
 
+    my @cmds;
     if (   scalar @fwdTcFiles != $newSamNo
         || scalar @revTcFiles != $newSamNo )
     {
@@ -918,8 +920,8 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                           File::Basename::basename( $filename, @suffixes );
                         my $tc = "$wd/$Prefix" . "_R2_tc";
                         $cmd =
-"perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2 -trim_within 50";
-                        execute_and_log($cmd, 0, $dryRun);
+"qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2 -trim_within 50";
+                        push @cmds, $cmd;
                     }
                 }
                 close R1;
@@ -932,8 +934,8 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                       File::Basename::basename( $filename, @suffixes );
                     my $tc = "$wd/$Prefix" . "_R1_tc";
                     $cmd =
-"perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2 -trim_within 50";
-                    execute_and_log($cmd, 0, $dryRun);
+"qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2 -trim_within 50";
+                        push @cmds, $cmd;
                 }
                 close R4;
             }
@@ -951,7 +953,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my $tc = "$wd/$Prefix" . "_R1_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
-                        execute_and_log($cmd, 0, $dryRun);
+                        push @cmds, $cmd;
                     }
                 }
                 close R1;
@@ -965,7 +967,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                     my $tc = "$wd/$Prefix" . "_R2_tc";
                     $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
-                    execute_and_log($cmd, 0, $dryRun);
+                        push @cmds, $cmd;
                 }
                 close R4;
             }
@@ -984,8 +986,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
 
                         $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
-
-                        execute_and_log($cmd, 0, $dryRun);
+                        push @cmds, $cmd;
                     }
                 }
                 close R1;
@@ -1001,8 +1002,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
 
                         $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2";
-
-                        execute_and_log($cmd, 0, $dryRun);
+                        push @cmds, $cmd;
                     }
                 }
                 close R4;
@@ -1020,7 +1020,8 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my $tc = "$wd/$Prefix" . "_R1_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
-                        execute_and_log($cmd, 0, $dryRun);
+                        push @cmds, $cmd;
+
                     }
                 }
                 close R1;
@@ -1034,7 +1035,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                     my $tc = "$wd/$Prefix" . "_R2_tc";
                     $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
-                    execute_and_log($cmd, 0, $dryRun);
+                    push @cmds, $cmd;
                 }
                 close R4;
             }
@@ -1051,7 +1052,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my $tc = "$wd/$Prefix" . "_R1_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 CTGCCCTTTGTACACACCGC -mm5 2";
-                        execute_and_log($cmd, 0, $dryRun);
+                        push @cmds, $cmd;
                     }
                 }
                 close R1;
@@ -1065,17 +1066,19 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                     my $tc = "$wd/$Prefix" . "_R2_tc";
                     $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 TTTCGCTGCGTTCTTCATCG -mm5 2";
-                    execute_and_log($cmd, 0, $dryRun);
+                    push @cmds, $cmd;
                 }
                 close R4;
             }
         }
+        execute_and_log(@cmds, 0, $dryRun);
 
         my @files  = glob("$wd/*R1_tc.fastq");
         my $nFiles = @files;
         while ( $nFiles != $newSamNo ) {
             @files  = glob("$wd/*R1_tc.fastq");
             $nFiles = @files;
+            check_error_log( $error_log, "perl" );
         }
         print "---All tagcleaned R1 samples accounted for in $wd\n";
 
@@ -1084,6 +1087,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
         while ( $nFiles != $newSamNo ) {
             @files  = glob("$wd/*R2_tc.fastq");
             $nFiles = @files;
+            check_error_log( $error_log, "perl" );
         }
         print "---All tagcleaned R4 (R2) samples accounted for in $wd\n";
 
