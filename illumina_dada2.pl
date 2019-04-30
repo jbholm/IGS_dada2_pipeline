@@ -188,7 +188,7 @@ GetOptions(
     "map|m=s"                => \my $map,
     "var-reg|v=s"            => \my $var,
     "help|h!"                => \my $help,
-    "dbg:s"                  => \@dbg,
+    "d|debug:s"              => \@dbg,
     "verbose"                => \my $verbose,
     "dry-run"                => \my $dryRun,
     "nocheck"                => \my $noCheck,
@@ -356,29 +356,22 @@ if ( ( !@dbg ) || grep( /^validate$/, @dbg ) ) {
     #####################################################
     $qiime = "$wd/$project" . "_" . $run . "_" . "qiime_config.txt";
     $cmd   = "print_qiime_config.py > $qiime";
-    print "\tcmd=$cmd\n" if $verbose;
-    system($cmd) == 0
-      or die "system($cmd) failed with exit code: $?"
-      if !$dryRun;
+    execute_and_log($cmd, 0, $dryRun);
 
     ###### BEGIN VALIDATION OF MAPPING FILE ###########
     ################################################
 
-    @errors = glob("$error_log/*.log");
+    @errors = glob("$error_log/*.log"); # place this wildcard inside the rm cmd
     if (@errors) {
         foreach my $error (@errors) {
             $cmd = "rm $error";
-            print "\tcmd=$cmd\n" if $verbose;
-            system($cmd) == 0
-              or die "system($cmd) failed with exit code: $?"
-              if !$dryRun;
+            execute_and_log($cmd, 0, $dryRun);
         }
     }
 
     print "--Validating $map\n";
     $cmd = "validate_mapping_file.py -m $map -s -o $error_log";
-    print "\tcmd=$cmd\n" if $verbose;
-    system($cmd) == 0 or die "system($cmd) failed:$?\n" if !$dryRun;
+    execute_and_log($cmd, 0, $dryRun);
 
     my $mappingError = glob("$error_log/*.log");
     if ($mappingError) {
@@ -587,13 +580,9 @@ if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
         }
         $cmd =
 "extract_barcodes.py -f $localNames{\"index1\"} -r $localNames{\"index2\"} -c barcode_paired_end --bc1_len $bcLen --bc2_len $bcLen $mapOpt -o $wd";
-        print "\tcmd=$cmd\n" if $verbose;
         print "---Waiting for barcode extraction to complete.\n";
 
-        system($cmd) == 0 or die;
-        if ( $? && !$dryRun ) {
-            die $!;
-        }
+        execute_and_log($cmd, 0, $dryRun);
 
         my $duration = time - $start;
         print "---Barcode extraction complete\n";
@@ -930,10 +919,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my $tc = "$wd/$Prefix" . "_R2_tc";
                         $cmd =
 "perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2 -trim_within 50";
-                        print "\tcmd=$cmd\n" if $verbose;
-                        system($cmd) == 0
-                          or die "system($cmd) failed with exit code: $?"
-                          if !$dryRun;
+                        execute_and_log($cmd, 0, $dryRun);
                     }
                 }
                 close R1;
@@ -947,10 +933,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                     my $tc = "$wd/$Prefix" . "_R1_tc";
                     $cmd =
 "perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2 -trim_within 50";
-                    print "\tcmd=$cmd\n" if $verbose;
-                    system($cmd) == 0
-                      or die "system($cmd) failed with exit code: $?"
-                      if !$dryRun;
+                    execute_and_log($cmd, 0, $dryRun);
                 }
                 close R4;
             }
@@ -968,10 +951,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my $tc = "$wd/$Prefix" . "_R1_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
-                        print "\tcmd=$cmd\n" if $verbose;
-                        system($cmd) == 0
-                          or die "system($cmd) failed with exit code: $?"
-                          if !$dryRun;
+                        execute_and_log($cmd, 0, $dryRun);
                     }
                 }
                 close R1;
@@ -985,10 +965,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                     my $tc = "$wd/$Prefix" . "_R2_tc";
                     $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
-                    print "\tcmd=$cmd\n" if $verbose;
-                    system($cmd) == 0
-                      or die "system($cmd) failed with exit code: $?"
-                      if !$dryRun;
+                    execute_and_log($cmd, 0, $dryRun);
                 }
                 close R4;
             }
@@ -1008,10 +985,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
 
-                        print "\tcmd=$cmd\n" if $verbose;
-                        system($cmd) == 0
-                          or die "system($cmd) failed with exit code: $?"
-                          if !$dryRun;
+                        execute_and_log($cmd, 0, $dryRun);
                     }
                 }
                 close R1;
@@ -1028,10 +1002,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2";
 
-                        print "\tcmd=$cmd\n" if $verbose;
-                        system($cmd) == 0
-                          or die "system($cmd) failed with exit code: $?"
-                          if !$dryRun;
+                        execute_and_log($cmd, 0, $dryRun);
                     }
                 }
                 close R4;
@@ -1049,10 +1020,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my $tc = "$wd/$Prefix" . "_R1_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
-                        print "\tcmd=$cmd\n" if $verbose;
-                        system($cmd) == 0
-                          or die "system($cmd) failed with exit code: $?"
-                          if !$dryRun;
+                        execute_and_log($cmd, 0, $dryRun);
                     }
                 }
                 close R1;
@@ -1066,10 +1034,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                     my $tc = "$wd/$Prefix" . "_R2_tc";
                     $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
-                    print "\tcmd=$cmd\n" if $verbose;
-                    system($cmd) == 0
-                      or die "system($cmd) failed with exit code: $?"
-                      if !$dryRun;
+                    execute_and_log($cmd, 0, $dryRun);
                 }
                 close R4;
             }
@@ -1086,10 +1051,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my $tc = "$wd/$Prefix" . "_R1_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 CTGCCCTTTGTACACACCGC -mm5 2";
-                        print "\tcmd=$cmd\n" if $verbose;
-                        system($cmd) == 0
-                          or die "system($cmd) failed with exit code: $?"
-                          if !$dryRun;
+                        execute_and_log($cmd, 0, $dryRun);
                     }
                 }
                 close R1;
@@ -1103,10 +1065,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                     my $tc = "$wd/$Prefix" . "_R2_tc";
                     $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 TTTCGCTGCGTTCTTCATCG -mm5 2";
-                    print "\tcmd=$cmd\n" if $verbose;
-                    system($cmd) == 0
-                      or die "system($cmd) failed with exit code: $?"
-                      if !$dryRun;
+                    execute_and_log($cmd, 0, $dryRun);
                 }
                 close R4;
             }
@@ -1159,10 +1118,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
     if ( !-e $dada2 ) {
         print "--Removing old filtered fastq files from previous runs\n";
         $cmd = "rm -rf $wd/filtered";
-        print "\tcmd=$cmd\n" if $verbose;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
+        execute_and_log($cmd, 0, $dryRun);
 
         print "Running DADA2 with fastq files in $wd\n";
         print $logFH "Running DADA2 for $var region\n";
@@ -1331,10 +1287,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
     my $projrt = "$wd/$project" . "_" . $run . "_dada2_part1_rTmp.R";
     if ( !-e $projrt ) {
         $cmd = "mv $rt $projrt";
-        print "\tcmd=$cmd\n" if $verbose;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
+        execute_and_log($cmd, 0, $dryRun);
         print $logFH "\tDADA2-specific commands can be found in $projrt\n";
     }
 
@@ -1342,10 +1295,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
     my $projrtout = "$wd/$project" . "_" . $run . "_dada2_part1_rTmp.Rout";
     if ( !-e $projrtout ) {
         $cmd = "mv $rtout $projrtout";
-        print "\tcmd=$cmd\n" if $verbose;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
+        execute_and_log($cmd, 0, $dryRun);
         print $logFH "\tDADA2-specific commands with output can be found in "
           . "$projrtout\n";
     }
@@ -1663,10 +1613,7 @@ sub run_R_script {
 
     my $cmd =
 "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
-    print "\tcmd=$cmd\n" if $verbose;
-    system($cmd) == 0
-      or die "system($cmd) failed with exit code: $?"
-      if !$dryRun;
+    execute_and_log($cmd, 0, $dryRun);
 
     my $outR       = $outFile . "out";
     my $exitStatus = 1;
@@ -1698,10 +1645,7 @@ sub run_R_script {
 
                     my $cmd =
 "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
-                    print "\tcmd=$cmd\n" if $verbose;
-                    system($cmd) == 0
-                      or die "system($cmd) failed with exit code: $?"
-                      if !$dryRun;
+                    execute_and_log($cmd, 0, $dryRun);
                 } elsif ( $line =~ /proc.time()/ ) {
                     print "R script completed without errors." if $verbose;
                     $exitStatus = 0;
