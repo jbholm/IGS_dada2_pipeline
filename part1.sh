@@ -328,7 +328,7 @@ printf "$ qsub${CMD[*]}\n"
 if [[ -n $VERBOSE ]]; then
     printf "$ qsub${CMD[*]}\n" >> $log
 fi
-# qsub ${CMD[*]}
+qsub ${CMD[*]}
 
 : <<=cut
 =pod

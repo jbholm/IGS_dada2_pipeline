@@ -170,6 +170,7 @@ use Cwd qw(abs_path);
 use File::Temp qw/ tempfile /;
 use POSIX;
 use File::Spec::Functions;
+require File::Copy;
 
 $OUTPUT_AUTOFLUSH = 1;
 
@@ -1620,11 +1621,8 @@ sub run_R_script {
 
     print
 "--Removing old filtered fastq files, stats, and Rout files from previous runs\n";
-    $cmd = "rm -rf $wd/filtered";
-    print "\tcmd=$cmd\n" if $verbose;
-    system($cmd) == 0
-      or die "system($cmd) failed with exit code: $?"
-      if !$dryRun;
+    my $cmd = "rm -rf $wd/filtered";
+    execute_and_log( $cmd, 0, $dryRun );
 
     print "Running DADA2 with fastq files in $wd\n";
     print $logFH "Running DADA2 for $var region";
@@ -1632,7 +1630,7 @@ sub run_R_script {
     my $stats = "$wd/dada2_part1_stats.txt";
     unlink( $outR, $stats );
 
-    my $cmd =
+    $cmd =
 "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
     print "\tcmd=$cmd\n" if $verbose;
     system($cmd) == 0
@@ -1667,7 +1665,7 @@ sub run_R_script {
 
                     # Preserve the last R log file that errored. Get rid of the
                     # old R output file, then run R again.
-                    system("mv -f $outR $outR.old");
+                    File::Copy::move("$outR", "$outR.old");
                     print "See $outR.old for details.\n";
                     print "Attempting to restart R...\n";
 
