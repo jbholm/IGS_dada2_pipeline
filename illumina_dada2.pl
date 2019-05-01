@@ -271,12 +271,16 @@ if ( $var eq 'V4' || $var eq 'ITS' ) {
 if ( !$wd ) {
     die "\n***Please choose a working directory (-wd).";
 }
-$wd =~ s/\/$//; # remove trailing slash
+$wd =~ s/\/$//;    # remove trailing slash
+
 # Check if there are at least two directories in $wd
-if ( scalar (File::Spec->splitdir((File::Spec->splitpath( "$wd/" ))[1])) - 2 < 2) {
+if (
+    scalar( File::Spec->splitdir( ( File::Spec->splitpath("$wd/") )[1] ) ) -
+    2 < 2 )
+{
     die "Working directory (-wd) must have the pattern */PROJECT/RUN";
 }
-if ( ! -d $wd ) {
+if ( !-d $wd ) {
     die "Working directory (-wd) must exist.";
 }
 
@@ -302,8 +306,8 @@ if ($inDir) {
     $inDir =~ s/\/$//;    # remove trailing slash
 }
 
-my $run = File::Basename::basename($wd);
-my $pd = (File::Basename::fileparse($wd))[1];
+my $run     = File::Basename::basename($wd);
+my $pd      = ( File::Basename::fileparse($wd) )[1];
 my $project = File::Basename::basename($pd);
 
 my $error_log  = "$wd/qsub_error_logs";
@@ -356,22 +360,22 @@ if ( ( !@dbg ) || grep( /^validate$/, @dbg ) ) {
     #####################################################
     $qiime = "$wd/$project" . "_" . $run . "_" . "qiime_config.txt";
     $cmd   = "print_qiime_config.py > $qiime";
-    execute_and_log($cmd, 0, $dryRun);
+    execute_and_log( $cmd, 0, $dryRun );
 
     ###### BEGIN VALIDATION OF MAPPING FILE ###########
     ################################################
 
-    @errors = glob("$error_log/*.log"); # place this wildcard inside the rm cmd
+    @errors = glob("$error_log/*.log");  # place this wildcard inside the rm cmd
     if (@errors) {
         foreach my $error (@errors) {
             $cmd = "rm $error";
-            execute_and_log($cmd, 0, $dryRun);
+            execute_and_log( $cmd, 0, $dryRun );
         }
     }
 
     print "--Validating $map\n";
     $cmd = "validate_mapping_file.py -m $map -s -o $error_log";
-    execute_and_log($cmd, 0, $dryRun);
+    execute_and_log( $cmd, 0, $dryRun );
 
     my $mappingError = glob("$error_log/*.log");
     if ($mappingError) {
@@ -582,7 +586,7 @@ if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
 "extract_barcodes.py -f $localNames{\"index1\"} -r $localNames{\"index2\"} -c barcode_paired_end --bc1_len $bcLen --bc2_len $bcLen $mapOpt -o $wd";
         print "---Waiting for barcode extraction to complete.\n";
 
-        execute_and_log($cmd, 0, $dryRun);
+        execute_and_log( $cmd, 0, $dryRun );
 
         my $duration = time - $start;
         print "---Barcode extraction complete\n";
@@ -840,7 +844,6 @@ if ( !@dbg || grep( /^demux$/, @dbg ) ) {
             check_error_log( $error_log, $step3 );
         }
 
-
         print
           "--All samples ($n_fq) and reads (@{[$nLines / 4]}) accounted for"
           . " in $revSampleDir\n";
@@ -935,7 +938,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                     my $tc = "$wd/$Prefix" . "_R1_tc";
                     $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2 -trim_within 50";
-                        push @cmds, $cmd;
+                    push @cmds, $cmd;
                 }
                 close R4;
             }
@@ -967,7 +970,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                     my $tc = "$wd/$Prefix" . "_R2_tc";
                     $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
-                        push @cmds, $cmd;
+                    push @cmds, $cmd;
                 }
                 close R4;
             }
@@ -1071,7 +1074,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 close R4;
             }
         }
-        execute_and_log(@cmds, 0, $dryRun);
+        execute_and_log( @cmds, 0, $dryRun );
 
         my @files  = glob("$wd/*R1_tc.fastq");
         my $nFiles = @files;
@@ -1122,7 +1125,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
     if ( !-e $dada2 ) {
         print "--Removing old filtered fastq files from previous runs\n";
         $cmd = "rm -rf $wd/filtered";
-        execute_and_log($cmd, 0, $dryRun);
+        execute_and_log( $cmd, 0, $dryRun );
 
         print "Running DADA2 with fastq files in $wd\n";
         print $logFH "Running DADA2 for $var region\n";
@@ -1291,7 +1294,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
     my $projrt = "$wd/$project" . "_" . $run . "_dada2_part1_rTmp.R";
     if ( !-e $projrt ) {
         $cmd = "mv $rt $projrt";
-        execute_and_log($cmd, 0, $dryRun);
+        execute_and_log( $cmd, 0, $dryRun );
         print $logFH "\tDADA2-specific commands can be found in $projrt\n";
     }
 
@@ -1299,7 +1302,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
     my $projrtout = "$wd/$project" . "_" . $run . "_dada2_part1_rTmp.Rout";
     if ( !-e $projrtout ) {
         $cmd = "mv $rtout $projrtout";
-        execute_and_log($cmd, 0, $dryRun);
+        execute_and_log( $cmd, 0, $dryRun );
         print $logFH "\tDADA2-specific commands with output can be found in "
           . "$projrtout\n";
     }
@@ -1617,18 +1620,22 @@ sub run_R_script {
 
     my $cmd =
 "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
-    execute_and_log($cmd, 0, $dryRun);
+    execute_and_log( $cmd, 0, $dryRun );
 
     my $outR       = $outFile . "out";
     my $exitStatus = 1;
-
     while ( $exitStatus == 1 ) {
 
-        # Read the file continually, monitoring for signs of termination
+        # Until DADA2 succeeds, look for the R output file and monitor for
+        # signs of termination
         if ( -e $outR ) {
             open IN, "<$outR"
               or die "Cannot open $outR for reading: $OS_ERROR\n";
-            foreach my $line (<IN>) {
+            my $error = 0;
+            my @lines = <IN>;
+
+            while ( scalar @lines && !$error ) {
+                my $line = shift @lines;
                 if (    # signs of bad termination
                     (
                            $line =~ /Error in/
@@ -1642,14 +1649,16 @@ sub run_R_script {
                 {
                     print "R script crashed at: $line\n";
 
-                    # Preserve the last R log file that errored.
-                    system("mv $outR $outR.old");
+                    # Preserve the last R log file that errored. Get rid of the
+                    # old R output file, then run R again.
+                    system("mv -f $outR $outR.old");
                     print "See $outR.old for details.\n";
                     print "Attempting to restart R...\n";
 
                     my $cmd =
 "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
-                    execute_and_log($cmd, 0, $dryRun);
+                    execute_and_log( $cmd, 0, $dryRun );
+                    $error = 1;    # Don't process any more lines.
                 } elsif ( $line =~ /proc.time()/ ) {
                     print "R script completed without errors." if $verbose;
                     $exitStatus = 0;
