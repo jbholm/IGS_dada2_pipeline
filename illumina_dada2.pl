@@ -1123,12 +1123,6 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
     }
 
     if ( !-e $dada2 ) {
-        print "--Removing old filtered fastq files from previous runs\n";
-        $cmd = "rm -rf $wd/filtered";
-        execute_and_log( $cmd, 0, $dryRun );
-
-        print "Running DADA2 with fastq files in $wd\n";
-        print $logFH "Running DADA2 for $var region\n";
         chdir $pd;
         if ($oneStep) {
             if ( $var eq "V3V4" ) {
@@ -1159,7 +1153,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
                 }
                 dada2(
                     $run,  $truncLen, $maxN,   $maxEE, $truncQ,
-                    $phix, $maxLen,   $minLen, $minQ
+                    $phix, $maxLen,   $minLen, $minQ,  $logFH
                 );
             }
 
@@ -1190,7 +1184,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
                 }
                 dada2(
                     $run,  $truncLen, $maxN,   $maxEE, $truncQ,
-                    $phix, $maxLen,   $minLen, $minQ
+                    $phix, $maxLen,   $minLen, $minQ,  $logFH
                 );
             }
         } else {
@@ -1221,7 +1215,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
                 }
                 dada2(
                     $run,  $truncLen, $maxN,   $maxEE, $truncQ,
-                    $phix, $maxLen,   $minLen, $minQ
+                    $phix, $maxLen,   $minLen, $minQ,  $logFH
                 );
             }
 
@@ -1252,7 +1246,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
                 }
                 dada2(
                     $run,  $truncLen, $maxN,   $maxEE, $truncQ,
-                    $phix, $maxLen,   $minLen, $minQ
+                    $phix, $maxLen,   $minLen, $minQ,  $logFH
                 );
             }
 
@@ -1283,7 +1277,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
                 }
                 dada2(
                     $run,  $truncLen, $maxN,   $maxEE, $truncQ,
-                    $phix, $maxLen,   $minLen, $minQ
+                    $phix, $maxLen,   $minLen, $minQ,  $logFH
                 );
             }
         }
@@ -1363,20 +1357,26 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
     if ( -e $dadaTbl ) {
         print $logFH "\nFor $var region, dada2 used the following filtering "
           . "requirements:\n$truncLen\n$maxN\n$maxEE\n$truncQ\n$phix\n";
+
+        # "dada2 completed successfully" is a key phrase that causes
+        # an appropriate message printed to STDOUT
         print $logFH "dada2 completed successfully!\nAbundance table for "
           . "$project run $run located at $wd/dada2_abundance_table.rds\n";
         print $logFH "See $dadaTbl for dada2 table of reads surviving by "
-          . "step\n";
-        close $logFH;
+          . "step\n\n";
     } else {
         print "---dada2 did not complete successfully, something went wrong!\n"
           . "---Check $projrtout.\n";
+        print $logFH
+          "---dada2 did not complete successfully, something went wrong!\n"
+          . "---Check $projrtout.\n";
     }
 }
+
 ###### COMPLETING $logFH FILE ##############
 #########################################
 
-open $logFH, "<$log" or die "Cannot open $log for reading: $OS_ERROR";
+seek $logFH, 0, 0 or die $!;
 while (<$logFH>) {
     if ( $_ =~ /dada2 completed successfully!/ ) {
         print "---dada2 completed successfully\n";
@@ -1605,24 +1605,40 @@ sub dada2 {
   colnames(track) <- c("input", "filtered", "merged")
   write.table(track, "dada2_part1_stats.txt", quote=FALSE, append=FALSE, sep=\t, row.names=TRUE, col.names=TRUE)
   ~;
-    run_R_script($Rscript);
+    run_R_script( $Rscript, $logFH );
 }
 
 sub run_R_script {
-
-    chdir $wd;
     my $Rscript = shift;
+    my $logFH   = shift;
+    chdir $wd;
 
     my $outFile = "dada2_part1_rTmp.R";
     open OUT, ">$outFile", or die "cannot write to $outFile: $!\n";
     print OUT "$Rscript";
     close OUT;
 
+    print
+"--Removing old filtered fastq files, stats, and Rout files from previous runs\n";
+    $cmd = "rm -rf $wd/filtered";
+    print "\tcmd=$cmd\n" if $verbose;
+    system($cmd) == 0
+      or die "system($cmd) failed with exit code: $?"
+      if !$dryRun;
+
+    print "Running DADA2 with fastq files in $wd\n";
+    print $logFH "Running DADA2 for $var region";
+    my $outR  = $outFile . "out";
+    my $stats = "$wd/dada2_part1_stats.txt";
+    unlink( $outR, $stats );
+
     my $cmd =
 "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
-    execute_and_log( $cmd, 0, $dryRun );
+    print "\tcmd=$cmd\n" if $verbose;
+    system($cmd) == 0
+      or die "system($cmd) failed with exit code: $?"
+      if !$dryRun;
 
-    my $outR       = $outFile . "out";
     my $exitStatus = 1;
     while ( $exitStatus == 1 ) {
 
