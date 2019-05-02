@@ -415,42 +415,47 @@ if ( ( !@dbg ) || grep( /^validate$/, @dbg ) ) {
     my $null        = 0;
     while (<MAP>) {
         chomp;
-        if ( $. > 1 )    ## don't count header as sample
-        {
-            if (   $_ =~ "EXTNTC"
-                || $_ =~ "NTC.EXT"
-                || $_ =~ "NTCEXT"
-                || $_ =~ "EXT.NTC"
-                || $_ =~ "NTC"
-                || $_ =~ "EXTNEG" )
-            {
-                $extctrl++;
-            } elsif ( $_ =~ "PCRPOS"
-                || $_ =~ "PCR.pos"
-                || $_ =~ "pCR.pos"
-                || $_ =~ "POSCTRL"
-                || $_ =~ "POS.CTRL"
-                || $_ =~ "POSCON"
-                || $_ =~ "posctr" )
-            {
-                $pcrpos++;
-            } elsif ( $_ =~ "PCRNTC"
-                || $_ =~ "PCR.NEG"
-                || $_ =~ "PCR.NTC"
-                || $_ =~ "PCRNEG"
-                || $_ =~ "PCRNEGCTRL"
-                || $_ =~ "ntcctr" )
-            {
-                $pcrneg++;
-            } elsif ( $_ =~ /NULL/ ) {
-                $null++;
-            } else {
-                $projSamples++;
+        ## don't count header as sample; don't count any line if it doesn't
+        ## start with four tab-separated fields containing non-whitespace chars
+        if ( $. > 1 ) {
+            if ( $_ =~ /^\S+(\t\S+){3}/ ) {
+                if (   $_ =~ "EXTNTC"
+                    || $_ =~ "NTC.EXT"
+                    || $_ =~ "NTCEXT"
+                    || $_ =~ "EXT.NTC"
+                    || $_ =~ "NTC"
+                    || $_ =~ "EXTNEG" )
+                {
+                    $extctrl++;
+                } elsif ( $_ =~ "PCRPOS"
+                    || $_ =~ "PCR.pos"
+                    || $_ =~ "pCR.pos"
+                    || $_ =~ "POSCTRL"
+                    || $_ =~ "POS.CTRL"
+                    || $_ =~ "POSCON"
+                    || $_ =~ "posctr" )
+                {
+                    $pcrpos++;
+                } elsif ( $_ =~ "PCRNTC"
+                    || $_ =~ "PCR.NEG"
+                    || $_ =~ "PCR.NTC"
+                    || $_ =~ "PCRNEG"
+                    || $_ =~ "PCRNEGCTRL"
+                    || $_ =~ "ntcctr" )
+                {
+                    $pcrneg++;
+                } elsif ( $_ =~ /NULL/ ) {
+                    $null++;
+                } else {
+                    $projSamples++;
+                }
+            } elsif ( $_ =~ /\S/ ) {
+                # QIIME's validate_mapping_file seems to already check this:
+                die "In mapping file the line $. does not have four tab-separated fields."; 
             }
         }
-
     }
-    my $nSamples = $. - 1;
+    my $nSamples = $extctrl + $pcrpos + $pcrneg + $null + $projSamples;
     close MAP;
 
     ###### BEGIN EVALUATION OF SAMPLES VIA MAPPING FILE ###########

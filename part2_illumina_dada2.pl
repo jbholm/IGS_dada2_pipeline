@@ -79,18 +79,30 @@
 
 use strict;
 use warnings;
+my $scriptsDir;
+my $pipelineDir;
+
+BEGIN {
+  use File::Spec::Functions;
+  use File::Basename;
+
+  $pipelineDir = dirname(__FILE__);
+  $scriptsDir = catdir($pipelineDir, "scripts");
+
+}
+  use lib $scriptsDir; # .pm files in ./scripts/ can be loaded
+
+require Stats_gen;
+
 use Pod::Usage;
 use English qw( -no_match_vars );
 use Getopt::Long qw(:config no_ignore_case no_auto_abbrev pass_through);
-use Cwd qw(abs_path);
+require Cwd;
 use File::Temp qw/ tempfile /;
 #use Email::MIME;
 #use Email::Sender::Simple qw(sendmail);
 use File::Spec;
-use File::Basename;
 
-
-my $pipelineDir = dirname(__FILE__);
 $OUTPUT_AUTOFLUSH = 1;
 
 ####################################################################
@@ -170,6 +182,8 @@ if(!$inRuns)
 ####################################################################
 ##                               MAIN
 ####################################################################
+
+my $projDir = Cwd::cwd;
 
 ##split the list of runs to an array
 my @runs = split(",",$inRuns);
@@ -318,6 +332,9 @@ else
   print LOG "$cmd\n";
 }
 my $projpecan = $project ."_"."MC_order7_results.txt";
+
+# Combine dada2 stats from all runs, and the overall project, into one file
+Stats_gen::combine_dada2_stats($projDir);
 
 if ($region eq 'V3V4' && !$oral)
 {
