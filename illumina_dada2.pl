@@ -450,8 +450,10 @@ if ( ( !@dbg ) || grep( /^validate$/, @dbg ) ) {
                     $projSamples++;
                 }
             } elsif ( $_ =~ /\S/ ) {
+
                 # QIIME's validate_mapping_file seems to already check this:
-                die "In mapping file the line $. does not have four tab-separated fields."; 
+                die
+"In mapping file the line $. does not have four tab-separated fields.";
             }
         }
     }
@@ -938,13 +940,16 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 opendir R4, $revSampleDir
                   or die "Cannot open directory $revSampleDir\n";
                 while ( $filename = readdir R4 ) {
-                    my @suffixes = ( ".fastq", ".fq" );
-                    my $Prefix =
-                      File::Basename::basename( $filename, @suffixes );
-                    my $tc = "$wd/$Prefix" . "_R1_tc";
-                    $cmd =
+                    if ( $filename =~ /.fastq/ ) {
+
+                        my @suffixes = ( ".fastq", ".fq" );
+                        my $Prefix =
+                          File::Basename::basename( $filename, @suffixes );
+                        my $tc = "$wd/$Prefix" . "_R1_tc";
+                        $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2 -trim_within 50";
-                    push @cmds, $cmd;
+                        push @cmds, $cmd;
+                    }
                 }
                 close R4;
             }
@@ -970,13 +975,16 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 opendir R4, $revSampleDir
                   or die "Cannot open directory $revSampleDir\n";
                 while ( $filename = readdir R4 ) {
-                    my @suffixes = ( ".fastq", ".fq" );
-                    my $Prefix =
-                      File::Basename::basename( $filename, @suffixes );
-                    my $tc = "$wd/$Prefix" . "_R2_tc";
-                    $cmd =
+                    if ( $filename =~ /.fastq/ ) {
+
+                        my @suffixes = ( ".fastq", ".fq" );
+                        my $Prefix =
+                          File::Basename::basename( $filename, @suffixes );
+                        my $tc = "$wd/$Prefix" . "_R2_tc";
+                        $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
-                    push @cmds, $cmd;
+                        push @cmds, $cmd;
+                    }
                 }
                 close R4;
             }
@@ -1038,13 +1046,16 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 opendir R4, $revSampleDir
                   or die "Cannot open directory $revSampleDir\n";
                 while ( $filename = readdir R4 ) {
-                    my @suffixes = ( ".fastq", ".fq" );
-                    my $Prefix =
-                      File::Basename::basename( $filename, @suffixes );
-                    my $tc = "$wd/$Prefix" . "_R2_tc";
-                    $cmd =
+                    if ( $filename =~ /.fastq/ ) {
+
+                        my @suffixes = ( ".fastq", ".fq" );
+                        my $Prefix =
+                          File::Basename::basename( $filename, @suffixes );
+                        my $tc = "$wd/$Prefix" . "_R2_tc";
+                        $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
-                    push @cmds, $cmd;
+                        push @cmds, $cmd;
+                    }
                 }
                 close R4;
             }
@@ -1069,13 +1080,16 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 opendir R4, $revSampleDir
                   or die "Cannot open directory $revSampleDir\n";
                 while ( $filename = readdir R4 ) {
-                    my @suffixes = ( ".fastq", ".fq" );
-                    my $Prefix =
-                      File::Basename::basename( $filename, @suffixes );
-                    my $tc = "$wd/$Prefix" . "_R2_tc";
-                    $cmd =
+                    if ( $filename =~ /.fastq/ ) {
+
+                        my @suffixes = ( ".fastq", ".fq" );
+                        my $Prefix =
+                          File::Basename::basename( $filename, @suffixes );
+                        my $tc = "$wd/$Prefix" . "_R2_tc";
+                        $cmd =
 "qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 TTTCGCTGCGTTCTTCATCG -mm5 2";
-                    push @cmds, $cmd;
+                        push @cmds, $cmd;
+                    }
                 }
                 close R4;
             }
@@ -1670,7 +1684,7 @@ sub run_R_script {
 
                     # Preserve the last R log file that errored. Get rid of the
                     # old R output file, then run R again.
-                    File::Copy::move("$outR", "$outR.old");
+                    File::Copy::move( "$outR", "$outR.old" );
                     print "See $outR.old for details.\n";
                     print "Attempting to restart R...\n";
 
