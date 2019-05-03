@@ -1638,69 +1638,71 @@ sub run_R_script {
     print OUT "$Rscript";
     close OUT;
 
-    print
-"--Removing old filtered fastq files, stats, and Rout files from previous runs\n";
-    my $cmd = "rm -rf $wd/filtered";
-    execute_and_log( $cmd, 0, $dryRun );
-
-    print "Running DADA2 with fastq files in $wd\n";
-    print $logFH "Running DADA2 for $var region";
-    my $outR  = $outFile . "out";
-    my $stats = "$wd/dada2_part1_stats.txt";
-    unlink( $outR, $stats );
-
-    $cmd =
-"qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
-    print "\tcmd=$cmd\n" if $verbose;
-    system($cmd) == 0
-      or die "system($cmd) failed with exit code: $?"
-      if !$dryRun;
-
     my $exitStatus = 1;
+
     while ( $exitStatus == 1 ) {
+        print
+"--Removing old filtered fastq files, stats, and Rout files from previous runs\n";
+        my $outR = $outFile . "out";
+        my $cmd =
+"rm -rf $wd/filtered $outR $wd/dada2_part1_stats.txt $wd/dada2_abundance_table.rds $wd/.RData";
+        execute_and_log( $cmd, 0, $dryRun );
+
+        print "Running DADA2 with fastq files in $wd\n";
+        print $logFH "Running DADA2 for $var region";
+
+        $cmd =
+"qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
+        execute_and_log( $cmd, 0, $dryRun );
+
+        while ( !-e $outR ) {
+            check_error_log( $error_log, "R" );
+        }
 
         # Until DADA2 succeeds, look for the R output file and monitor for
         # signs of termination
         if ( -e $outR ) {
-            open IN, "<$outR"
-              or die "Cannot open $outR for reading: $OS_ERROR\n";
-            my $error = 0;
-            my @lines = <IN>;
+            my $decided = 0;    # flag to stop re-reading .Rout
+            while ( !$decided ) {
+                open IN, "<$outR"
+                  or die "Cannot open $outR for reading: $OS_ERROR\n";
+                my $line = <IN>;
+                while ( $line && !$decided ) {
+                    if (        # signs of bad termination
+                        (
+                               $line =~ /Error in/
+                            || $line =~ /Execution halted/
+                            || $line =~ /encountered errors/
+                            || $line =~ /Error :/
+                        )
+                        && $line !~ /learnErrors/ # False positives; don't match
+                        && $line !~ /error rates/
+                        && $line !~ /errors/
+                      )
+                    {
+                        $decided =
+                          1;    # Leave $exitStatus = 1 so DADA2 is restarted
+                        print "R script crashed at: $line\n";
 
-            while ( scalar @lines && !$error ) {
-                my $line = shift @lines;
-                if (    # signs of bad termination
-                    (
-                           $line =~ /Error in/
-                        || $line =~ /Execution halted/
-                        || $line =~ /encountered errors/
-                    )
-                    && $line !~ /learnErrors/    # False positives; don't match
-                    && $line !~ /error rates/
-                    && $line !~ /errors/
-                  )
-                {
-                    print "R script crashed at: $line\n";
+                     # Preserve the last R log file that errored. Get rid of the
+                     # old R output file, then run R again.
+                        File::Copy::move( "$outR", "$outR.old" );
+                        print "See $outR.old for details.\n";
+                        print "Attempting to restart R...\n";
 
-                    # Preserve the last R log file that errored. Get rid of the
-                    # old R output file, then run R again.
-                    File::Copy::move( "$outR", "$outR.old" );
-                    print "See $outR.old for details.\n";
-                    print "Attempting to restart R...\n";
+                    } elsif ( $line =~ /proc.time()/ ) {    # sign of success
 
-                    my $cmd =
-"qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
-                    execute_and_log( $cmd, 0, $dryRun );
-                    $error = 1;    # Don't process any more lines.
-                } elsif ( $line =~ /proc.time()/ ) {
-                    print "R script completed without errors." if $verbose;
-                    $exitStatus = 0;
+                        print "R script completed without errors." if $verbose;
+                        $exitStatus = 0;                    # Move on from DADA2
+                        $decided    = 1;                    # Stop reading .Rout
+
+                    }
+                    $line = <IN>;
                 }
+                close IN;
             }
-            close IN;
         }
     }
-
 }
 
 sub source {
@@ -1718,6 +1720,9 @@ sub source {
     }
 }
 
+# Check for qsub errors.
+# @_[0] The error log directory
+# @_[1] Prefix of error files to search.
 sub check_error_log {
     my $error_log = shift;
     my $step      = shift;

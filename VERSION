@@ -1,4 +1,4 @@
-1.2.0-bash_wrapper+21
+1.2.0-patch/dada2_overwrite_old_filtered+22
 We use semantic versioning:
 First number: Major version. Incremented for a commit on master that requires a change in how the pipeline is operated.
 Second number: Minor version. Incremented for a commit on master that adds a new feature (usually a new command-line option).
