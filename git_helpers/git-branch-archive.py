@@ -7,7 +7,7 @@ import argparse
 parser=argparse.ArgumentParser(
     description='''A script that automates the archival of a git branch by tagging it, deleting it, and pushing the changes to origin. ''',
     epilog="""""")
-parser.add_argument('branch', nargs='1', help='BAR!')
+parser.add_argument('branch', nargs=1, help='The branch to archive')
 args=parser.parse_args()
 
 print "$ git tag " + sys.argv[1] + " " + sys.argv[1]

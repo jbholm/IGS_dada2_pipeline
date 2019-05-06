@@ -15,7 +15,7 @@ sub getUpdate {
 	if($_[0] == 1) {
 		print "Please type 'major', 'minor', 'patch', or 'pre-release'. Type nothing for pre-release.\n";
 	} else {
-		print "Please describe the commit:\nMajor - A backwards-incompatible update\nMinor - A new command-line option\nPatch - Any smaller update\nSkip - Only if you manually updated the version already, or called git commit --amend\nPre-release - commits not on the master branch (DEFAULT)\n";
+		print "Please describe the commit:\nMajor - A backwards-incompatible update\nMinor - A new command-line option\nPatch - Any smaller update\nPre-release - commits not on the master branch (DEFAULT)\nSkip - Only if you manually updated the version already, or called git commit --amend\nAbort - Discontinue commit.\n";
 	}
 	my $input = `exec < /dev/tty && read input && echo \$input`;
 	chomp $input;
@@ -26,6 +26,8 @@ sub getUpdate {
 		if(not `git diff --staged | grep -E '^(\+|new file)'`) {
 			die "You asked to change the version number, but git diff --staged does not show any changes. Aborted.\n";
 		}
+	} elsif ($input eq "ABORT") {
+		die;
 	}
 
 	# Calculate the new version
@@ -65,7 +67,12 @@ sub getUpdate {
 		# get the name of the checked out branch
 		chomp($branch_commit[0] = `git branch | grep \\* | cut -d ' ' -f2`);
 		my @parts = split '/', $branch_commit[0], 2; # remove the first part if present
-		$branch_commit[0] = $parts[1];
+		if ( $parts[1] ) {
+			$branch_commit[0] = $parts[1];
+		} else {
+			$branch_commit[0] = $parts[0];
+		}
+		
 		if ($branch_commit[0] eq "master") {
 			die "Please do not make pre-release commits on master.";
 		}
