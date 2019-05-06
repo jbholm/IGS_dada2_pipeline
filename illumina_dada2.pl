@@ -109,14 +109,6 @@ with B<--1step>. Gzip compression optional.
 Full path to raw index 2 file (I2, or R3 in old naming scheme). Incompatible 
 with B<--1step>. Gzip compression optional.
 
-=item B<--project-name>=name, B<-p> name
-
-Create the project folder with this name.
-
-=item B<--run-ID>=name, B<-r> name
-
-Create the run folder with this name.
-
 =item B<--map>=file, B<-m> file
 
 The full path to the Qiime-formatted mapping file.
@@ -155,7 +147,7 @@ ignored.
 
 =item B<--verbose>
 
-Prints each command to STDOUT,
+Prints each command to STDOUT.
 
 =back 
 

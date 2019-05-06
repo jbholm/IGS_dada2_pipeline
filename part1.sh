@@ -75,19 +75,19 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         try_assign I2 "$1" "$2"
         shift 2
         ;;
-    -p)
+    -p|--project-name)
         try_assign PROJECT "$1" "$2"
         shift 2
         ;;
-    -r)
+    -r|--run-ID)
         try_assign RUN "$1" "$2"
         shift 2
         ;;
-    -m)
+    -m|--map)
         try_assign MAP "$1" "$2"
         shift 2
         ;;
-    -v)
+    -v|--var-reg)
         try_assign VAR "$1" "$2"
         shift 2
         ;;
@@ -128,7 +128,7 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         try_assign SD "$1" "$2"
         shift 2
         ;;
-    -qp|--qp)
+    -qp|--qsub-project)
         try_assign QP "$1" "$2"
         shift 2
         ;;
@@ -299,7 +299,7 @@ fi
 
 if [[ -n "$VERBOSE" ]]; then
     printf "%b\n" "Running verbose..." \
-    "All qsub commands will be printed to: \n${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout"
+    "All shell commands will be printed to: \n${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout"
 fi
 
 # Acquire binaries
@@ -344,32 +344,38 @@ produces a directory in /local/groupshare/ravel named after the project and run
 ID provided. 
 
 Beginning with a set of raw Illumina sequencing files (usually R1, R2, I1, and I2),
-a mapping file, a project ID, a run ID, and specifying the targeted variable
-region, this script:
-  1. Extracts barcodes from the raw files.
-  2. Demultiplexes the raw reads into fastq files containing reads specific to 
-  this project.
-  3. Produces individual .fastq files for each sample listed in the mapping file
-  4. Performs tag-cleaning of each file
-  5. Runs the forward and reverse reads through the dada2 pipeline for the 
-  specified 16S rRNA gene region.
+a mapping file, a project ID, and a run ID, this script:
 
-A log file is written at <PROJECT>/<RUN>/<PROJECT>_<RUN>_16S_pipeline_log.txt
+1. Extracts barcodes from the raw files.
+
+2. Demultiplexes the raw reads into fastq files containing reads specific to 
+this project.
+
+3. Produces individual .fastq files for each sample listed in the mapping file
+
+4. Performs tag-cleaning of each sample-specific file
+
+5. Runs the forward and reverse reads through the dada2 pipeline for the 
+V3V4 16S rRNA gene region. Alternatively, analysis of the V4 or ITS region may
+be specified.
+
+A log file is written at: <PROJECT>/<RUN>/<PROJECT>_<RUN>_16S_pipeline_log.txt
 
 
 =head1 SYNOPSIS
 
-part1.sh [-i <input directory> | -r1 <fwd reads> -r2 <rev reads> [-i1 <index 1> -i2 <index 2>]] -p <project> -r <run> -m <map> [-v <variable region>] [--1Step] [<options>]
+part1.sh (-i <input directory> | -r1 <fwd reads> -r2 <rev reads> [-i1 <index 1> -i2 <index 2>]) -p <project> -r <run> -m <map> [-v <variable region>] [--1Step] [<options>]
 
 =head1 OPTIONS
 
 =over
 
-=item B<--raw-path>=path, B<-i> path
+=item B<-i> path
 
 Single full path to directory containing raw files. File names must have the 
-pattern *AA.fastq[.gz], where AA is either R1, R2, R3, R4, I1, or I2, and gzip 
-compression is optional. B<--raw-path> is incompatible with B<-r1>, B<-r2>, B<-i1>, and B<-i2>.
+pattern *AA.fastq[.gz], where * is wildcard, AA is either R1, R2, R3, R4, I1, or
+I2, and gzip compression is optional. B<-i> is incompatible with B<-r1>, B<-r2>,
+B<-i1>, and B<-i2>.
 
 Three combinations of files are allowed:
 
@@ -378,8 +384,8 @@ Three combinations of files are allowed:
 
     OLD TWO-STEP NAMING STYLE (automatically detected):
     R1, R2, R3, R4 
-    (R1 and R4 are fwd and rev reads, respectively. R2 and R3 are index 1 
-    and index 2, respectively.)
+    (R1 and R4 are fwd and rev reads, respectively. R2 and R3 are index 
+    1 and index 2, respectively.)
 
     ONE-STEP PCR (<--1step> MUST BE GIVEN):
     R1, R2
@@ -403,45 +409,57 @@ with B<--1step>. Gzip compression optional.
 Full path to raw index 2 file (I2, or R3 in old naming scheme). Incompatible 
 with B<--1step>. Gzip compression optional.
 
-=item B<--project-name>=name, B<-p> name
+=item B<--project-name> name, B<-p> name
 
 Create the project folder with this name.
 
-=item B<--run-ID>=name, B<-r> name
+=item B<--run-ID> name, B<-r> name
 
 Create the run folder with this name.
 
-=item B<--map>=file, B<-m> file
+=item B<--map> file, B<-m> file
 
 The full path to the Qiime-formatted mapping file.
 
-=item B<--var-reg>={V3V4, V4, ITS}, B<-v> {V3V4, V4, ITS}
+=item B<--var-reg> {V3V4, V4, ITS}, B<-v> {V3V4, V4, ITS}
 
-The targeted variable region.
+The targeted variable region. V3V4 is default.
 
 =item B<--1Step>
 
 Use this flag if the data are prepared by 1-Step PCR (only r1 & r2 raw files
 available)
 
-=item B<--storage-dir>=path, B<-sd> path
+=item B<--storage-dir> path, B<-sd> path
 
 Indicate an existing directory in which to place the project directory.
-"scratch" evaluates to "/local/scratch/" and "groupshare" evaluates to
-"/local/groupshare/ravel"
+"scratch" (default) evaluates to "/local/scratch/" and "groupshare" evaluates to
+"/local/groupshare/ravel".
 
 =item B<-h>, B<--help>
 
 Print help message and exit successfully.
 
-=item B<--qsub-project>=space, B<-qp> space
+=item B<--qsub-project> space, B<-qp> space
 
 Indicate which qsub-project space should be used for all qsubmissions. The
 default is jravel-lab.
 
 =item B<--debug>, B<-d> {validate, barcodes, demux, tagclean, dada2}
 
-Runs only one section of the pipeline and writes every qsub command to the log file.
+Runs one or more sections of the pipeline. To run multiple sections, type 
+"--debug <section>" or "-d <section>" for each section.
+
+=item B<--verbose>
+
+Prints every shell command to: <storage-dir>/<project>/<run>/qsub_stdout_logs>/illumina_dada2.pl.stdout
+
+=item B<--dry-run>
+
+Runs the pipeline without executing any of the shell commands. May be useful
+combined with B<--verbose>. (Currently with B<--dry-run>, the pipeline may not 
+progress far due to checkpoints that halt the pipeline if any step seems to 
+fail.)
 
 =item B<--qsub>="options"
 
@@ -461,28 +479,28 @@ following options:
 Most options will override the defaults shown above. The qsub options must be 
 specified as a single string surrounded by double quotes ("), as shown below.
 
-    part1.sh --qsub="-m ea -l excl=true" -p project -r run ...
+    part1.sh --qsub="-m ea -l excl=true" ...
 
 =item B<--dada2>="options"
 
 Overrides the default DADA2 parameters used at the MSL. The following options
 are allowed:
 
---dada2-truncLen-f, -for (defaults: V3V4: 225 | V4: 200 | ITS: 0)
---dada2-truncLen-r, -rev (defaults: V3V4: 225 | V4: 200 | ITS: 0)
---dada2-maxN (default: 0)
---dada2-maxEE (defaults: V3V4: 2 | V4: 2 | ITS: 0)
---dada2-truncQ (default: 2)
---dada2-rmPhix (default: TRUE)
---dada2-maxLen (default: Inf)
---dada2-minLen (default: V3V4: 20 | V4: 20 | ITS: 50)
---dada2-minQ (default: 0)
+ --dada2-truncLen-f, -for (defaults: V3V4: 225 | V4: 200 | ITS: 0)
+ --dada2-truncLen-r, -rev (defaults: V3V4: 225 | V4: 200 | ITS: 0)
+ --dada2-maxN (default: 0)
+ --dada2-maxEE (defaults: V3V4: 2 | V4: 2 | ITS: 0)
+ --dada2-truncQ (default: 2)
+ --dada2-rmPhix (default: TRUE)
+ --dada2-maxLen (default: Inf)
+ --dada2-minLen (default: V3V4: 20 | V4: 20 | ITS: 50)
+ --dada2-minQ (default: 0)
 
 Please see https://rdrr.io/bioc/dada2/man/filterAndTrim.html for descriptions
 of the parameters. The parameters should be given within double quotes as shown 
 below:
 
-    part1.sh -p project -r run --dada2="--dada2-maxEE 5 --dada2-minQ 10" ...
+part1.sh --dada2="--dada2-maxEE 5 --dada2-minQ 10" ...
 
 =back 
 
