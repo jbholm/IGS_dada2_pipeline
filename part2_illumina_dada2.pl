@@ -425,6 +425,15 @@ if ($region eq 'ITS')
   system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
 }
 
+# Give ASV's unique and easy-to-look-up IDs
+# Figure out what to do when DADA2_combine_and_classify_ITS is run (both silva
+# and unite classification csvs are created)
+print "---Renaming ASVs in FASTA, abundance tables, and SILVA classification key."
+$cmd = "python $scriptsDir/rename_asvs.py $project";
+print "\tcmd=$cmd\n" if $dryRun || $debug;
+system($cmd) == 0 or print "$cmd failed with exit code: $?. Continuing..." if !$dryRun;
+print LOG "$cmd\n";
+
 my $final_merge = glob("*_taxa_only_merged.csv");
 my $final_taxa_only = glob("*_taxa_only.csv");
 my $final_ASV_taxa = glob("*_w_taxa.csv");
