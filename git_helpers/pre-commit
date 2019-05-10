@@ -67,7 +67,12 @@ sub getUpdate {
 		# get the name of the checked out branch
 		chomp($branch_commit[0] = `git branch | grep \\* | cut -d ' ' -f2`);
 		my @parts = split '/', $branch_commit[0], 2; # remove the first part if present
-		$branch_commit[0] = $parts[1];
+		if ( $parts[1] ) {
+			$branch_commit[0] = $parts[1];
+		} else {
+			$branch_commit[0] = $parts[0];
+		}
+		
 		if ($branch_commit[0] eq "master") {
 			die "Please do not make pre-release commits on master.";
 		}

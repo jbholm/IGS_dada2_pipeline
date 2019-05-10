@@ -19,25 +19,39 @@ use ()
 # ONESTEP=""
 # PARAMS=""
 
+stop()
+{
+    printf "\n%b\n\n" "$1"
+    exit 2
+}
+
 try_assign()
 {
     if [[ "$3" =~ ^- || ! -n "$3" ]]; then
-        printf "%b" "$2 missing its value. Unable to continue.\n\n"
-        exit 2
+        stop "$2 missing its value. Unable to continue."
     else 
         eval "$1='$3'"
     fi
     return 0
 }
 
+assign_default()
+{
+    if [[ -n "$1" ]]; then
+        eval "$1='$2'"
+        return 1
+    fi
+    return 0
+}
+
 while [[ ! "$1" == "--" && "$#" != 0 ]]; do
   case "$1" in
-    --qsub=*)
+    --qsub*)
         QSUB_ARGS="${1#*=}"
-        if [[ ! -n "$QSUB_ARGS" ]]; then  
-            printf "%b" "--qsub missing value. --qsub=\"\" and --qsub= are " \
-            "not accepted.\n"
-            exit 2
+        if [[ ! -n "$QSUB_ARGS" || ! $QSUB_ARGS =~ "=" ]]; then  
+            MSG="--qsub missing value."
+            MSG+=" --qsub=\"\" and --qsub= are not accepted."
+            stop "$MSG"
         fi
         shift 1
         ;;
@@ -61,19 +75,19 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         try_assign I2 "$1" "$2"
         shift 2
         ;;
-    -p)
+    -p|--project-name)
         try_assign PROJECT "$1" "$2"
         shift 2
         ;;
-    -r)
-        try_assign RUN_ID "$1" "$2"
+    -r|--run-ID)
+        try_assign RUN "$1" "$2"
         shift 2
         ;;
-    -m)
+    -m|--map)
         try_assign MAP "$1" "$2"
         shift 2
         ;;
-    -v)
+    -v|--var-reg)
         try_assign VAR "$1" "$2"
         shift 2
         ;;
@@ -81,12 +95,11 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         perldoc -F "${0}"
         exit 0
         ;;
-    -dbg)
+    --debug|-d)
         if [[ "$2" =~ ^- || ! -n "$2" ]]; then
-            printf "%b" "-dbg missing its value. Unable to continue.\n\n"
-            exit 2
+            stop "--debug missing its value. Unable to continue."
         else 
-            DBG="$DBG -dbg $2"
+            DBG="$DBG --debug $2"
             shift 2
         fi
         ;;
@@ -94,45 +107,18 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         DRY_RUN=$1
         shift 1
         ;;
-    --skip-err-thld)
-        SKIP_ERR_THLD=$1
+    --verbose)
+        VERBOSE=$1
         shift 1
         ;;
-    --dada2-truncLen-F|--for)
-        try_assign FOR "$1" "$2"
-        shift 2
-        ;;
-    --dada2-truncLen-R|--rev)
-        try_assign REV "$1" "$2"
-        shift 2
-        ;;
-    --dada2-maxN)
-        try_assign MAXN "$1" "$2"
-        shift 2
-        ;;
-    --dada2-maxEE)
-        try_assign MAXEE "$1" "$2"
-        shift 2
-        ;;
-    --dada2-truncQ)
-        try_assign TRUNCQ "$1" "$2"
-        shift 2
-        ;;
-    --dada2-rmPhix)
-        try_assign RMPHIX "$1" "$2"
-        shift 2
-        ;;
-    --dada2-maxLen)
-        try_assign MAXLEN "$1" "$2"
-        shift 2
-        ;;
-    --dada2-minLen)
-        try_assign MINLEN "$1" "$2"
-        shift 2
-        ;;
-    --dada2-minQ)
-        try_assign MINQ "$1" "$2"
-        shift 2
+    --dada2*)
+        DADA2="$1"
+        if [[ ! -n "${DADA2#*--dada2}" || ! $DADA2 =~ "=" ]]; then  
+            MSG="--dada2 missing value."
+            MSG+=" --dada2=\"\" and --dada2= are not accepted."
+            stop "$MSG"
+        fi
+        shift 1
         ;;
     --1Step)
         ONESTEP=$1
@@ -142,7 +128,7 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         try_assign SD "$1" "$2"
         shift 2
         ;;
-    -qp|--qp)
+    -qp|--qsub-project)
         try_assign QP "$1" "$2"
         shift 2
         ;;
@@ -159,136 +145,190 @@ if [[ -n $PARAMS ]]; then
     printf "\nPassing unknown parameters through to illumina_dada2.pl: $PARAMS\n"
 fi
 
-# validate -dbg flags
-if [[ -n "$DBG" ]]; then # if dbg is non-empty string
-    DBG=${DBG:1:${#DBG}} # Remove the first character (whitespace) from dbg
-    DBG_A=( $DBG ) # Separate on whitespace and convert to array
-
-    for ((WORD=7;WORD<${#DBG_A[@]};WORD++)); do
-        if (( WORD % 2 == 0 )); then
-            if [ ${DBG_A[WORD]} != "validate" ] && \
-            [ ${DBG_A[WORD]} != "barcodes" ] && \
-            [ ${DBG_A[WORD]} != "demultiplex" ] && \
-            [ ${DBG_A[WORD]} != "tagclean" ] && \
-            [ ${DBG_A[WORD]} != "dada2" ]; then
-                printf "\nIllegal debug option. Legal debug options are validate, "\
-                "barcodes, demultiplex, tagclean, and dada2.\n"
-                exit 2
-            fi
-        fi
-    done
-    NDBG="${#DBG_FLAGS[@]}" # Count the number of dbg flags
-    printf "%b" "Debug options validated\n\n"
+if [[ -n "$ONESTEP" ]]; then
+    printf "RUN TYPE: One-step\n"
+else
+    printf "RUN TYPE: Two-step\n"
 fi
 
 # Validate specification of raw files / directory
 if [[ ! -n "$RAW_PATH" ]]; then
     if [[ -n "$ONESTEP" ]]; then
         if ! [[ -n "$R1" && -n "$R2" ]]; then
-            printf "%b\n" "Please provide the location of the raw sequencing files (single directory => -i)" \
-            "\tOR" \
-            "Full paths to each raw file. A 1-step run requires -r1 and -r2.\n"
-            exit 2
+            MSG="Please provide the location of the raw sequencing files"
+            MSG+=" (single directory => -i)\n"
+            MSG+="\tOR\n"
+            MSG+="Full paths to each raw file. "
+            MSG+="A 1-step run requires -r1 and -r2."
+            stop "$MSG"
         elif ! [[ -e "$R1" && -e "$R2" ]]; then
-            printf "%b\n" "Unable to find -r1, -r2. Please check spellings and " \
-            "file permissions.\n"
-            exit 2
+            MSG="Unable to find -r1, -r2. Please check spellings and "
+            MSG+="file permissions."
+            stop "$MSG"
         fi
-        R1="-r1 $R1"
-        R2="-r2 $R2"
+        printf "FWD READS: $R1\nREV READS:$R2\n"
+        INPUT="-r1 $R1 -r2 $R2"
     else
         if ! [[ -n "$R1" && -n "$R2" && -n "$I1" && -n "$I2" ]]; then
-            printf "%b\n" "Please provide the location of the raw sequencing files (single directory => -i)" \
-            "\tOR" \
-            "Full paths to each raw file. A 2-step run requires -r1, -r2, -i1, and -i2.\n"
-            exit 2
+            MSG="Please provide the location of the raw sequencing files "
+            MSG+="(single directory => -i)\n"
+            MSG+="\tOR\n"
+            MSG+="Full paths to each raw file. "
+            MSG+="A 2-step run requires -r1, -r2, -i1, and -i2."
+            stop "$MSG"
         elif ! [[ -e "$R1" && -e "$R2" && -e "$I1" && -e "$I2" ]]; then
-            printf "%b\n" "Unable to find -r1, -r2, -i1, and -i2. Please check " \
-            "spellings and file permissions.\n"
-            exit 2
+            MSG="Unable to find -r1, -r2, -i1, and -i2. Please check "
+            MSG+="spellings and file permissions."
+            stop "$MSG"
         fi
-        R1="-r1 $R1"
-        R2="-r2 $R2"
-        I1="-i1 $I1"
-        I2="-i2 $I2"
+        printf "%b\n" "FWD READS: $R1" \
+            "REV READS: $R2" \
+            "INDEX 1: $I1" \
+            "INDEX 2: $I2"
+        INPUT="-r1 $R1 -r2 $R2 -i1 $I1 -i2 $I2"
     fi
-elif [[ -n "$R1" || -n "$R2" || -n "$I1" || -n "$I2" ]]; then
-    printf "%b\n" "Do not provide both the input directory (-i) and the input files." \
-    "(-r1, -r2, -i1, -i2). Only one or the other is needed.\n"
-    exit 2
-elif [[ ! -d "$RAW_PATH" ]]; then
-    printf "\n\tThe input directory does not exist or is inaccessible.\n"
-    exit 2
+else
+    if [[ -n "$R1" || -n "$R2" || -n "$I1" || -n "$I2" ]]; then
+        MSG="Do not provide both the input directory (-i) and the input "
+        MSG+="files (-r1, -r2, -i1,\n-i2). Only one or the other is needed."
+        stop "$MSG"
+    elif [[ ! -d "$RAW_PATH" ]]; then
+        stop "\tThe input directory does not exist or is inaccessible."
+    else
+        printf "INPUT DIRECTORY: $RAW_PATH\n"
+    fi
+    INPUT="-i $RAW_PATH"
 fi
 
 # Validate that mapping file was given and exists
 if [[ ! -n "$MAP" ]]; then
-    printf "\n\tPlease provide a full path to the project mapping file (-m)\n\n"
-    exit 2
+    stop "\tPlease provide a full path to the project mapping file (-m)"
 elif [[ ! -e "$MAP" ]]; then
-    printf "\n\tMapping file (-m) does not exist or is inaccessible.\n\n"
-    exit 2
+    stop "\tMapping file (-m) does not exist or is inaccessible."
+fi
+printf "MAPPING FILE: $MAP\n"
+
+# -p is mandatory
+if [[ ! -n "$PROJECT" ]]; then
+    stop "Project name (-p) required."
+fi
+
+# -r is mandatory
+if [[ ! -n "$RUN" ]]; then
+    stop "Run ID (-r) required."
 fi
 
 # Validate the variable region
 if [[ ! -n "$VAR" ]]; then
-    printf "%b" "Please indicate the targeted variable region (-v V3V4 or -v V4" \
-    " or -v ITS)\n\n"
-    exit 2
+    VAR="V3V4"
 elif [[ !( "$VAR" == "V3V4" || "$VAR" == "V4" || "$VAR" == "ITS" ) ]]; then
-    printf "\n\tVariable region was '$VAR' but only 'V3V4', 'V4', and 'ITS' are"\
-    " supported.\n\n"
-    exit 2
+    MSG="Variable region was '$VAR' but only 'V3V4', 'V4', and 'ITS' are "
+    MSG+="supported."
+    stop "$MSG"
+fi
+printf "VARIABLE REGION: $VAR\n"
+
+# Validate the storage directory
+if [[ ! -n "$SD" || "$SD" == "scratch" ]]; then
+    SD="/local/scratch"
+elif [[ "$SD" == "groupshare" ]]; then
+    SD="/local/groupshare/ravel"
+elif [[ ! -d "$SD" ]]; then
+    stop "$SD does not exist!\n" # A custom storage directory must exist
+else
+    SD="${SD%\/}" # Remove any trailing slash
+fi
+SD="$SD/$PROJECT/$RUN" # But we'll automatically make these subfolders
+printf "%b" "WORKING DIRECTORY: $SD\n"
+mkdir -p "$SD/qsub_error_logs/"
+mkdir -p "$SD/qsub_stdout_logs/"
+
+if [[ ! -n "$QP" ]]; then
+    printf "qsub-project ID (--qp) not provided. Using jravel-lab as default\n"
+    QP="jravel-lab"
 fi
 
-if [[ ! -n "$SD" ]]; then
-    printf "%b" "***Please choose a storage directory (-sd), either 'scratch' or "\
-    "'groupshare'.\n\tOR\nprovide a full path to an existing directory.\n\n"
-    exit 2
+# validate -dbg flags
+if [[ -n "$DBG" ]]; then # if dbg is non-empty string
+    DBG=${DBG:1:${#DBG}} # Remove the first character (whitespace) from dbg
+    DBG_A=( $DBG ) # Separate on whitespace and convert to array
+
+    # It's allowed for the --debug flags to be out of order.
+    # But, starting with the earliest step specified, only the first "streak"
+    # of consecutive steps will be run.
+    DBG=""
+    CONSECUTIVE=false
+    EARLIEST=true
+    for STEP in "validate" "barcodes" "demux" "tagclean" "dada2"; do
+        PRESENT=false
+        for ((WORD=0;WORD<${#DBG_A[@]};WORD++)); do
+            if (( WORD % 2 == 1 )); then
+                if [ ${DBG_A[WORD]} != "validate" ] && \
+                [ ${DBG_A[WORD]} != "barcodes" ] && \
+                [ ${DBG_A[WORD]} != "demux" ] && \
+                [ ${DBG_A[WORD]} != "tagclean" ] && \
+                [ ${DBG_A[WORD]} != "dada2" ]; then
+                    MSG="Illegal debug option ${DBG_A[WORD]}. Legal debug options are validate, "
+                    MSG+="barcodes, demux, tagclean, and dada2."
+                    stop "$MSG"
+                else
+                    if [[ $STEP == ${DBG_A[WORD]} ]]; then
+                        if [[ $EARLIEST = true || $CONSECUTIVE = true ]]; then
+                            printf "DEBUG: $STEP\n"
+                            # start the "streak" on the earliest flag found
+                            CONSECUTIVE=true 
+                            EARLIEST=false
+                            # Pass along the debug flags only if they are part
+                            # of the streak
+                            DBG+="--debug $STEP "
+                        fi
+                        if [[ $EARLIEST = true ]]; then
+                            EARLIEST=false
+                        fi
+                        PRESENT=true
+                    fi
+                fi
+            fi
+        done
+        # If any step not present, break the "streak" of consecutive steps
+        if [[ ! $PRESENT = true ]]; then
+            CONSECUTIVE=false
+        fi
+    done
 fi
 
-if [[ ( -n $FOR && ! -n $REV ) || ( -n $REV && ! -n $FOR ) ]]; then
-    printf "***\nPlease provide truncation lengths for forward and reverse "\
-    "reads\n";
-    exit 2
-fi
-
-if [[ -n "$qproj" ]]; then
-    printf "\nqsub-project ID (--qsub-project, -qp) not provided. Using "\
-    "jravel-lab as default\n"
-    $qproj = "jravel-lab";
+if [[ -n "$VERBOSE" ]]; then
+    printf "%b\n" "Running verbose..." \
+    "All shell commands will be printed to: \n${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout"
 fi
 
 # Acquire binaries
 use sge
-cd /usr/local/packages/qiime-1.9.1 || exit $?
+cd /usr/local/packages/qiime-1.9.1 || stop $?
 . ./activate.sh
 export PATH=/usr/local/packages/python-2.7.14/bin:$PATH
 export LD_LIBRARY_PATH=/usr/local/packages/python-2.7.14/lib:/usr/local/packages/gcc/lib64:$LD_LIBRARY_PATH
 . /usr/local/packages/usepackage/share/usepackage/use.bsh
 
-# Housekeeping
-if [ "$SD" = "scratch" ]; then
-    SD="/local/scratch/"
-elif [ "$SD" = "groupshare" ]; then
-    SD="/local/groupshare/ravel/"
-fi
-DIR="${SD}${PROJECT}/${RUN_ID}/"
-mkdir -p "$DIR/qsub_error_logs/"
-mkdir -p "$DIR/qsub_stdout_logs/"
-
 # Begin log (will be continued by illumina_dada2.pl)
 # Print pipeline version, system time, and qsub/illumina_dada2.pl command
-log="$SD/${PROJECT}_${RUN_ID}_16S_pipeline_log.txt";
+log="$SD/${PROJECT}_${RUN}_16S_pipeline_log.txt";
 MY_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 LOG_VERSION="$MY_DIR/scripts/log_version.pl"
 perl $LOG_VERSION $log
-printf "$time\n" > $log 
+printf "`date`\n" >> $log 
 
-CMD=("$QSUB_ARGS" "-cwd" "-b y" "-l mem_free=200M" "-P jravel-lab" "-q threaded.q" "-pe thread 4" "-V" "-o ${DIR}qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${DIR}qsub_error_logs/illumina_dada2.pl.stderr" "/home/jolim/IGS_dada2_pipeline/illumina_dada2.pl" "$RAW_PATH" "$R1" "$R2" "$I1" "$I2" "-p $PROJECT" "-r $RUN_ID" "-sd $SD" "-v $VAR" "-m $MAP" "$DBG" "$DRY_RUN" "$SKIP_ERR_THLD" "$FOR" "$REV" "$MAXN" "$MAXEE" "$TRUNCQ" "$RMPHIX" "$MAXLEN" "$MINLEN" "$MINQ" "$ONESTEP" "$PARAMS")
+# Remove extra spaces caused by joining empty arguments with a whitespace
+OPTSARR=("$DADA2" "$DBG" "$VERBOSE" "$DRY_RUN" "$ONESTEP" "$PARAMS")
+OPTS="${OPTSARR[*]}"
+OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 
-printf "Initial qsub command: \n$ qsub ${CMD[*]}\n" > $log
-#qsub ${CMD[*]}
+CMD=("$QSUB_ARGS" "-cwd" "-b y" "-l mem_free=200M" "-P $QP" "-q threaded.q" "-pe thread 4" "-V" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "/home/jolim/IGS_dada2_pipeline/illumina_dada2.pl" "$INPUT" "-wd $SD" "-v $VAR" "-m $MAP" "$OPTS")
+printf "$ qsub${CMD[*]}\n"
+if [[ -n $VERBOSE ]]; then
+    printf "$ qsub${CMD[*]}\n" >> $log
+fi
+qsub ${CMD[*]}
 
 : <<=cut
 =pod
@@ -303,113 +343,123 @@ The script can be launched from any location on the IGS server, it automatically
 produces a directory in /local/groupshare/ravel named after the project and run
 ID provided. 
 
-Beginning with the path to four raw Illumina sequencing files (R1, R2, I1, I2),
-a mapping file, a project ID, a run ID, and specifying the targeted variable
-region, this script:
-  1. Produces individual .fastq files for each sample listed in the mapping file
-  2. Performs tag-cleaning of each file
-  3. Runs the R1 (forward) and R2 (reverse) files through the dada2 pipeline for either the 16S rRNA gene V3V4 or V4 regions.
+Beginning with a set of raw Illumina sequencing files (usually R1, R2, I1, and I2),
+a mapping file, a project ID, and a run ID, this script:
 
-A log file is written at <PROJECT>/<RUN>/<PROJECT>_<RUN>_16S_pipeline_log.txt
+1. Extracts barcodes from the raw files.
+
+2. Demultiplexes the raw reads into fastq files containing reads specific to 
+this project.
+
+3. Produces individual .fastq files for each sample listed in the mapping file
+
+4. Performs tag-cleaning of each sample-specific file
+
+5. Runs the forward and reverse reads through the dada2 pipeline for the 
+V3V4 16S rRNA gene region. Alternatively, analysis of the V4 or ITS region may
+be specified.
+
+A log file is written at: <PROJECT>/<RUN>/<PROJECT>_<RUN>_16S_pipeline_log.txt
+
 
 =head1 SYNOPSIS
 
-THE FOLLOWING STEPS ARE REQUIRED BEFORE THIS SCRIPT WILL RUN:
-
-1. Qlogin to RHEL7 if you ssh'd onto a non-RHEL7 host: 
-
-  qlogin -P jravel-lab -l mem_free=500M -q interactive.q -V
-
-2. Execute from bash: 
-
-  export LD_LIBRARY_PATH=/usr/local/packages/gcc/lib64
-  source /usr/local/packages/usepackage/share/usepackage/use.bsh
-  use python-2.7
-  use qiime
-
-3. then run script as below: 
-
-FOR 2-STEP:
-part1.sh -i <path to raw files> -p <project name> -r <run id> 
-  -v <variable region> -m <full path to mapping file> -sd <storage directory>
-
-OR:
-part1.sh -r1 <path_to_R1_file> -r2 <path_to_R2_file> -i1 <path_to_I1_file>
-  -i2 <path_to_I2_file> -p <project name> -r <run id> -v <variable region> 
-  -m <full path to mapping file> -sd <storage directory>
-
-FOR 1-STEP:
-part1.sh -i <input directory> -p <project name> -r <run ID> -m <mapping file>
-  -v <variable region> -sd <storage directory> --1Step
-
-OR:
-part1.sh -r1 <path_to_R1_file> -r2 <path_to_R2_file> -p <project name> 
-  -r <run ID> -m <mapping file> -v <variable region> -sd <storage directory> 
-  --1Step
+part1.sh (-i <input directory> | -r1 <fwd reads> -r2 <rev reads> [-i1 <index 1> -i2 <index 2>]) -p <project> -r <run> -m <map> [-v <variable region>] [--1Step] [<options>]
 
 =head1 OPTIONS
 
 =over
 
-=item B<--raw-path>=path, B<-i> path
+=item B<-i> path
 
-Single full path to directory containing raw R1, R2, R3, and R4 files
+Single full path to directory containing raw files. File names must have the 
+pattern *AA.fastq[.gz], where * is wildcard, AA is either R1, R2, R3, R4, I1, or
+I2, and gzip compression is optional. B<-i> is incompatible with B<-r1>, B<-r2>,
+B<-i1>, and B<-i2>.
 
-=item B<--r1-path>=file, B<-r1> file
+Three combinations of files are allowed:
 
-Full path to raw R1 read file (forward read file, or r1) (.fastq.gz).
+    DEFAULT (TWO-STEP PCR):
+    R1, R2, I1, I2
 
-=item B<--r2-path>=file, B<-r2> file
+    OLD TWO-STEP NAMING STYLE (automatically detected):
+    R1, R2, R3, R4 
+    (R1 and R4 are fwd and rev reads, respectively. R2 and R3 are index 
+    1 and index 2, respectively.)
 
-Full path to raw R2 read file (barcode file, or i1) (.fastq.gz).
+    ONE-STEP PCR (<--1step> MUST BE GIVEN):
+    R1, R2
 
-=item B<--r3-path>=file, B<-r3> file
+=item B<-r1> file
 
-Full path to raw R3 read file (barcode file, or i2) (.fastq.gz).
+Full path to raw foward read file (R1). Gzip compression optional.
 
-=item B<--r4-path>=file, B<-r4> file
+=item B<-r2> file
 
-Full path to raw R4 read file (reverse read file, r2 or r4) (.fastq.gz).
+Full path to raw reverse read file (R2, or R4 in old naming scheme). Gzip 
+compression optional.
 
-=item B<--project-name>=name, B<-p> name
+=item B<-i1> file
+
+Full path to raw index 1 file (I1, or R2 in old naming scheme). Incompatible 
+with B<--1step>. Gzip compression optional.
+
+=item B<-i2> file
+
+Full path to raw index 2 file (I2, or R3 in old naming scheme). Incompatible 
+with B<--1step>. Gzip compression optional.
+
+=item B<--project-name> name, B<-p> name
 
 Create the project folder with this name.
 
-=item B<--run-ID>=name, B<-r> name
+=item B<--run-ID> name, B<-r> name
 
 Create the run folder with this name.
 
-=item B<--map>=file, B<-m> file
+=item B<--map> file, B<-m> file
 
 The full path to the Qiime-formatted mapping file.
 
-=item B<--var-reg>={V3V4, V4, ITS}, B<-v> {V3V4, V4, ITS}
+=item B<--var-reg> {V3V4, V4, ITS}, B<-v> {V3V4, V4, ITS}
 
-The targeted variable region.
+The targeted variable region. V3V4 is default.
 
 =item B<--1Step>
 
 Use this flag if the data are prepared by 1-Step PCR (only r1 & r2 raw files
 available)
 
-=item B<--storage-dir>=path, B<-sd> path
+=item B<--storage-dir> path, B<-sd> path
 
 Indicate an existing directory in which to place the project directory.
-"scratch" evaluates to "/local/scratch/" and "groupshare" evaluates to
-"/local/groupshare/ravel"
+"scratch" (default) evaluates to "/local/scratch/" and "groupshare" evaluates to
+"/local/groupshare/ravel".
 
 =item B<-h>, B<--help>
 
 Print help message and exit successfully.
 
-=item B<--qsub-project>=space, B<-qp> space
+=item B<--qsub-project> space, B<-qp> space
 
 Indicate which qsub-project space should be used for all qsubmissions. The
 default is jravel-lab.
 
-=item B<-dbg> {qiime_and_validation, extract_barcodes, demultiplex, tagclean, dada2}
+=item B<--debug>, B<-d> {validate, barcodes, demux, tagclean, dada2}
 
-Runs only one section of the pipeline and writes every qsub command to the log file.
+Runs one or more sections of the pipeline. To run multiple sections, type 
+"--debug <section>" or "-d <section>" for each section.
+
+=item B<--verbose>
+
+Prints every shell command to: <storage-dir>/<project>/<run>/qsub_stdout_logs>/illumina_dada2.pl.stdout
+
+=item B<--dry-run>
+
+Runs the pipeline without executing any of the shell commands. May be useful
+combined with B<--verbose>. (Currently with B<--dry-run>, the pipeline may not 
+progress far due to checkpoints that halt the pipeline if any step seems to 
+fail.)
 
 =item B<--qsub>="options"
 
@@ -426,11 +476,31 @@ following options:
     -o <path auto-generated from -sd, -p, and -r>
     -e <from auto-generated path -sd, -p, and -r>
 
-Additional options may be specified as a single string surrounded by
-double quotes ("), as shown below. Qsub allows many options including -P to be 
-provided more than once, in which case only the last value will be used. 
+Most options will override the defaults shown above. The qsub options must be 
+specified as a single string surrounded by double quotes ("), as shown below.
 
-    part1.sh --qsub="-m ea -l excl=true" -P project -r run -sd /other/path...
+    part1.sh --qsub="-m ea -l excl=true" ...
+
+=item B<--dada2>="options"
+
+Overrides the default DADA2 parameters used at the MSL. The following options
+are allowed:
+
+ --dada2-truncLen-f, -for (defaults: V3V4: 225 | V4: 200 | ITS: 0)
+ --dada2-truncLen-r, -rev (defaults: V3V4: 225 | V4: 200 | ITS: 0)
+ --dada2-maxN (default: 0)
+ --dada2-maxEE (defaults: V3V4: 2 | V4: 2 | ITS: 0)
+ --dada2-truncQ (default: 2)
+ --dada2-rmPhix (default: TRUE)
+ --dada2-maxLen (default: Inf)
+ --dada2-minLen (default: V3V4: 20 | V4: 20 | ITS: 50)
+ --dada2-minQ (default: 0)
+
+Please see https://rdrr.io/bioc/dada2/man/filterAndTrim.html for descriptions
+of the parameters. The parameters should be given within double quotes as shown 
+below:
+
+part1.sh --dada2="--dada2-maxEE 5 --dada2-minQ 10" ...
 
 =back 
 
