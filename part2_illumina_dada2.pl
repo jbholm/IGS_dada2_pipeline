@@ -244,6 +244,7 @@ my $homd = "homd_classification.csv";    ##########################for HOMD
 my $projSilva = $project ."_". $silva;
 my $projUNITE = $project ."_". $unite;
 my $projHOMD = $project ."_". $homd;   ##########################for HOMD 
+my @classifs = ();
 
 print "---Performing chimera removal on merged tables and classifying amplicon sequence variants (ASVs)\n";
 print LOG "---Performing chimera removal on merged tables and classifying amplicon sequence variants (ASVs)\n";
@@ -269,6 +270,9 @@ if ($region eq 'ITS')
   print "\tcmd=$cmd\n" if $dryRun || $debug;
   system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
   print LOG "$cmd\n";
+
+  # SILVA file not renamed after DADA2 combine and classify R script
+  push @classifs, ($projUNITE, "silva_classification.csv"); 
 }
 elsif($oral)
 {
@@ -282,7 +286,7 @@ dada2_combine_and_classifyHOMD($inRuns);
   print "---dada2 completed successfully\n";
 
   print LOG "---Merged, chimera-removed abundance tables written to all_runs_dada2_abundance_table.csv\n";
-  print LOG "---ASVs classified via silva written to homd_classification.csv\n";
+  print LOG "---ASVs classified via HOMD written to homd_classification.csv\n";
   print LOG "---ASVs classified via RDP written to rdp_classification.csv\n";
   print LOG "---Final ASVs written to all_runs_dada2_ASV.fasta for classification via PECAN\n";
   print LOG "---dada2 completed successfully\n";
@@ -300,6 +304,8 @@ dada2_combine_and_classifyHOMD($inRuns);
   print "\tcmd=$cmd\n" if $dryRun || $debug;
   system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
   print LOG "$cmd\n";
+
+  push @classifs, $projHOMD;
 }
 else
 {
@@ -330,6 +336,8 @@ else
   print "\tcmd=$cmd\n" if $dryRun || $debug;
   system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
   print LOG "$cmd\n";
+
+  push @classifs, $projSilva;
 }
 my $projpecan = $project ."_"."MC_order7_results.txt";
 
@@ -428,8 +436,8 @@ if ($region eq 'ITS')
 # Give ASV's unique and easy-to-look-up IDs
 # Figure out what to do when DADA2_combine_and_classify_ITS is run (both silva
 # and unite classification csvs are created)
-print "---Renaming ASVs in FASTA, abundance tables, and SILVA classification key."
-$cmd = "python $scriptsDir/rename_asvs.py $project";
+print "---Renaming ASVs in FASTA, abundance tables, and SILVA classification key.";
+$cmd = "python $scriptsDir/rename_asvs.py -p $project -c @classifs --pecan $projpecan";
 print "\tcmd=$cmd\n" if $dryRun || $debug;
 system($cmd) == 0 or print "$cmd failed with exit code: $?. Continuing..." if !$dryRun;
 print LOG "$cmd\n";
