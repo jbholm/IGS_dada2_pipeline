@@ -692,6 +692,23 @@ if ( !@dbg || grep( /^demux$/, @dbg ) ) {
           "---Duration of fwd and rev seqs.fastq production: $duration s\n";
         print "---Duration of fwd and rev seqs.fastq production: $duration s\n";
 
+        ###### BEGIN FASTQC ON SEQS.FASTQ #####
+        #######################################
+
+        # Replace this with calls to execute_and_log after merging in master
+        $cmd =
+"qsub -cwd -b y -l mem_free=300M -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log fastqc --outdir $fwdProjDir $fwdProjDir/seqs.fastq";
+        print "\tcmd=$cmd\n" if $verbose;
+        system($cmd) == 0
+          or die "system($cmd) failed with exit code: $?"
+          if !$dryRun;
+        $cmd =
+"qsub -cwd -b y -l mem_free=300M -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log fastqc --outdir $revProjDir $revProjDir/seqs.fastq";
+        print "\tcmd=$cmd\n" if $verbose;
+        system($cmd) == 0
+          or die "system($cmd) failed with exit code: $?"
+          if !$dryRun;
+
     } else {
         print
           "-> $rForSeqsFq and $rRevSeqsFq already produced. Demultiplexing "
