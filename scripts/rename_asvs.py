@@ -6,7 +6,7 @@ parser=argparse.ArgumentParser(
     description='''A script that renames ASVs in a 16S project. ASVs are given unique IDs in the template ASV###, where ### is a zero-padded number of sufficient length to uniquely identify all ASVs.''',
     epilog="""""")
 parser.add_argument('--project', '-p', required=True, help='The project name (the prefix for the abundance tables)')
-parser.add_argument('--pecan', help = 'A pecan classification file (usu. *MC_order7_results.txt)')
+parser.add_argument('--pecan', nargs = "?", const = "", default = "", help = 'A pecan classification file (usu. *MC_order7_results.txt)')
 parser.add_argument('--classif', '-c', nargs = '*', help='Any non-PECAN classification CSVs containing one header line, ASVs in the first column and taxonomic assignments in the remaining columns. Do NOT omit the project prefix from these filenames, if present.')
 args = parser.parse_args()
 
@@ -60,7 +60,7 @@ for classif in classifs:
 
 
 pecanIdent = True
-if args.pecan is not None:
+if args.pecan != "":
     with open(args.pecan, "r") as file:
         csPecan = ""
         for line in file:
@@ -177,7 +177,7 @@ for classif in classifs:
         print str(exc_tb.tb_lineno) + ": " + str(error)
         sys.exit(1)
 
-if args.pecan is not None:
+if args.pecan != "":
     shutil.move(args.pecan, args.pecan + ".bak")
     baks.append(args.pecan + ".bak")
     try:
