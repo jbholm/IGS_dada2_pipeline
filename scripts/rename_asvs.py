@@ -187,7 +187,7 @@ if args.pecan is not None:
                 for line in inFH:
                     fields = line.split()
                     fields[0] = asvIds[ln]
-                    outFH.write(" ".join(fields) + "\n")
+                    outFH.write("\t".join(fields) + "\n")
                     ln += 1
     except Exception as error:
         exc_type, exc_obj, exc_tb = sys.exc_info()
