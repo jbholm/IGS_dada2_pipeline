@@ -573,6 +573,13 @@ if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
             @cmds = ();
         }
 
+        # Sanity check
+        my $rawLnsFwd = count_lines( $localNames{"index1"} );
+        my $rawLnsRev = count_lines( $localNames{"index2"} );
+        if ( $rawLnsFwd == $rawLnsRev ) {
+            print( $logFH ( $rawLnsFwd / 4 . " barcoded reads to process." ) );
+        }
+
         my $mapOpt = "";
         my $bcLen  = 8;    # 2-step pcr
         if ($oneStep) {
@@ -588,8 +595,18 @@ if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
 
         execute_and_log( $cmd, 0, $dryRun );
 
+        # Sanity check
+        my $barcodeLns = count_lines("$wd/barcodes.fastq");
+        if ( $rawLnsFwd != $barcodeLns ) {
+            die
+"Forward index file had $rawLnsFwd lines but barcodes.fastq had $barcodeLns lines.";
+        }
+
         my $duration = time - $start;
-        print "---Barcode extraction complete\n";
+        print "---Barcode extraction complete...\n";
+        print $logFH "---Barcode extraction complete... "
+          . ( $barcodeLns / 4 )
+          . " barcodes extracted\n";
         print $logFH "---Duration of barcode extraction: $duration s\n";
         print "---Duration of barcode extraction: $duration s\n";
 
@@ -940,7 +957,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                           File::Basename::basename( $filename, @suffixes );
                         my $tc = "$wd/$Prefix" . "_R2_tc";
                         $cmd =
-"qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2 -trim_within 50";
+"qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2 -trim_within 50";
                         push @cmds, $cmd;
                     }
                 }
@@ -956,7 +973,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                           File::Basename::basename( $filename, @suffixes );
                         my $tc = "$wd/$Prefix" . "_R1_tc";
                         $cmd =
-"qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2 -trim_within 50";
+"qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2 -trim_within 50";
                         push @cmds, $cmd;
                     }
                 }
@@ -975,7 +992,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                           File::Basename::basename( $filename, @suffixes );
                         my $tc = "$wd/$Prefix" . "_R1_tc";
                         $cmd =
-"qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
+"qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
                         push @cmds, $cmd;
                     }
                 }
@@ -991,7 +1008,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                           File::Basename::basename( $filename, @suffixes );
                         my $tc = "$wd/$Prefix" . "_R2_tc";
                         $cmd =
-"qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
+"qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
                         push @cmds, $cmd;
                     }
                 }
@@ -1011,7 +1028,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my $tc = "$wd/$Prefix" . "_R1_tc";
 
                         $cmd =
-"qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
+"qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
                         push @cmds, $cmd;
                     }
                 }
@@ -1027,7 +1044,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my $tc = "$wd/$Prefix" . "_R2_tc";
 
                         $cmd =
-"qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2";
+"qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2";
                         push @cmds, $cmd;
                     }
                 }
@@ -1045,7 +1062,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                           File::Basename::basename( $filename, @suffixes );
                         my $tc = "$wd/$Prefix" . "_R1_tc";
                         $cmd =
-"qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
+"qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
                         push @cmds, $cmd;
 
                     }
@@ -1062,7 +1079,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                           File::Basename::basename( $filename, @suffixes );
                         my $tc = "$wd/$Prefix" . "_R2_tc";
                         $cmd =
-"qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
+"qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
                         push @cmds, $cmd;
                     }
                 }
@@ -1080,7 +1097,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                           File::Basename::basename( $filename, @suffixes );
                         my $tc = "$wd/$Prefix" . "_R1_tc";
                         $cmd =
-"qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 CTGCCCTTTGTACACACCGC -mm5 2";
+"qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 CTGCCCTTTGTACACACCGC -mm5 2";
                         push @cmds, $cmd;
                     }
                 }
@@ -1096,7 +1113,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                           File::Basename::basename( $filename, @suffixes );
                         my $tc = "$wd/$Prefix" . "_R2_tc";
                         $cmd =
-"qsub -cwd -b y -l mem_free=200M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 TTTCGCTGCGTTCTTCATCG -mm5 2";
+"qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 TTTCGCTGCGTTCTTCATCG -mm5 2";
                         push @cmds, $cmd;
                     }
                 }
@@ -1105,20 +1122,46 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
         }
         execute_and_log( @cmds, 0, $dryRun );
 
-        my @files  = glob("$wd/*R1_tc.fastq");
-        my $nFiles = @files;
-        while ( $nFiles != $newSamNo ) {
+        my @files    = glob("$wd/*R1_tc.fastq");
+        my $nFiles   = @files;
+        my $equalLns = 0;
+        while ( $nFiles != $newSamNo || !$equalLns ) {
             @files  = glob("$wd/*R1_tc.fastq");
             $nFiles = @files;
+
+# Ensure that each tagcleaned file has the same number of lines as its input file
+            $equalLns = 1;
+            foreach my $file (@files) {
+                my $basename =
+                  File::Basename::basename( $file, ("_R1_tc.fastq") );
+                if ( count_lines($file) !=
+                    count_lines("$fwdSampleDir/$basename.fastq") )
+                {
+                    $equalLns = 0;
+                }
+            }
             check_error_log( $error_log, "perl" );
         }
         print "---All tagcleaned R1 samples accounted for in $wd\n";
 
-        @files  = glob("$wd/*R4_tc.fastq");
-        $nFiles = @files;
-        while ( $nFiles != $newSamNo ) {
+        $equalLns = 0;
+        @files    = glob("$wd/*R2_tc.fastq");
+        $nFiles   = @files;
+        while ( $nFiles != $newSamNo || !$equalLns ) {
             @files  = glob("$wd/*R2_tc.fastq");
             $nFiles = @files;
+
+# Ensure that each tagcleaned file has the same number of lines as its input file
+            $equalLns = 1;
+            foreach my $file (@files) {
+                my $basename =
+                  File::Basename::basename( $file, ("_R2_tc.fastq") );
+                if ( count_lines($file) !=
+                    count_lines("$fwdSampleDir/$basename.fastq") )
+                {
+                    $equalLns = 0;
+                }
+            }
             check_error_log( $error_log, "perl" );
         }
         print "---All tagcleaned R4 (R2) samples accounted for in $wd\n";
@@ -1428,11 +1471,16 @@ close $logFH;
 # @param 0 mapping file path
 sub count_samples {
     my $map = shift;
-    open my $mapFH, "<$map"
-      or die "Cannot open $map for reading: $OS_ERROR";
-    while (<$mapFH>) { }
-    my $ans = $. - 1;
-    close $mapFH;
+    my $ans = count_lines($map) - 1;
+    return $ans;
+}
+
+sub count_lines {
+    my $file = shift;
+    open my $FH, "<$file" or die "Cannot open $file for reading: $OS_ERROR";
+    while (<$FH>) { }
+    my $ans = $.;
+    close $FH;
     return $ans;
 }
 
