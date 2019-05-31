@@ -323,7 +323,7 @@ OPTSARR=("$DADA2" "$DBG" "$VERBOSE" "$DRY_RUN" "$ONESTEP" "$PARAMS")
 OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 
-CMD=("$QSUB_ARGS" "-cwd" "-b y" "-l mem_free=200M" "-P $QP" "-q threaded.q" "-pe thread 4" "-V" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "/home/jolim/IGS_dada2_pipeline/illumina_dada2.pl" "$INPUT" "-wd $SD" "-v $VAR" "-m $MAP" "$OPTS")
+CMD=("$QSUB_ARGS" "-cwd" "-b y" "-l mem_free=200M" "-P $QP" "-q threaded.q" "-pe thread 4" "-V" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "${MY_DIR}/illumina_dada2.pl" "$INPUT" "-wd $SD" "-v $VAR" "-m $MAP" "$OPTS")
 printf "$ qsub${CMD[*]}\n"
 if [[ -n $VERBOSE ]]; then
     printf "$ qsub${CMD[*]}\n" >> $log
