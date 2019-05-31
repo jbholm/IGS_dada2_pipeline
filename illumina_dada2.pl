@@ -222,20 +222,19 @@ if ($help) {
 if (
     !$inDir
     && !(
-            ( !$oneStep && $r1file && $r2file && $i1file && $i2file )
+           ( !$oneStep && $r1file && $r2file && $i1file && $i2file )
         || ( $oneStep && $r1file && $r2file )
     )
-    )
+  )
 {
     my $parameters = $oneStep ? "-r1, -r2" : "-r1, -r2, -i1, -i2";
     die "\n\tPlease provide the location of the raw sequencing files "
-        . "(single directory => -i)\n\t\tOR \n\tFull paths to each raw file => "
-        . "$parameters)\n\n";
+      . "(single directory => -i)\n\t\tOR \n\tFull paths to each raw file => "
+      . "$parameters)\n\n";
 }
 
 if ( !$map ) {
-    print
-        "\n\tPlease provide a full path to the project mapping file (-m)\n\n";
+    print "\n\tPlease provide a full path to the project mapping file (-m)\n\n";
     exit 1;
 }
 
@@ -320,7 +319,6 @@ my @split;
 my $newSamNo;
 
 my @errors;
-my $qiime = "$wd/$project" . "_" . $run . "_" . "qiime_config.txt";
 
 ###### BEGIN MAKE WORKING DIRECTORIES / VALIDATE INPUT FILES ##########
 ################################################
@@ -347,12 +345,35 @@ my $log  = "$wd/$project" . "_" . $run . "_16S_pipeline_log.txt";
 
 open my $logFH, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
 
-if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
-        ###### BEGIN CHECK OF QIIME CONFIGURATION ###########
+if (@dbg) {
+    print "DBG FLAGS: ";
+    print $logFH "DBG FLAGS: ";
+    for (@dbg) {
+        print "$_ ";
+        print $logFH "$_ ";
+    }
+    print "\n";
+    print $logFH "\n";
+}
+print $logFH "PROJECT: $project\nVARIABLE REGION: $var\n"
+  . "R VERSION: $R\nPECAN MODELS: $models\n";
+if ($oneStep) {
+    print $logFH "PCR PREPARATION METHOD: 1-Step\n";
+} else {
+    print $logFH "PCR PREPARATION METHOD: 2-Step\n";
+}
+
+if ( !@dbg || grep( /^barcodes$/, @dbg ) || grep( /^demux$/, @dbg ) ) {
+    ###### BEGIN CHECK OF QIIME CONFIGURATION ###########
     #####################################################
-    $qiime = "$wd/$project" . "_" . $run . "_" . "qiime_config.txt";
-    $cmd   = "print_qiime_config.py > $qiime";
+    my $qiime = "$wd/$project" . "_" . $run . "_" . "qiime_config.txt";
+    $cmd = "print_qiime_config.py > $qiime";
     execute_and_log( $cmd, 0, $dryRun );
+    print $logFH "QIIME CONFIGURATION DETAILS: \n" . "see $qiime\n";
+}
+print $logFH "MAPPING FILE: $map\n";
+
+if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
 
     ###### BEGIN VALIDATION OF MAPPING FILE ###########
     ################################################
@@ -384,17 +405,6 @@ if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
         }
     } else {
         die "validate_mapping_file.py did not produce an error log";
-    }
-
-    if (@dbg) {
-        print "DBG FLAGS: ";
-        print $logFH "DBG FLAGS: ";
-        for (@dbg) {
-            print "$_ ";
-            print $logFH "$_ ";
-        }
-        print "\n";
-        print $logFH "\n";
     }
 
     open MAP, "<$map" or die "Cannot open $map for reading: $OS_ERROR";
@@ -453,17 +463,9 @@ if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
 
     ###### BEGIN EVALUATION OF SAMPLES VIA MAPPING FILE ###########
     ###############################################################
-    print $logFH "PROJECT: $project\nVARIABLE REGION: $var\n"
-      . "NO. SAMPLES: $nSamples\nNO. NULLS: $null\n"
+    print $logFH "NO. SAMPLES: $nSamples\nNO. NULLS: $null\n"
       . "NO. EXTRACTION NEGATIVE CONTROLS: $extctrl\n"
-      . "NO. PCR POSITIVE CONTROLS: $pcrpos\nNO. PCR NEGATIVE CONTROLS: $pcrneg\n"
-      . "R VERSION: $R\nPECAN MODELS: $models\nQIIME CONFIGURATION DETAILS: \n"
-      . "see $qiime\nMAPPING FILE: $map";
-    if ($oneStep) {
-        print $logFH "\nPCR PREPARATION METHOD: 1-Step\n\n";
-    } else {
-        print $logFH "\nPCR PREPARATION METHOD: 2-Step\n\n";
-    }
+      . "NO. PCR POSITIVE CONTROLS: $pcrpos\nNO. PCR NEGATIVE CONTROLS: $pcrneg\n";
 
     if ( @dbg && !grep( /^barcodes$/, @dbg ) ) {
         die
@@ -1715,7 +1717,7 @@ sub run_R_script {
         execute_and_log( $cmd, 0, $dryRun );
 
         print "Running DADA2 with fastq files in $wd\n";
-        print $logFH "Running DADA2 for $var region";
+        print $logFH "Running DADA2 for $var region\n";
 
         $cmd =
 "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
