@@ -259,16 +259,15 @@ if [[ -n "$DBG" ]]; then # if dbg is non-empty string
     DBG=""
     CONSECUTIVE=false
     EARLIEST=true
-    for STEP in "validate" "barcodes" "demux" "tagclean" "dada2"; do
+    for STEP in "barcodes" "demux" "tagclean" "dada2"; do
         PRESENT=false
         for ((WORD=0;WORD<${#DBG_A[@]};WORD++)); do
             if (( WORD % 2 == 1 )); then
-                if [ ${DBG_A[WORD]} != "validate" ] && \
-                [ ${DBG_A[WORD]} != "barcodes" ] && \
+                if [ ${DBG_A[WORD]} != "barcodes" ] && \
                 [ ${DBG_A[WORD]} != "demux" ] && \
                 [ ${DBG_A[WORD]} != "tagclean" ] && \
                 [ ${DBG_A[WORD]} != "dada2" ]; then
-                    MSG="Illegal debug option ${DBG_A[WORD]}. Legal debug options are validate, "
+                    MSG="Illegal debug option ${DBG_A[WORD]}. Legal debug options are "
                     MSG+="barcodes, demux, tagclean, and dada2."
                     stop "$MSG"
                 else
@@ -295,6 +294,10 @@ if [[ -n "$DBG" ]]; then # if dbg is non-empty string
             CONSECUTIVE=false
         fi
     done
+
+    printf "%b\n" "Use --debug flags with care!" \
+    "Input files for your selected steps cannot be checked for consistency with the" \
+    "raw Illumina files."
 fi
 
 if [[ -n "$VERBOSE" ]]; then
@@ -445,7 +448,7 @@ Print help message and exit successfully.
 Indicate which qsub-project space should be used for all qsubmissions. The
 default is jravel-lab.
 
-=item B<--debug>, B<-d> {validate, barcodes, demux, tagclean, dada2}
+=item B<--debug>, B<-d> {barcodes, demux, tagclean, dada2}
 
 Runs one or more sections of the pipeline. To run multiple sections, type 
 "--debug <section>" or "-d <section>" for each section.

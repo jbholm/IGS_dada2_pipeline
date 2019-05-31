@@ -138,9 +138,9 @@ Print help message and exit successfully.
 Indicate which qsub-project space should be used for all qsubmissions. The
 default is jravel-lab.
 
-=item B<-dbg> {validate, barcodes, demux, tagclean, dada2}
+=item B<-d>, B<--debug> {barcodes, demux, tagclean, dada2}
 
-Runs the specified section of the pipeline. Multiple -dbg options can be given
+Runs the specified section of the pipeline. Multiple -d options can be given
 to run multiple consecutive parts of the pipeline, provided that the input to
 the earliest requested step is present. Any non-consecutive steps will be 
 ignored.
@@ -184,7 +184,6 @@ GetOptions(
     "d|debug:s"              => \@dbg,
     "verbose"                => \my $verbose,
     "dry-run"                => \my $dryRun,
-    "nocheck"                => \my $noCheck,
     "skip-err-thld"          => \my $skipErrThldStr,
     "dada2-truncLen-f|for:i" => \my $f,
     "dada2-truncLen-r|rev:i" => \my $r,
@@ -204,14 +203,13 @@ GetOptions(
   or pod2usage( verbose => 0, exitstatus => 1 );
 
 if (@dbg) {
-    my $q  = grep( /^validate$/, @dbg );
     my $e  = grep( /^barcodes$/, @dbg );
     my $de = grep( /^demux$/,    @dbg );
     my $t  = grep( /^tagclean$/, @dbg );
     my $da = grep( /^dada2$/,    @dbg );
-    if ( $q + $e + $de + $t + $da == scalar @dbg ) { }
+    if ( $e + $de + $t + $da == scalar @dbg ) { }
     else {
-        die "Illegal debug option. Legal debug options are validate, "
+        die "Illegal debug option. Legal debug options are "
           . "barcodes, demux, tagclean, and dada2.";
     }
 }
@@ -224,15 +222,21 @@ if ($help) {
 if (
     !$inDir
     && !(
-           ( !$oneStep && $r1file && $r2file && $i1file && $i2file )
+            ( !$oneStep && $r1file && $r2file && $i1file && $i2file )
         || ( $oneStep && $r1file && $r2file )
     )
-  )
+    )
 {
     my $parameters = $oneStep ? "-r1, -r2" : "-r1, -r2, -i1, -i2";
     die "\n\tPlease provide the location of the raw sequencing files "
-      . "(single directory => -i)\n\t\tOR \n\tFull paths to each raw file => "
-      . "$parameters)\n\n";
+        . "(single directory => -i)\n\t\tOR \n\tFull paths to each raw file => "
+        . "$parameters)\n\n";
+}
+
+if ( !$map ) {
+    print
+        "\n\tPlease provide a full path to the project mapping file (-m)\n\n";
+    exit 1;
 }
 
 if ( $oneStep && ( $i1file || $i2file ) ) {
@@ -245,10 +249,6 @@ if ( $inDir && ( $r1file || $r2file || $i1file || $i2file ) ) {
       . "provide one or the other.\n\n";
 }
 
-if ( !$map ) {
-    print "\n\tPlease provide a full path to the project mapping file (-m)\n\n";
-    exit 1;
-}
 if ( !$var ) {
     print "\n\tPlease indicate the targeted variable region (-v V3V4 or -v V4"
       . " or -v ITS)\n\n";
@@ -347,9 +347,8 @@ my $log  = "$wd/$project" . "_" . $run . "_16S_pipeline_log.txt";
 
 open my $logFH, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
 
-if ( ( !@dbg ) || grep( /^validate$/, @dbg ) ) {
-
-    ###### BEGIN CHECK OF QIIME CONFIGURATION ###########
+if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
+        ###### BEGIN CHECK OF QIIME CONFIGURATION ###########
     #####################################################
     $qiime = "$wd/$project" . "_" . $run . "_" . "qiime_config.txt";
     $cmd   = "print_qiime_config.py > $qiime";
@@ -504,11 +503,8 @@ if ( ( !@dbg ) || grep( /^validate$/, @dbg ) ) {
         print "Index 1 and Index 2 will be obtained from:\n"
           . "\t$index1Input\n\t$index2Input\n";
     }
-}
 
-if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
     my $barcodes = "$wd/barcodes.fastq";
-    my $nSamples = count_samples($map);
 
     ## change to full path to full barcodes (flag)
     my $count = 0;
@@ -907,43 +903,58 @@ if ( !@dbg || grep( /^demux$/, @dbg ) ) {
 
 my $start = time;
 if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
-    my $nSamples = count_samples($map);
+    my $do       = 1;
+    my @inputsF  = glob("$fwdSampleDir/*.fastq");
+    my @inputsR  = glob("$revSampleDir/*.fastq");
+    my @outPatts = ( "_R1_tc", "_R2_tc" );
 
-    if ( !( defined $newSamNo ) ) {
-        open SPLIT, "<$split_log"
-          or die "Cannot open $split_log for writing: $OS_ERROR";
-        while (<SPLIT>) {
-            if ( $_ =~ /\t/ ) {
-                chomp;
-                my ( $sample, $nReads ) = split, /\t/;
-                chomp $nReads;
-                if ( $nReads eq "0" ) {
+    if ( !@dbg ) {
 
-                    #print $logFH "Adding sample: $sample\n";
-                    push @split, $sample;
-                } else {
-                    print "$sample $nReads\n";
-                }
+        # Opportunity to skip tagcleaning
+        print
+"--Checking if target primers have been removed from $project forward & reverse"
+          . " sample-specific files..\n";
+        print $logFH
+"Checking if target primers have been removed from $project forward & reverse"
+          . " sample-specific files..\n";
+
+        # If there aren't the same number of tagcleaned forward files as input
+        # forward files, and same for reverse files, then do tagcleaning
+        $do = 0;
+        for my $i ( 1 .. 2 ) {
+            my @tcFiles = glob( "$wd/*" . $outPatts[$i] . ".fastq" );
+            my $ori     = ( " forward ", " reverse " )[$i];
+            my @inputs  = @{ ( \@inputsF, \@inputsR )[$i] };
+            if ( scalar @tcFiles != scalar @inputs ) {
+                print "--"
+                  . scalar @tcFiles
+                  . $ori
+                  . "sample-specific, tag-cleaned files found, but "
+                  . scalar @inputs
+                  . " expected.\n";
+                print $logFH "--"
+                  . scalar @tcFiles
+                  . $ori
+                  . "sample-specific, tag-cleaned files found, but "
+                  . scalar @inputs
+                  . " expected.\n";
+                $do = 1;
+            } else {
+                print "--"
+                  . scalar @tcFiles
+                  . $ori
+                  . "sample-specific, tag-cleaned files present as expected.\n";
+                print $logFH "..."
+                  . scalar @tcFiles
+                  . $ori
+                  . "sample-specific, tag-cleaned files present as expected.\n";
             }
         }
-        close SPLIT;
-
-        $newSamNo = $nSamples - scalar @split;
     }
 
-    print
-"--Checking if target primers have been removed from $project forward & reverse"
-      . " sample-specific files..\n";
-    print $logFH
-"Checking if target primers have been removed from $project forward & reverse"
-      . " sample-specific files..\n";
-    my @fwdTcFiles = glob("$wd/*R1_tc.fastq");
-    my @revTcFiles = glob("$wd/*R2_tc.fastq");
-
     my @cmds;
-    if (   scalar @fwdTcFiles != $newSamNo
-        || scalar @revTcFiles != $newSamNo )
-    {
+
+    if ($do) {
         if ($oneStep) {
             if ( $var eq "V3V4" ) {
                 print "Removing V3V4 primers from all sequences\n";
@@ -1125,7 +1136,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
         my @files    = glob("$wd/*R1_tc.fastq");
         my $nFiles   = @files;
         my $equalLns = 0;
-        while ( $nFiles != $newSamNo || !$equalLns ) {
+        while ( $nFiles != scalar @inputsF || !$equalLns ) {
             @files  = glob("$wd/*R1_tc.fastq");
             $nFiles = @files;
 
@@ -1147,7 +1158,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
         $equalLns = 0;
         @files    = glob("$wd/*R2_tc.fastq");
         $nFiles   = @files;
-        while ( $nFiles != $newSamNo || !$equalLns ) {
+        while ( $nFiles != scalar @inputsR || !$equalLns ) {
             @files  = glob("$wd/*R2_tc.fastq");
             $nFiles = @files;
 
@@ -1167,14 +1178,12 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
         print "---All tagcleaned R4 (R2) samples accounted for in $wd\n";
 
         my $duration = time - $start;
-        print $logFH "...Primer sequences removed from $newSamNo samples. "
+        print $logFH "...Primer sequences removed from $nFiles samples. "
           . "Beginning DADA2.\n";
         print $logFH "--Duration of tagcleaning: $duration s\n";
     } else {
-        print "--$newSamNo sample-specific, tag-cleaned files present as "
-          . "expected.\n";
-        print $logFH "...$newSamNo sample-specific, tag-cleaned files present "
-          . "as expected. Beginning DADA2.\n";
+        print "--Skipping tagcleaning.\n";
+        print $logFH "...Skipping tagcleaning.\n";
     }
 
     if ( @dbg && !grep( /^dada2$/, @dbg ) ) {
