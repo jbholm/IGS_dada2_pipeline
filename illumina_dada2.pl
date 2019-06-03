@@ -138,7 +138,7 @@ Print help message and exit successfully.
 Indicate which qsub-project space should be used for all qsubmissions. The
 default is jravel-lab.
 
-=item B<-d>, B<--debug> {barcodes, demux, tagclean, dada2}
+=item B<-d>, B<--debug> {barcodes, demux, splitsamples, tagclean, dada2}
 
 Runs the specified section of the pipeline. Multiple -d options can be given
 to run multiple consecutive parts of the pipeline, provided that the input to
@@ -205,9 +205,10 @@ GetOptions(
 if (@dbg) {
     my $e  = grep( /^barcodes$/, @dbg );
     my $de = grep( /^demux$/,    @dbg );
+    my $s = grep( /^splitsamples$/,    @dbg );
     my $t  = grep( /^tagclean$/, @dbg );
     my $da = grep( /^dada2$/,    @dbg );
-    if ( $e + $de + $t + $da == scalar @dbg ) { }
+    if ( $e + $de + $s + $t + $da == scalar @dbg ) { }
     else {
         die "Illegal debug option. Legal debug options are "
           . "barcodes, demux, tagclean, and dada2.";
@@ -470,7 +471,7 @@ if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
     if ( @dbg && !grep( /^barcodes$/, @dbg ) ) {
         die
 "Finished printing QIIME configuration and validating mapping file. Terminated "
-          . "because -dbg barcodes was not specified.";
+          . "because -d barcodes was not specified.";
     }
 
     my $index1Input;  # In one-step runs, these are the SAME files pointed to by
@@ -511,16 +512,13 @@ if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
     ## change to full path to full barcodes (flag)
     my $count = 0;
 
-    print "--Checking for existence of $barcodes\n";
-
     my $step1;
-    my $step2;
-    my $step3;
+
 
     ###### BEGIN BARCODES ##########
     #######################################
 
-    if ( !-e $barcodes ) {    # FIXME test if barcodes is the right size
+    if ( !-e $barcodes || @dbg ) {    # FIXME test if barcodes is the right size
         print "---Barcode files not found or were empty\n";
 
         my $start = time;
@@ -623,11 +621,13 @@ if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
             }
         }
         execute_and_log( @cmds, 0, $dryRun );
+    } else {
+        print "--$barcodes already exists. Skipping barcode extraction.\n";
     }
 
     if ( @dbg && !grep( /^demux$/, @dbg ) ) {
-        die "Finished extracting barcodes libraries. Terminated "
-          . "because -dbg demux was not specified.";
+        die "Finished extracting barcodes. Terminated "
+          . "because -d demux was not specified.";
     }
 }
 
@@ -639,16 +639,14 @@ if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
 if ( !@dbg || grep( /^demux$/, @dbg ) ) {
     my $barcodes = "$wd/barcodes.fastq";
     my $nSamples = count_samples($map);
+    my $step2;
+    my $step3;
 
     my @cmds;
     my $rForSeqsFq = "$fwdProjDir/seqs.fastq";
     my $rRevSeqsFq = "$revProjDir/seqs.fastq";
 
-    my $readsForInput;
-    my $readsRevInput;
-    my $index1Input;
-    my $index2Input;
-    ( $readsForInput, $readsRevInput, $index1Input, $index2Input ) =
+    my ( $readsForInput, $readsRevInput, $index1Input, $index2Input ) =
         $inDir ? find_raw_files( $inDir, $oneStep, $logFH )
       : $oneStep ? ( $r1file, $r2file, $r1file, $r2file )
       :            ( $r1file, $r2file, $i1file, $i2file );
@@ -657,13 +655,12 @@ if ( !@dbg || grep( /^demux$/, @dbg ) ) {
     # convert_to_local_if_gz... Unless it's one-step, in which case we can save
     # time by using the already-decompressed raw files.
     if ($oneStep) {
-        ( $readsForInput, $readsRevInput, $index1Input, $index2Input ) =
-          convert_to_local_if_gz( $wd, $readsForInput, $readsRevInput,
-            $index1Input, $index2Input );
+        ( $readsForInput, $readsRevInput ) =
+          convert_to_local_if_gz( $wd, $readsForInput, $readsRevInput );
     }
 
-    print "--Checking for existence of $rForSeqsFq and $rRevSeqsFq\n";
-    if ( !-e $rForSeqsFq || !-e $rRevSeqsFq ) {
+    
+    if ( !-e $rForSeqsFq || !-e $rRevSeqsFq || @dbg ) {
         print "---Producing $rForSeqsFq and $rRevSeqsFq\n";
         my $start = time;
         my $step2 = "split_libraries_fastq.py";
@@ -766,26 +763,72 @@ if ( !@dbg || grep( /^demux$/, @dbg ) ) {
           . "mapping file correct? Exiting.\n";
         die;
     }
+    
+    # Remove temporarily decompressed files
+    if ($oneStep) {
+        print "---Removing decompressed raw files from $wd\n";
+        my @cmds = ();
+        push( @cmds, "rm -rf $readsForInput" );
+        push( @cmds, "rm -rf $readsRevInput" );
+        execute_and_log( @cmds, 0, $dryRun );
+    }
+
+    if ( @dbg && !grep( /^splitsamples$/, @dbg ) ) {
+        die
+"Finished demultiplexing libaries. Terminated "
+          . "because -d splitsamples was not specified.";
+    }
+}
+
+if ( !@dbg || grep( /^splitsamples$/, @dbg ) ) {
 
     ###### BEGIN SPLIT BY SAMPLE ##########
     #######################################
 
-    print "--Checking if $project fwd & rev seqs.fastq files were split by "
-      . "sample ID\n";
+    my $do = 1;
 
-    my $n_fq1 = 0;
+    if (!@dbg) {
+        # Skip splitting by sample if step already done and not in debug mode
 
-    my @forFilenames = glob("$fwdSampleDir/*.fastq");
-    my @revFilenames = glob("$revSampleDir/*.fastq");
+        # Determine the expected number of sample-specific files
+        open SPLIT, "<$split_log"
+        or die "Cannot open $split_log for writing: " . "$OS_ERROR";
+        my @split;
+        while (<SPLIT>) {
+            if ( $_ =~ /\t/ ) {
+                chomp;
+                my ( $sample, $nReads ) = split, /\t/;
+                chomp $nReads;
+                if ( $nReads eq "0" ) {
+                    push @split, $sample;
+                } else {
+                    print "$_";
+                }
+            }
+        }
+        close SPLIT;
 
-    if (   scalar(@forFilenames) != $newSamNo
-        || scalar(@revFilenames) != $newSamNo )
-    {
-        print "There are "
-          . scalar @forFilenames
-          . " split files. Waiting for $newSamNo "
-          . "files\n";
+        my $nSamples = count_samples($map);
+        $newSamNo = $nSamples - scalar @split;
+
+        my @forFilenames = glob("$fwdSampleDir/*.fastq");
+        my @revFilenames = glob("$revSampleDir/*.fastq");
+
+        if ( scalar(@forFilenames) == $newSamNo
+        && scalar(@revFilenames) == $newSamNo )
+        {
+            $do = 0;
+            print "--$newSamNo sample-specific files present as expected. Skipping splitting by sample.\n";
+            print $logFH "$newSamNo sample-specific files present as expected. Skipping splitting by sample.\n";
+        }
+    }
+    
+    if($do) {
+        my @cmds;
         my $step3 = "split_sequence_file_on_sample_ids.py";
+        my $rForSeqsFq = "$fwdProjDir/seqs.fastq";
+        my $rRevSeqsFq = "$revProjDir/seqs.fastq";
+
         @errors = glob("$error_log/$step3.e*");
         if (@errors) {
             foreach my $error (@errors) {
@@ -794,12 +837,8 @@ if ( !@dbg || grep( /^demux$/, @dbg ) ) {
             execute_and_log( @cmds, 0, $dryRun );
             @cmds = ();
         }
-        print "---Sample specific files not found or completed... Splitting "
-          . "$project seqs.fastq files by sample ID\n";
-        print $logFH "There are "
-          . scalar(@forFilenames)
-          . " sample specific "
-          . "files found (expected $newSamNo)... Splitting $project seqs.fastq "
+        print "---Splitting $project seqs.fastq files by sample ID\n";
+        print $logFH "There are splitting $project seqs.fastq "
           . "files by sample ID\n";
         execute_and_log( "rm -rf $fwdSampleDir; rm -rf $revSampleDir",
             0, $dryRun );
@@ -826,7 +865,7 @@ if ( !@dbg || grep( /^demux$/, @dbg ) ) {
         my $fwdLines = $.;
         close $FWD;
 
-        while ( $n_fq != $newSamNo || $nLines != $fwdLines ) {
+        while ( $nLines != $fwdLines ) {
             $n_fq   = 0;
             $nLines = 0;
             my @filenames = glob("$fwdSampleDir/*.fastq");
@@ -857,7 +896,7 @@ if ( !@dbg || grep( /^demux$/, @dbg ) ) {
         my $revLines = $.;
         close $REV;
 
-        while ( $n_fq != $newSamNo || $nLines != $revLines ) {
+        while ( $nLines != $revLines ) {
             $n_fq   = 0;
             $nLines = 0;
             my @filenames = glob("$revSampleDir/*.fastq");
@@ -879,24 +918,12 @@ if ( !@dbg || grep( /^demux$/, @dbg ) ) {
         print
           "--All samples ($n_fq) and reads (@{[$nLines / 4]}) accounted for"
           . " in $revSampleDir\n";
-    } else {
-        print "--$newSamNo sample-specific files present as expected.\n";
-        print $logFH "$newSamNo sample-specific files present as expected.\n";
-    }
-
-    # Remove temporarily decompressed files
-    if ($oneStep) {
-        print "---Removing decompressed raw files from $wd\n";
-        my @cmds = ();
-        push( @cmds, "rm -rf $readsForInput" );
-        push( @cmds, "rm -rf $readsRevInput" );
-        execute_and_log( @cmds, 0, $dryRun );
     }
 
     if ( @dbg && !grep( /^tagclean$/, @dbg ) ) {
         die
-"Finished extracting barcodes and demultiplexing libraries. Terminated "
-          . "because -dbg tagclean was not specified.";
+"Finished splitting library by samples. Terminated "
+          . "because -d tagclean was not specified.";
     }
 }
 
@@ -911,19 +938,13 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
     my @outPatts = ( "_R1_tc", "_R2_tc" );
 
     if ( !@dbg ) {
-
-        # Opportunity to skip tagcleaning
-        print
-"--Checking if target primers have been removed from $project forward & reverse"
-          . " sample-specific files..\n";
-        print $logFH
-"Checking if target primers have been removed from $project forward & reverse"
-          . " sample-specific files..\n";
+        # Opportunity to skip tagcleaning. DON"T do this if the user requested
+        # tagcleaning explicitly with --debug tagclean
 
         # If there aren't the same number of tagcleaned forward files as input
         # forward files, and same for reverse files, then do tagcleaning
         $do = 0;
-        for my $i ( 1 .. 2 ) {
+        for my $i ( 0 .. 1 ) {
             my @tcFiles = glob( "$wd/*" . $outPatts[$i] . ".fastq" );
             my $ori     = ( " forward ", " reverse " )[$i];
             my @inputs  = @{ ( \@inputsF, \@inputsR )[$i] };
@@ -1180,8 +1201,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
         print "---All tagcleaned R4 (R2) samples accounted for in $wd\n";
 
         my $duration = time - $start;
-        print $logFH "...Primer sequences removed from $nFiles samples. "
-          . "Beginning DADA2.\n";
+        print $logFH "...Primer sequences removed from $nFiles samples. ";
         print $logFH "--Duration of tagcleaning: $duration s\n";
     } else {
         print "--Skipping tagcleaning.\n";
@@ -1190,14 +1210,16 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
 
     if ( @dbg && !grep( /^dada2$/, @dbg ) ) {
         die
-"Finished extracting barcodes and demultiplexing libraries. Terminated "
-          . "because -dbg dada2 was not specified.";
+"Finished tagcleaning. Terminated "
+          . "because -d dada2 was not specified.\n";
     }
 }
 
 ###### BEGIN DADA2 ##########
 #############################
 if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
+    print $logFH "Beginning DADA2.\n";
+    print "Beginning DADA2.\n";
     my $dada2 = "$wd/dada2_part1_stats.txt";
 
     my $truncLen;
