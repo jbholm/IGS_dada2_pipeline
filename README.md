@@ -1,48 +1,32 @@
 # IGS_dada2_pipeline
-Pipeline for processing 16S rRNA or ITS amplicon sequences specifically for the University of Maryland Baltimore Institute for Genome Sciences
 
-illumina_dada2.pl is Part 1 for processing samples through the IGS 16S pipeline. 
+Two-part pipeline for processing 16S rRNA or ITS amplicon sequences specifically for the University of Maryland Baltimore Institute for Genome Sciences
 
-THE FOLLOWING STEPS ARE REQUIRED BEFORE THIS SCRIPT WILL RUN:
 
-  1. Start from a Rhel7 machine OR Qlogin to RHEL7:
-        qlogin -P jravel-lab -l mem_free=500M -q interactive.q
-  2. Then enter:
-        export LD_LIBRARY_PATH=/usr/local/packages/gcc/lib64
-        source /usr/local/packages/usepackage/share/usepackage/use.bsh
-        use python-2.7
-        use qiime
-  3. then run script as below:
-  
-FOR 2-STEP:
-If raw reads are labeled as R1, R2, R3, and R4:
-  illumina_dada2.pl -i <directory containing raw reads> -p <project name> -r <run ID> -m <mapping file> -v <variable region> -sd <storage directory either "scratch" or "groupshare" (don't include quotes)>
-  
-  OR
-  
-If raw reads are labeled as R1, i1, i2, and R2:
-  illumina_dada2.pl -r1 <full path to raw R1 file> -r2 <full path to raw i1 file>
-                    -r3 <full path to raw i2 file> -r4 <full path to raw R2 file>
-                    -p <project name> -r <run ID> -m <mapping file> -v <variable region>
-                    -sd <storage directory>
-  
-FOR 1-STEP
-  add --1Step
+## Pre-processing 16S or ITS paired-end reads:
+`part1.sh` demultiplexes, filters, trims, and merges 16S or ITS paired-end reads. The script can be launched from any location on the IGS server according to this template:
 
-For qsub:
-  qsub -cwd -b y -l mem_free=1G -P jravel-lab -q threaded.q -pe thread 4 -V -e <path_to_logs>
-  -o <path_to_logs>  illumina_dada2.pl -i <directory containing raw reads> -p <project name> -r <run ID> -m <mapping file> -v <variable region> -sd <storage directory enter the word scratch or groupshare>
+`part1.sh (-i <input directory> | -r1 <fwd reads> -r2 <rev reads> [-i1 <index 1> -i2 <index 2>]) -p <project> -r <run> -m <map> [-v <variable region>] [--1Step] [<options>]`
+
+Please run `part1.sh --help` for complete documentation. 
+
+Running `part1.sh` outside of IGS servers is not yet supported. It is possible however to modify hard-coded paths in `part1.sh` and `illumina_dada2.pl` to configure the pipeline for one's own running environment.
   
-part2_illumina_dada2.pl is Part 2 for processing samples through the IGS 16S Pipeline
-  1. Start from a Rhel7 machine OR Qlogin to RHEL7:
-        qlogin -P jravel-lab -l mem_free=500M -q interactive.q
-  2. Then enter:
-        export LD_LIBRARY_PATH=/usr/local/packages/gcc/lib64
-        source /usr/local/packages/usepackage/share/usepackage/use.bsh
-        use python-2.7
-        use qiime
-  3. then run script as below from within the project directory created in Step 1:
-part2_illumina_dada2.pl -i <comma-separated-input-run-names> -v <variable-region> -p <project-ID>
+## Classifying ASVs:
+
+`part2_illumina_dada2.pl` runs the DADA2 ASV classification pipeline on one or more runs in the same project. On a RHEL7 IGS machine:
+
+`screen`  
+`qlogin -P jravel-lab -l mem_free=500M -q interactive.q`  
+ `export LD_LIBRARY_PATH=/usr/local/packages/gcc/lib64`  
+`source /usr/local/packages/usepackage/share/usepackage/use.bsh`  
+`use python-2.7`  
+`use qiime`  
+`cd <project directory created by part1.sh>`  
+`part2_illumina_dada2.pl -i <comma-separated-input-run-names> -v <variable-region> -p <project-ID>`  
+
+You can close the terminal at any time. To return to this process in another session, run:
+`screen -r`
 
 # To use the lastest version of this pipeline:
 ## Terminal
@@ -78,6 +62,6 @@ Follow the desktop instructions above to find the desired version of the pipelin
 
 # License
 
-The contents of `taxonomy/` are derived from the Silva database, and reformatted for DADA2 by Benjamin Callahan. They are available under the Silva dual-licensing model for academia and commercial users: https://www.arb-silva.de/silva-license-information/  
+The contents of `taxonomy/` are derived from the Silva database, and reformatted for DADA2 by Benjamin Callahan. They are available under the Silva dual-licensing model for academic and commercial users: https://www.arb-silva.de/silva-license-information/  
   
 All other files in this respository are available under [GPLv3](https://github.com/jbholm/IGS_dada2_pipeline/blob/master/LICENSE).
