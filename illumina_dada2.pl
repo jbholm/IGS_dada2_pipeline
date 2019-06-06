@@ -1201,7 +1201,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
         print "---All tagcleaned R4 (R2) samples accounted for in $wd\n";
 
         my $duration = time - $start;
-        print $logFH "...Primer sequences removed from $nFiles samples. ";
+        print $logFH "...Primer sequences removed from $nFiles samples. \n";
         print $logFH "--Duration of tagcleaning: $duration s\n";
     } else {
         print "--Skipping tagcleaning.\n";
