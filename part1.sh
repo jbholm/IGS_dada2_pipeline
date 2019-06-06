@@ -48,7 +48,7 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
   case "$1" in
     --qsub*)
         QSUB_ARGS="${1#*=}"
-        if [[ ! -n "$QSUB_ARGS" || ! $QSUB_ARGS =~ "=" ]]; then  
+        if [[ ! -n "$QSUB_ARGS" || ! $1 =~ "=" ]]; then  
             MSG="--qsub missing value."
             MSG+=" --qsub=\"\" and --qsub= are not accepted."
             stop "$MSG"
