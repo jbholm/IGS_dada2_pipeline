@@ -327,9 +327,16 @@ OPTSARR=("$DADA2" "$DBG" "$VERBOSE" "$DRY_RUN" "$ONESTEP" "$PARAMS")
 OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 
-CMD=("$QSUB_ARGS" "-cwd" "-b y" "-l mem_free=200M" "-P $QP" "-q threaded.q" "-pe thread 4" "-V" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "${MY_DIR}/illumina_dada2.pl" "$INPUT" "-wd $SD" "-v $VAR" "-m $MAP" "$OPTS")
-printf "$ qsub${CMD[*]}\n"
-printf "$ qsub${CMD[*]}\n" >> $log
+ARGS=("$QSUB_ARGS" "-cwd" "-b y" "-l mem_free=200M" "-P" "$QP" "-q threaded.q" "-pe thread 4" "-V" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "${MY_DIR}/illumina_dada2.pl" "$INPUT" "-wd" "$SD" "-v" "$VAR" "-m" "$MAP" "$OPTS")
+CMD=()
+for ARG in "${ARGS[@]}"; do
+    if [[ -n "$ARG" ]]; then
+        CMD+=("$ARG")
+    fi 
+done
+
+printf "$ qsub ${CMD[*]}\n"
+printf "$ qsub ${CMD[*]}\n" >> $log
 
 qsub ${CMD[*]}
 
