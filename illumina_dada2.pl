@@ -985,7 +985,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 opendir R1, $fwdSampleDir
                   or die "Cannot open directory $fwdSampleDir\n";
                 while ( $filename = readdir R1 ) {
-                    if ( $filename =~ /.fastq/ ) {
+                    if ( $filename =~ /.fastq$/ ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
@@ -1000,7 +1000,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 opendir R4, $revSampleDir
                   or die "Cannot open directory $revSampleDir\n";
                 while ( $filename = readdir R4 ) {
-                    if ( $filename =~ /.fastq/ ) {
+                    if ( $filename =~ /.fastq$/ ) {
 
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
@@ -1020,7 +1020,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 opendir R1, $fwdSampleDir
                   or die "Cannot open directory $fwdSampleDir\n";
                 while ( $filename = readdir R1 ) {
-                    if ( $filename =~ /.fastq/ ) {
+                    if ( $filename =~ /.fastq$/ ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
@@ -1035,7 +1035,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 opendir R4, $revSampleDir
                   or die "Cannot open directory $revSampleDir\n";
                 while ( $filename = readdir R4 ) {
-                    if ( $filename =~ /.fastq/ ) {
+                    if ( $filename =~ /.fastq$/ ) {
 
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
@@ -1055,7 +1055,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 opendir R1, $fwdSampleDir
                   or die "Cannot open directory $fwdSampleDir\n";
                 while ( $filename = readdir R1 ) {
-                    if ( $filename =~ /.fastq/ ) {
+                    if ( $filename =~ /.fastq$/ ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
@@ -1071,7 +1071,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 opendir R4, $revSampleDir
                   or die "Cannot open directory $revSampleDir\n";
                 while ( $filename = readdir R4 ) {
-                    if ( $filename =~ /.fastq/ ) {
+                    if ( $filename =~ /.fastq$/ ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
@@ -1090,7 +1090,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 opendir R1, $fwdSampleDir
                   or die "Cannot open directory $fwdSampleDir\n";
                 while ( $filename = readdir R1 ) {
-                    if ( $filename =~ /.fastq/ ) {
+                    if ( $filename =~ /.fastq$/ ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
@@ -1106,7 +1106,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 opendir R4, $revSampleDir
                   or die "Cannot open directory $revSampleDir\n";
                 while ( $filename = readdir R4 ) {
-                    if ( $filename =~ /.fastq/ ) {
+                    if ( $filename =~ /.fastq$/ ) {
 
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
@@ -1125,7 +1125,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 opendir R1, $fwdSampleDir
                   or die "Cannot open directory $fwdSampleDir\n";
                 while ( $filename = readdir R1 ) {
-                    if ( $filename =~ /.fastq/ ) {
+                    if ( $filename =~ /.fastq$/ ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
@@ -1140,7 +1140,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 opendir R4, $revSampleDir
                   or die "Cannot open directory $revSampleDir\n";
                 while ( $filename = readdir R4 ) {
-                    if ( $filename =~ /.fastq/ ) {
+                    if ( $filename =~ /.fastq$/ ) {
 
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
@@ -1191,7 +1191,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 my $basename =
                   File::Basename::basename( $file, ("_R2_tc.fastq") );
                 if ( count_lines($file) !=
-                    count_lines("$fwdSampleDir/$basename.fastq") )
+                    count_lines("$revSampleDir/$basename.fastq") )
                 {
                     $equalLns = 0;
                 }
