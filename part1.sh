@@ -259,17 +259,17 @@ if [[ -n "$DBG" ]]; then # if dbg is non-empty string
     DBG=""
     CONSECUTIVE=false
     EARLIEST=true
-    for STEP in "validate" "barcodes" "demux" "tagclean" "dada2"; do
+    for STEP in "barcodes" "demux" "splitsamples" "tagclean" "dada2"; do
         PRESENT=false
         for ((WORD=0;WORD<${#DBG_A[@]};WORD++)); do
             if (( WORD % 2 == 1 )); then
-                if [ ${DBG_A[WORD]} != "validate" ] && \
-                [ ${DBG_A[WORD]} != "barcodes" ] && \
+                if [ ${DBG_A[WORD]} != "barcodes" ] && \
                 [ ${DBG_A[WORD]} != "demux" ] && \
+                [ ${DBG_A[WORD]} != "splitsamples" ] && \
                 [ ${DBG_A[WORD]} != "tagclean" ] && \
                 [ ${DBG_A[WORD]} != "dada2" ]; then
-                    MSG="Illegal debug option ${DBG_A[WORD]}. Legal debug options are validate, "
-                    MSG+="barcodes, demux, tagclean, and dada2."
+                    MSG="Illegal debug option ${DBG_A[WORD]}. Legal debug options are "
+                    MSG+="barcodes, demux, splitsamples, tagclean, and dada2."
                     stop "$MSG"
                 else
                     if [[ $STEP == ${DBG_A[WORD]} ]]; then
@@ -295,6 +295,10 @@ if [[ -n "$DBG" ]]; then # if dbg is non-empty string
             CONSECUTIVE=false
         fi
     done
+
+    printf "%b\n" "Use --debug flags with care!" \
+    "Input files for your selected steps cannot be checked for consistency with the" \
+    "raw Illumina files."
 fi
 
 if [[ -n "$VERBOSE" ]]; then
@@ -323,11 +327,17 @@ OPTSARR=("$DADA2" "$DBG" "$VERBOSE" "$DRY_RUN" "$ONESTEP" "$PARAMS")
 OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 
-CMD=("$QSUB_ARGS" "-cwd" "-b y" "-l mem_free=200M" "-P $QP" "-q threaded.q" "-pe thread 4" "-V" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "${MY_DIR}/illumina_dada2.pl" "$INPUT" "-wd $SD" "-v $VAR" "-m $MAP" "$OPTS")
-printf "$ qsub${CMD[*]}\n"
-if [[ -n $VERBOSE ]]; then
-    printf "$ qsub${CMD[*]}\n" >> $log
-fi
+ARGS=("$QSUB_ARGS" "-cwd" "-b y" "-l mem_free=200M" "-P" "$QP" "-q threaded.q" "-pe thread 4" "-V" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "${MY_DIR}/illumina_dada2.pl" "$INPUT" "-wd" "$SD" "-v" "$VAR" "-m" "$MAP" "$OPTS")
+CMD=()
+for ARG in "${ARGS[@]}"; do
+    if [[ -n "$ARG" ]]; then
+        CMD+=("$ARG")
+    fi 
+done
+
+printf "$ qsub ${CMD[*]}\n"
+printf "$ qsub ${CMD[*]}\n" >> $log
+
 qsub ${CMD[*]}
 
 : <<=cut
@@ -445,7 +455,7 @@ Print help message and exit successfully.
 Indicate which qsub-project space should be used for all qsubmissions. The
 default is jravel-lab.
 
-=item B<--debug>, B<-d> {validate, barcodes, demux, tagclean, dada2}
+=item B<--debug>, B<-d> {barcodes, demux, splitsamples, tagclean, dada2}
 
 Runs one or more sections of the pipeline. To run multiple sections, type 
 "--debug <section>" or "-d <section>" for each section.
