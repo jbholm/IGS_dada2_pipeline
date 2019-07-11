@@ -77,23 +77,29 @@ if ($help)
   exit 0;
 }
 
+my @taxNames;
+
 if ($pecanFile) 
 {
   print "Using only PECAN taxonomy\n";
+  push @taxNames, "PECAN";
 }
 
 if ($uniteFile) 
 {
   print "Using only UNITE taxonomy\n";
+  push @taxNames, "UNITE";
 }
 
 if ($silvaFile) 
 {
   print "---Using only SILVA taxonomy\n";
+  push @taxNames, "SILVA";
 }
 if ($ezBioFile) 
 {
   print "---Using only ezBioCloud taxonomy\n";
+  push @taxNames, "exBioCloud";
 }
 
 ####################################################################
@@ -277,10 +283,11 @@ my @suffixes = (".csv");
 my $Prefix = basename($countTblFile, @suffixes);
 
 print "---Adding taxonomy to $countTblFile\n";
-my $cntWtx = "$Prefix"."_w_taxa.csv";
+my $taxString = join("_", @taxNames);
+my $cntWtx = "${Prefix}_${taxString}_w_taxa.csv";
 open ALL, ">$cntWtx", or die "Cannot open $cntWtx for writing: $OS_ERROR\n";
 
-my $cnttxon = "$Prefix"."_taxa_only.csv";
+my $cnttxon = "${Prefix}_${taxString}_taxa_only.csv";
 open TXON, ">$cnttxon", or die "Cannot open $cnttxon for writing: $OS_ERROR\n";
 
 my @list1 = get_file_data($countTblFile); 
