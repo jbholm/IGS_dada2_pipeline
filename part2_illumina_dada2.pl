@@ -699,10 +699,13 @@ st <- st[,order(colSums(st), decreasing=TRUE)]
 
 ##st.all<-mergeSequenceTables(runs)
 # Remove chimeras
-seqtab <- removeBimeraDenovo(st, method="consensus", multithread=TRUE)
-# Assign taxonomy
+seqtab <- removeBimeraDenovo(st, method="consensus", multithread=TRUE)# THIS is the source of ASV names and sequences
+# Assign taxonomy (requires colnames of seqtab to be ASV sequences)
 unite <- assignTaxonomy(seqtab, "/home/jholm/bin/sh_general_release_dynamic_01.12.2017.fasta", multithread=TRUE)
 silva <- assignTaxonomy(seqtab, "$pipelineDir/taxonomy/silva_nr_v128_train_set.fa.gz", multithread=TRUE)
+
+# Name ASVs (Due to the constraints of assignTaxonomy, this step must occur after it)
+
 # Write to disk
 saveRDS(seqtab, "all_runs_dada2_abundance_table.rds") # CHANGE ME to where you want sequence table saved
 write.csv(seqtab, "all_runs_dada2_abundance_table.csv", quote=FALSE)
@@ -713,7 +716,7 @@ fc = file("all_runs_dada2_ASV.fasta")
 fltp = character()
 for( i in 1:ncol(seqtab))
 {
-  fltp <- append(fltp, paste0(">", colnames(seqtab)[i]))
+  fltp <- append(fltp, paste0(">", colnames(seqtab)[i])) # This reference FASTA is actually created from colnames(seqtab)
   fltp <- append(fltp, colnames(seqtab)[i])
 }
 writeLines(fltp, fc)

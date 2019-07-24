@@ -292,8 +292,8 @@ open TXON, ">$cnttxon", or die "Cannot open $cnttxon for writing: $OS_ERROR\n";
 
 my @list1 = get_file_data($countTblFile); 
 my $line = 0;
-my $head1;
-my $head2;
+my @asvs;
+my @taxa;
 my $i=0;
 foreach my $line1 (@list1) 
 {
@@ -315,15 +315,16 @@ foreach my $line1 (@list1)
       }
       else
       {
-        $head1 .= "$asv\,";
-        $head2 .= "$cmbTx{$asv}\,";
+        push(@asvs, "$asv");
+        push(@taxa, "$cmbTx{$asv}");
       }
     }
   }
 }
-print ALL ",$head1\n";
-print ALL ",$head2\n";
-print TXON ",$head2\n";
+print ALL "," + join(",", @asvs) + "\n";
+my $taxaHead = "," + join(",", @taxa) + "\n";
+print ALL "$taxaHead";
+print TXON "$taxaHead";
 $line = 0;
 foreach my $line1 (@list1) 
 {
