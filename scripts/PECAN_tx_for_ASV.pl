@@ -111,10 +111,10 @@ my @suffixes = (".csv");
 my $Prefix = basename($countTblFile, @suffixes);
 
 print "---Adding taxonomy to $countTblFile\n";
-my $cntWtx = "${Prefix}_PECAN_w_taxa.csv";
+my $cntWtx = "${Prefix}_PECAN_asvs+taxa.csv";
 open ALL, ">$cntWtx", or die "Cannot open $cntWtx for writing: $OS_ERROR\n";
 
-my $cnttxon = "${Prefix}_PECAN_taxa_only.csv";
+my $cnttxon = "${Prefix}_PECAN_taxa.csv";
 open TXON, ">$cnttxon", or die "Cannot open $cnttxon for writing: $OS_ERROR\n";
 
 my @list1 = get_file_data($countTblFile); 
@@ -148,8 +148,8 @@ foreach my $line1 (@list1)
     }
   }
 }
-print ALL "," + join(",", @asvs) + "\n";
-my $taxaHead = "," + join(",", @taxa) + "\n";
+print ALL "," . join(",", @asvs) . "\n";
+my $taxaHead = "," . join(",", @taxa) . "\n";
 print ALL "$taxaHead";
 print TXON "$taxaHead";
 $line = 0;

@@ -7,12 +7,15 @@ parser=argparse.ArgumentParser(
     epilog="""""")
 parser.add_argument('--project', '-p', required=True, help='The project name (the prefix for the abundance tables)')
 parser.add_argument('--pecan', nargs = "?", const = "", default = "", help = 'A pecan classification file (usu. *MC_order7_results.txt)')
-parser.add_argument('--classif', '-c', nargs = '*', help='Any non-PECAN classification CSVs containing one header line, ASVs in the first column and taxonomic assignments in the remaining columns. Do NOT omit the project prefix from these filenames, if present.')
+parser.add_argument('--classif', '-c', nargs='*', help='Any non-PECAN classification CSVs containing one header line, ASVs in the first column and taxonomic assignments in the remaining columns. Do NOT omit the project prefix from these filenames, if present.')
+parser.add_argument('--labeledCsv', help='The *_abundance_table_<taxonomy>_w_taxa.csv file.')
+# Get rid of --labeledCsv asap; in the next versionof part2, renaming asvs will happen before 
+# the count tables are labeled with taxa.
 args = parser.parse_args()
 
 csv = args.project + "_all_runs_dada2_abundance_table.csv"
 fasta = "all_runs_dada2_ASV.fasta"
-taxaCsv = args.project + "_all_runs_dada2_abundance_table_w_taxa.csv"
+taxaCsv = args.labeledCsv
 if args.classif is None:
     args.classif = []
 classifs = []
@@ -43,8 +46,8 @@ csTaxaCSV = ""
 with open(taxaCsv, "r") as file:
     csTaxaCSV += file.readline().strip() # comma-separated string of asvs from the CSV
 
-csTaxaCSV = csTaxaCSV[1:(len(csTaxaCSV) - 1)]
-# Remove trailing and leading commas
+csTaxaCSV = csTaxaCSV[1:(len(csTaxaCSV))]
+# Remove leading comma
 
 csClassifs = []
 for classif in classifs:

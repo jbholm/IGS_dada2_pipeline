@@ -26,6 +26,8 @@
   The default, multi-level SILVA output table
   (ASV in column 1)
 
+=item B<--homd-file>
+
 =item B<--other-file, -o>
   Any other table with ASV in column 1 and preferred taxonomy in column 2.
 
@@ -59,6 +61,7 @@ GetOptions(
   "PECAN-taxonomy|p=s"  => \my $pecanFile,
   "SILVA-taxonomy|s=s"  => \my $silvaFile,
   "UNITE-taxonomy|u=s"  => \my $uniteFile,
+  "homd-file=s"         => \my $homdFile,
   "ezBioCloud-taxonomy|e=s" =>\my $ezBioFile,
   "vaginal"             => \my $vaginal,
   "other-taxonomy|o=s"  => \my $otherFile,
@@ -101,11 +104,17 @@ if ($ezBioFile)
   print "---Using only ezBioCloud taxonomy\n";
   push @taxNames, "exBioCloud";
 }
+if ($homdFile)
+{
+    print "---Using HOMD taxonomy\n";
+    push @taxNames, "HOMD";
+}
 
 ####################################################################
 ##                               MAIN
 ####################################################################
 my %silva;
+my %homd;
 my %unite;
 my %pecan;
 my %other;
@@ -120,6 +129,20 @@ if ($silvaFile)
   foreach my $x (keys %silva)
   {
     print OUT "$x\t$silva{$x}\n";
+  }
+  close OUT;
+}
+
+
+if ($homdFile)
+{
+  %homd = readSILVATbl($homdFile);
+  my $homdCond = "homd_condensed.txt";
+  print "---Writing condensed HOMD taxonomy to $homdCond\n";
+  open OUT, ">$homdCond", or die "Cannot open $homdCond for writing: $OS_ERROR\n";
+  foreach my $x (keys %homd)
+  {
+    print OUT "$x\t$homd{$x}\n";
   }
   close OUT;
 }
@@ -184,8 +207,11 @@ my $count=0;
 
 print "---Combining taxonomic assignments of all source files (includes " . scalar(keys %silva)." ASVs)\n";
 
-if($silvaFile)
+if($silvaFile || $homdFile)
 {
+  if(%homd) {
+    %silva = %homd; # process homd and silva identically. too lazy to rename variables
+  }
   foreach my $x (keys %silva)
   { 
     $count++;
@@ -283,11 +309,11 @@ my @suffixes = (".csv");
 my $Prefix = basename($countTblFile, @suffixes);
 
 print "---Adding taxonomy to $countTblFile\n";
-my $taxString = join("_", @taxNames);
-my $cntWtx = "${Prefix}_${taxString}_w_taxa.csv";
+my $taxString = join("+", @taxNames);
+my $cntWtx = "${Prefix}_${taxString}_asvs+taxa.csv";
 open ALL, ">$cntWtx", or die "Cannot open $cntWtx for writing: $OS_ERROR\n";
 
-my $cnttxon = "${Prefix}_${taxString}_taxa_only.csv";
+my $cnttxon = "${Prefix}_${taxString}_taxa.csv";
 open TXON, ">$cnttxon", or die "Cannot open $cnttxon for writing: $OS_ERROR\n";
 
 my @list1 = get_file_data($countTblFile); 
@@ -321,8 +347,8 @@ foreach my $line1 (@list1)
     }
   }
 }
-print ALL "," + join(",", @asvs) + "\n";
-my $taxaHead = "," + join(",", @taxa) + "\n";
+print ALL "," . join(",", @asvs) . "\n";
+my $taxaHead = "," . join(",", @taxa) . "\n";
 print ALL "$taxaHead";
 print TXON "$taxaHead";
 $line = 0;
