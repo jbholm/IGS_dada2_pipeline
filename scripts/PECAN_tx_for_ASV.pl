@@ -170,7 +170,7 @@ print "TOTAL ASVs: $i\n";
 
 @suffixes = (".csv");
 $Prefix = basename($cnttxon, @suffixes);
-my $merged = $Prefix . "_merged.csv";
+my $merged = $Prefix . "-merged.csv";
 
 if ($debug)
 {

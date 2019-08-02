@@ -82,11 +82,6 @@ if ($help)
 
 my @taxNames;
 
-if ($pecanFile) 
-{
-  print "Using only PECAN taxonomy\n";
-  push @taxNames, "PECAN";
-}
 
 if ($uniteFile) 
 {
@@ -96,8 +91,13 @@ if ($uniteFile)
 
 if ($silvaFile) 
 {
-  print "---Using only SILVA taxonomy\n";
+  print "---Using SILVA taxonomy\n";
   push @taxNames, "SILVA";
+}
+if ($pecanFile) 
+{
+  print "Using PECAN taxonomy\n";
+  push @taxNames, "PECAN";
 }
 if ($ezBioFile) 
 {
@@ -309,7 +309,7 @@ my @suffixes = (".csv");
 my $Prefix = basename($countTblFile, @suffixes);
 
 print "---Adding taxonomy to $countTblFile\n";
-my $taxString = join("+", @taxNames);
+my $taxString = join("-", @taxNames);
 my $cntWtx = "${Prefix}_${taxString}_asvs+taxa.csv";
 open ALL, ">$cntWtx", or die "Cannot open $cntWtx for writing: $OS_ERROR\n";
 
@@ -369,7 +369,7 @@ print "TOTAL ASVs: $i\n";
 
 @suffixes = (".csv");
 $Prefix = basename($cnttxon, @suffixes);
-my $merged = $Prefix . "_merged.csv";
+my $merged = $Prefix . "-merged.csv";
 
 
 if ($debug)

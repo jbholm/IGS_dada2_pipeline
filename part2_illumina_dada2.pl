@@ -146,7 +146,7 @@ if ( $region eq 'V3V4' ) {
     $models = "/local/projects-t2/jholm/PECAN/v1.0/V3V4/merged_models/";
 }
 if ( $region eq 'V4' && !$oral ) {
-    print "Using SILVA taxonomy only\n";
+    print "Using SILVA taxonomy\n";
 }
 if ( $region eq 'V4' && $oral ) {
     print "Using HOMD taxonomy only\n";
@@ -409,11 +409,26 @@ if ($pecanSilva) {
           or die "system($cmd) failed with exit code: $?"
           if !$dryRun;
     }
-    push @taxonomies, "PECAN+SILVA";
+    push @taxonomies, "SILVA-PECAN";
 }
+
+if ( !$oral ) {
+#### APPLY NON-PECAN CLASSIFICATIONS TO COUNT TABLE (V4) ####
+##############################################################
+    if ( $region eq 'V4' ) {
+        print "---Classifying ASVs with $region with SILVA only\n";
+        print LOG "---Classifying ASVs with $region with SILVA only\n";
+        $cmd =
+          "$scriptsDir/combine_tx_for_ASV.pl -s $projSilva -c $projabund";
+        print "\tcmd=$cmd\n" if $dryRun || $debug;
+        system($cmd) == 0
+          or die "system($cmd) failed with exit code: $?"
+          if !$dryRun;
+        push @taxonomies, "SILVA";
+    }
+
 #### APPLY PECAN-ONLY CLASSIFICATIONS TO COUNT TABLE (V3V4) ####
 ################################################################
-if ( !$oral ) {
     if ( $region eq 'V3V4' ) {
         if ($notVaginal) {
             $cmd =
@@ -431,20 +446,6 @@ if ( !$oral ) {
               if !$dryRun;
         }
         push @taxonomies, "PECAN";
-    }
-
-#### APPLY NON-PECAN CLASSIFICATIONS TO COUNT TABLE (V4) ####
-##############################################################
-    if ( $region eq 'V4' ) {
-        print "---Classifying ASVs with $region with SILVA only\n";
-        print LOG "---Classifying ASVs with $region with SILVA only\n";
-        $cmd =
-          "$scriptsDir/combine_tx_for_ASV.pl -s $projSilva -c $projabund";
-        print "\tcmd=$cmd\n" if $dryRun || $debug;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
-        push @taxonomies, "SILVA";
     }
 
 } else {
@@ -477,15 +478,19 @@ print
 print LOG
 "---Renaming ASVs in FASTA, abundance tables, and SILVA classification key.\n";
 $projpecan = -e $projpecan ? $projpecan : "";
+# BAD! Current version of the pipeline has exception case where both SILVA-PECAN
+# and SILVA-only count tables are produced, but only the first is renamed, 
+# according to the order of @taxonomies above. The next major release will
+# rename ASVs BEFORE taxa are applied to the count table.
 $cmd =
-"python2 $scriptsDir/rename_asvs.py -p $project -c @classifs --labeledCsv ${project}_" . basename(${abundance}, ".csv") . "_" . join('+', @taxonomies) . "_asvs+taxa.csv --pecan $projpecan";
+"python2 $scriptsDir/rename_asvs.py -p $project -c @classifs --labeledCsv ${project}_" . basename(${abundance}, ".csv") . "_" . $taxonomies[0] . "_asvs+taxa.csv --pecan $projpecan";
 print "\tcmd=$cmd\n" if $dryRun || $debug;
 system($cmd) == 0
   or print "$cmd failed with exit code: $?. Continuing...\n"
   if !$dryRun;
 print LOG "$cmd\n";
 
-my $final_merge     = glob("*_taxa_merged.csv");
+my $final_merge     = glob("*_taxa-merged.csv");
 my $final_taxa_only = glob("*_taxa.csv");
 my $final_ASV_taxa  = glob("*_asvs+taxa.csv");
 
