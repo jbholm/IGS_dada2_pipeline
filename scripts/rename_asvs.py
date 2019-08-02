@@ -15,7 +15,7 @@ args = parser.parse_args()
 
 csv = args.project + "_all_runs_dada2_abundance_table.csv"
 fasta = "all_runs_dada2_ASV.fasta"
-taxaCsv = args.labeledCsv
+#taxaCsv = args.labeledCsv
 if args.classif is None:
     args.classif = []
 classifs = []
@@ -42,11 +42,11 @@ for line in file:
 file.close()
 csFASTA = csFASTA[1:len(csFASTA)] # Remove a comma at the beginning of the line
 
-csTaxaCSV = ""
-with open(taxaCsv, "r") as file:
-    csTaxaCSV += file.readline().strip() # comma-separated string of asvs from the CSV
+# csTaxaCSV = ""
+# with open(taxaCsv, "r") as file:
+#     csTaxaCSV += file.readline().strip() # comma-separated string of asvs from the CSV
 
-csTaxaCSV = csTaxaCSV[1:(len(csTaxaCSV))]
+# csTaxaCSV = csTaxaCSV[1:(len(csTaxaCSV))]
 # Remove leading comma
 
 csClassifs = []
@@ -80,7 +80,7 @@ for csClassif in csClassifs:
     if csClassif != csCSV:
         classifsIdent = False
 # Test that the abundance tables and reference FASTA have identical ordered ASVs
-if any([csCSV != csFASTA, csTaxaCSV != csCSV, not classifsIdent, not pecanIdent]):
+if any([csCSV != csFASTA, not classifsIdent, not pecanIdent]):
     print >> sys.stderr, "ASVs in the DADA2 unclassified ASV abundance table and the ASV fasta are not in the same order (or might not even be identical sets of ASVs).\nModify scripts/rename_asvs.py to handle this scenario.\n\n"
     sys.exit(1)
 
@@ -119,25 +119,25 @@ except Exception as error:
     print str(exc_tb.tb_lineno) + ": " + str(error)
     sys.exit(1)
 
-shutil.move(taxaCsv, taxaCsv + ".bak")
-baks.append(taxaCsv + ".bak")
-try:
-    with open(taxaCsv + ".bak", "r") as inFh:
-        inFh.readline() # discard old header
-        csAsvIds = "," + ",".join(asvIds) + ",\n" # for some reason, this file has an extra column on the header
+# shutil.move(taxaCsv, taxaCsv + ".bak")
+# baks.append(taxaCsv + ".bak")
+# try:
+#     with open(taxaCsv + ".bak", "r") as inFh:
+#         inFh.readline() # discard old header
+#         csAsvIds = "," + ",".join(asvIds) + ",\n" # for some reason, this file has an extra column on the header
 
-        # Write to new csv, and then copy from the backup to the new file
-        with open(taxaCsv, "w") as outFh: # write-after-truncate mode
-            outFh.write(csAsvIds)
-            line = inFh.readline()
-            while (len(line) > 0):
-                outFh.write(line)
-                line = inFh.readline()
-except Exception as error:
-    exc_type, exc_obj, exc_tb = sys.exc_info()
-    revertBaks(baks)
-    print str(exc_tb.tb_lineno) + ": " + str(error)
-    sys.exit(1)
+#         # Write to new csv, and then copy from the backup to the new file
+#         with open(taxaCsv, "w") as outFh: # write-after-truncate mode
+#             outFh.write(csAsvIds)
+#             line = inFh.readline()
+#             while (len(line) > 0):
+#                 outFh.write(line)
+#                 line = inFh.readline()
+# except Exception as error:
+#     exc_type, exc_obj, exc_tb = sys.exc_info()
+#     revertBaks(baks)
+#     print str(exc_tb.tb_lineno) + ": " + str(error)
+#     sys.exit(1)
 
 shutil.move(fasta, fasta + ".bak")
 baks.append(fasta + ".bak")
@@ -170,7 +170,7 @@ for classif in classifs:
                     # For every other line, substitute in the new ASV ID
                     if ln != 1:
                         fields = line.split(",")
-                        line = asvIds[ln - 2] + "," + ",".join(fields[1:len(fields) - 1]) + "\n"
+                        line = asvIds[ln - 2] + "," + ",".join(fields[1:len(fields)])
                     outFh.write(line)
                     ln += 1
     except Exception as error:

@@ -359,11 +359,11 @@ if ( $region eq 'ITS' ) {
 
     push @classifs, $projSilva;
 }
- my $projpecan = $project . "_" . "MC_order7_results.txt";
 
 # Combine dada2 stats from all runs, and the overall project, into one file
 Stats_gen::combine_dada2_stats($projDir);
 
+my $projpecan = "";
 if ( $region eq 'V3V4' && !$oral ) {
     print
       "---Classifying ASVs with $region PECAN models (located in $models)\n";
@@ -380,6 +380,7 @@ if ( $region eq 'V3V4' && !$oral ) {
       if !$dryRun;
 
     my $pecan = "MC_order7_results.txt";
+    $projpecan = $project . "_" . "MC_order7_results.txt";
 
     $cmd = "mv $pecan $projpecan";
     print "\tcmd=$cmd\n" if $dryRun || $debug;
@@ -387,6 +388,26 @@ if ( $region eq 'V3V4' && !$oral ) {
       or die "system($cmd) failed with exit code: $?"
       if !$dryRun;
 }
+
+# Give ASV's unique and easy-to-look-up IDs
+# Figure out what to do when DADA2_combine_and_classify_ITS is run (both silva
+# and unite classification csvs are created)
+print
+"---Renaming ASVs in FASTA, abundance tables, and SILVA classification key.\n";
+print LOG
+"---Renaming ASVs in FASTA, abundance tables, and SILVA classification key.\n";
+# BAD! Current version of the pipeline has exception case where both SILVA-PECAN
+# and SILVA-only count tables are produced, but only the first is renamed, 
+# according to the order of @taxonomies above. The next major release will
+# rename ASVs BEFORE taxa are applied to the count table.
+$cmd =
+"python2 $scriptsDir/rename_asvs.py -p $project -c @classifs --pecan $projpecan";
+print "\tcmd=$cmd\n" if $dryRun || $debug;
+system($cmd) == 0
+  or print "$cmd failed with exit code: $?. Continuing...\n"
+  if !$dryRun;
+print LOG "$cmd\n";
+
 #################################################################
 #########APPLY CLASSIFICATIONS TO COUNT TABLE ###################
 #################################################################
@@ -470,25 +491,7 @@ if ( $region eq 'ITS' ) {
     push @taxonomies, "UNITE";
 }
 
-# Give ASV's unique and easy-to-look-up IDs
-# Figure out what to do when DADA2_combine_and_classify_ITS is run (both silva
-# and unite classification csvs are created)
-print
-"---Renaming ASVs in FASTA, abundance tables, and SILVA classification key.\n";
-print LOG
-"---Renaming ASVs in FASTA, abundance tables, and SILVA classification key.\n";
-$projpecan = -e $projpecan ? $projpecan : "";
-# BAD! Current version of the pipeline has exception case where both SILVA-PECAN
-# and SILVA-only count tables are produced, but only the first is renamed, 
-# according to the order of @taxonomies above. The next major release will
-# rename ASVs BEFORE taxa are applied to the count table.
-$cmd =
-"python2 $scriptsDir/rename_asvs.py -p $project -c @classifs --labeledCsv ${project}_" . basename(${abundance}, ".csv") . "_" . $taxonomies[0] . "_asvs+taxa.csv --pecan $projpecan";
-print "\tcmd=$cmd\n" if $dryRun || $debug;
-system($cmd) == 0
-  or print "$cmd failed with exit code: $?. Continuing...\n"
-  if !$dryRun;
-print LOG "$cmd\n";
+
 
 my $final_merge     = glob("*_taxa-merged.csv");
 my $final_taxa_only = glob("*_taxa.csv");
