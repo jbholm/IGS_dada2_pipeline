@@ -1,0 +1,23 @@
+
+<div class="tab-pane fade ${active} in" id="heatmapTab-${hmNbr}" role="tabpanel">
+<h2>${title}</h2>
+<div class="heatmapContainer">
+    <div class="heatmapLegend" id="heatmapScale-${hmNbr}"></div>
+    <div class = "heatmap plotly-container" id="heatmapInner-${hmNbr}"></div>
+</div>
+
+<div class="kable" style="border: 1px solid #ddd; padding: 0px; overflow-y: scroll; height:100%; overflow-x: scroll; width:100%; "><table class="table" style="margin-left: auto; margin-right: auto;">
+
+<thead>
+        <tr>
+         <th style="text-align:left;position: sticky; top:0; background-color: #FFFFFF;"> ID </th>
+         <th style="text-align:left;position: sticky; top:0; background-color: #FFFFFF;"> Reads </th>
+         <th style="text-align:left;position: sticky; top:0; background-color: #FFFFFF;"> Top Hit </th>
+        </tr>
+       </thead>
+        <tbody>
+            ${tbody}
+        </tbody>
+</table>
+</div>
+</div>
