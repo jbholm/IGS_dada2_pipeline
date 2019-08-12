@@ -29,24 +29,46 @@ opts = {
     'lookup': None
 }
     
+class Pathwiz(object):
+    def __init__(self, scriptsDir, projectDir):
+        self.sd = scriptsDir # These are publicly visible
+        self.pd = projectDir
+    
+    # Converts a relative path in the project directory to an abs path
+    def proj(self, path):
+        return os.path.join(self.pd, path)
+    
+    # Converts relative path in the script directory to abs path
+    def script(self, path):
+        return os.path.join(self.sd, path)
+    
+    # Gets a path relative to the project directory. As a side-effect, makes
+    # paths with whitespace safe.
+    def relToProj(self, path):
+        return str(Path(path).relative_to(self.pd))
 
-
-def main(wd, args):
-    os.chdir(wd)
-    reportDir = os.path.join(wd, "REPORT")
-    overwriteDir(reportDir)
+def main(pw, args):
+    os.chdir(pw.pd)
+    reportDir = os.path.join(pw.pd, "REPORT")
+    reportFilesDir = os.path.join(reportDir, ".Report_files")
+    try:
+        overwriteDir(reportDir)
+        overwriteDir(reportFilesDir)
+    except OSError:
+        print(reportDir + " already exists")
+    
 
     opts['lookup'] = TemplateLookup(directories=[scriptDir])
     mytemplate = opts['lookup'].get_template("MSL_REPORT.html")
 
-    map_table = getMapHTML(wd)
+    map_table = getMapHTML(pw)
     date = datetime.date.today().isoformat()
-    dada2stats = getDada2Stats(wd)
-    asvTables = getAsvTables(wd)
+    dada2stats = getDada2Stats(pw)
+    asvTables = getAsvTables(pw)
     contents = {
-        'PCR Neg. Controls': getCtrlPlots(wd, template_prefix="pcrNeg", sample_regex="ntcctr|PCRNTC|PCR.NEG|PCR.NTC|PCRNEG|PCRNEGCTRL"),
-        'PCR Pos. Controls': getCtrlPlots(wd, template_prefix="pcrPos", sample_regex="PCRPOS|PCR.pos|pCR.pos|POSCTRL|POS.CTRL|POSCON|posctr"),
-        'Extraction Controls': getCtrlPlots(wd, template_prefix="extNeg", sample_regex="EXTNTC|NTC.EXT|NTCEXT|EXT.NTC|NTC|EXTNEG")
+        'PCR Neg. Controls': getCtrlPlots(pw, template_prefix="pcrNeg", sample_regex="ntcctr|PCRNTC|PCR.NEG|PCR.NTC|PCRNEG|PCRNEGCTRL"),
+        'PCR Pos. Controls': getCtrlPlots(pw, template_prefix="pcrPos", sample_regex="PCRPOS|PCR.pos|pCR.pos|POSCTRL|POS.CTRL|POSCON|posctr"),
+        'Extraction Controls': getCtrlPlots(pw, template_prefix="extNeg", sample_regex="EXTNTC|NTC.EXT|NTCEXT|EXT.NTC|NTC|EXTNEG")
     }
     toc = ["""<ul style="background: #ffffff;">
     <li><a href="#info"><span>Sample Information</span></a></li>
@@ -60,23 +82,17 @@ def main(wd, args):
     for section in sectionOrder:
         if(len(contents[section]['js']) > 0):
             toc.append('<li><a href="#' + urllib.parse.quote(section) +
-                       '"><span class="nav-link-2">' + section + """</span></a></li>""")
+                       '"><span class="nav-link-2">...' + section + """</span></a></li>""")
     toc.append("</ul>")
     toc = "\n".join(toc)
 
 
-    reportFilesDir = os.path.join(reportDir, ".Report_files")
-    try:
-        overwriteDir(reportDir)
-        overwriteDir(reportFilesDir)
-    except OSError:
-        print(reportDir + " already exists")
 
     f = open(os.path.join(reportDir, "Report.html"), "w+")
     f.write(mytemplate.render(date=date,
                               mapping=map_table,
                               dada2stats=dada2stats,
-                              qc=fastqc(wd),
+                              qc=fastqc(pw),
                               asvtableshtml=asvTables['html'],
                               pcrNegCtrlHtml=contents['PCR Neg. Controls']['html'],
                               pcrPosCtrlHtml=contents['PCR Pos. Controls']['html'],
@@ -85,8 +101,8 @@ def main(wd, args):
     f.close()
 
     mytemplate = opts['lookup'].get_template("data.js")
-
-    with open(os.path.join(scriptDir + "/js/data.js"), "w") as f:
+    
+    with open(pw.script("js/data.js"), "w") as f:
         f.write(mytemplate.render(asvtablesjs=asvTables['js'],
                                   pcrNegCtrlJs=contents['PCR Neg. Controls']['js'],
                                   pcrPosCtrlJs=contents['PCR Pos. Controls']['js'],
@@ -113,7 +129,7 @@ def main(wd, args):
     #            shutil.move(os.path.join(srcAbs, f), os.path)
     cpAssets(("js", "css"))
 
-    # minifyCss(wd)
+    # minifyCss(pw.pd)
 
     print("Report created at " + os.path.join(reportDir, "Report.html"))
 
@@ -134,7 +150,7 @@ def softMkDir(directory):
         pass
 
 def askFile(dir, msg = "Please choose a file:"):
-    oldWd = os.getcwd()
+    oldwd = os.getcwd()
     os.chdir(dir)
     ans = ""
     while len(ans) == 0:
@@ -163,41 +179,60 @@ def askFile(dir, msg = "Please choose a file:"):
         else:
             nav = choice[2:] if choice.startswith("D ") else choice
             os.chdir(nav)
-    os.chdir(oldWd)
+    os.chdir(oldwd)
     return(ans)
 
-def getMappingFile(wd):
+def getMappingFile(pw):
     opts['map'] = ""
     oldCwd = os.getcwd()
-    os.chdir(wd)
+    os.chdir(pw.pd)
     while len(opts['map']) == 0:
-        candidates = glob.glob('**/*mapping*.txt', recursive=True)
-        questions = [
-        {
-            'type': 'list',
-            'name': 'useGlobbed',
-            'message': "Choose a mapping file",
-            'choices': candidates + ["Browse...", "Cancel"]
-        }
-        ]
-        choice = PyInquirer.prompt(questions, style=examples.custom_style_2)['useGlobbed']
-        if choice == "Browse...":
-            # open file chooser
-            opts['map'] = askFile(wd, "Please choose a mapping file")
-        elif choice == "Cancel":
-            sys.exit(0)
+        if args.interactive:
+            candidates = glob.glob('**/*mapping*.txt', recursive=True)
+            questions = [
+            {
+                'type': 'list',
+                'name': 'useGlobbed',
+                'message': "Choose a mapping file",
+                'choices': candidates + ["Browse...", "Cancel"]
+            }
+            ]
+            choice = PyInquirer.prompt(questions, style=examples.custom_style_2)['useGlobbed']
+            if choice == "Browse...":
+                # open file chooser
+                opts['map'] = askFile(pw.pd, "Please choose a mapping file")
+            elif choice == "Cancel":
+                sys.exit(0)
+            else:
+                opts['map'] = pw.proj(choice)
         else:
-            opts['map'] = os.path.join(wd, choice)
+            # look recursively in the run directories we were given
+            maps = [glob.glob(rundir + '/**/*mapping*.txt', recursive=True)[0] for rundir in args.runs]  
+            opts['map'] = pw.proj(joinMaps(maps))
     os.chdir(oldCwd)
     return()
+
+def joinMaps(files): # concatenates files into a tab-delimited mapping file in the current directory
+    dest = "project_map.txt"
+    with open(dest, "w") as outF:
+        with open(files[0], "r") as inF:
+            for line in inF:
+                outF.write(line.strip() + "\n")
+        for map in files[1:len(files)]:
+            with open(map, "r") as inF:
+                for i, line in enumerate(inF):
+                    if i != 0 and re.search(r'^\S+(\t\S+){3}', line) is not None:
+                        outF.write(line)
+    
+    return(dest)
 
 def enquote(s):
     return("\"" + s + "\"")
 
-def getMapHTML(wd):
+def getMapHTML(pw):
     status = -1
     while status != 0:
-        getMappingFile(wd)
+        getMappingFile(pw)
         os.chdir(scriptDir)
         
         cmd = "Rscript " + "mappingToHtml.R -m " + enquote(opts['map'])
@@ -215,9 +250,9 @@ def getMapHTML(wd):
     return map_table
 
 
-def getDada2Stats(wd):
-    statsFile = os.path.join(wd, "REPORT", "DADA2_stats.txt")
-    oldStatsFile = os.path.join(wd, "stats_file_cmp.txt")
+def getDada2Stats(pw):
+    statsFile = os.path.join(pw.proj("REPORT"), "DADA2_stats.txt")
+    oldStatsFile = pw.proj("stats_file_cmp.txt")
 
     status = -1 # Status of whole operation
     while status != 0:
@@ -232,10 +267,10 @@ def getDada2Stats(wd):
                 status1 = 0
             except FileNotFoundError:
                 print("Couldn't find " + oldStatsFile)
-                oldStatsFile = askFile(wd, "Please choose a stats file (combined part1-part2 DADA2 stats)\n")
+                oldStatsFile = askFile(pw.pd, "Please choose a stats file (combined part1-part2 DADA2 stats)\n")
             except BaseException as e:
                 print(str(e))
-                oldStatsFile = askFile(wd, "Please choose a stats file (combined part1-part2 DADA2 stats)\n")
+                oldStatsFile = askFile(pw.pd, "Please choose a stats file (combined part1-part2 DADA2 stats)\n")
         
         status = 0 # Good unless parsing errors encountered in loop
         ans = "\n\t"
@@ -249,7 +284,7 @@ def getDada2Stats(wd):
                 except:
                     print("Parsing DADA2 stats file failed.\nPlease select a different file.")
                     status = 2
-                    oldStatsFile = askFile(wd, "Please choose a stats file (combined part1-part2 DADA2 stats)\n")
+                    oldStatsFile = askFile(pw.pd, "Please choose a stats file (combined part1-part2 DADA2 stats)\n")
                     break
 
 
@@ -257,22 +292,22 @@ def getDada2Stats(wd):
     return ans
 
 
-def fastqc(wd):
+def fastqc(pw):
     ans = ""
 
     rundirs = ()
-    imgDir = os.path.join(wd, "REPORT", "FastQC")
+    imgDir = os.path.join(pw.proj("REPORT"), "FastQC")
     overwriteDir(imgDir)
 
     # "rundirs" should have all directories in the project directory
-    p = Path(wd)
-    rundirs = [str(x) for x in p.iterdir() if x.is_dir() and os.path.basename(str(x)) != "REPORT"]
+    p = Path(pw.pd)
+    rundirs = [pw.proj(run) for run in args.runs]
     # REPORT is a keyword directory that is never considered a run directory
     # Might want to change this so the user can select specific directories as runs.
     runs = 0
 
     for rundir in rundirs:  # Get FastQC report from each run folder
-        p = Path(os.path.join(wd, rundir))
+        p = Path(rundir)
 
         subdirs = [x for x in p.iterdir() if x.is_dir()]
 
@@ -375,8 +410,7 @@ COPY all images to the appropriate report folder and get their filepaths
 def getFastqcLocal(directory):
     ans = {}
     run = os.path.basename(os.path.dirname(os.path.dirname(directory)))
-    wd = os.path.dirname(os.path.dirname(os.path.dirname(directory)))
-    imgDir = os.path.join(wd, "REPORT", "FastQC")
+    imgDir = os.path.join(pw.proj("REPORT"), "FastQC")
 
     # Get the images in this fastqc analysis
     imgs = [os.path.join(directory, "Images", filename) for filename in
@@ -512,53 +546,60 @@ def df_to_js(df, float_format=None):
     return "".join(items)
 
 
-def getAsvTables(wd):
-    os.chdir(wd)
+def getAsvTables(pw):
+    os.chdir(pw.pd)
     csvs = glob.glob("*.csv", recursive=True)
 
     chooseNth = 1
     include = []
-
-    while (chooseNth > 0):
-        if chooseNth == 1:
-            question = "Please choose the first table to include"
-        else:
-            question = "Please choose the next table to include"
-
-        questions = [
-            {
-                'type': 'list',
-                'name': 'selection',
-                'message': question,
-                'choices': csvs + [PyInquirer.Separator(), "Abort", "Done"]
-            }
-        ]
-
-        selected = PyInquirer.prompt(
-            questions, style=examples.custom_style_2)['selection']
-
-        if selected == "Abort":
-            sys.exit(0)
-        elif selected == "Done":
-            chooseNth = 0
-        else:
-            include.append(selected)
-            i = csvs.index(selected)
-            csvs = csvs[0:i] + csvs[i + 1:]
-
-            # Remember which ASV table was chosen first
+    
+    if args.interactive:
+        while (chooseNth > 0):
+    
             if chooseNth == 1:
-                opts['defaultAsvTable'] = selected
-
-            chooseNth += 1
-            print("\n")
+                question = "Please choose the first table to include"
+            else:
+                question = "Please choose the next table to include"
+        
+            questions = [
+                {
+                    'type': 'list',
+                    'name': 'selection',
+                    'message': question,
+                    'choices': csvs + [PyInquirer.Separator(), "Abort", "Done"]
+                }
+            ]
+        
+            selected = PyInquirer.prompt(
+                questions, style=examples.custom_style_2)['selection']
+        
+            if selected == "Abort":
+                sys.exit(0)
+            elif selected == "Done":
+                chooseNth = 0
+            else:
+                include.append(selected)
+                i = csvs.index(selected)
+                csvs = csvs[0:i] + csvs[i + 1:]
+        
+                # Remember which ASV table was chosen first
+                if chooseNth == 1:
+                    opts['defaultAsvTable'] = selected
+        
+                chooseNth += 1
+                print("\n")
+        
+    else:
+        include = glob.glob(pw.proj('*asvs+taxa.csv'), recursive=True) + glob.glob(pw.proj('*taxa-merged.csv'), recursive=True)
+        print(include)
+        
 
      # for selection in include:
     # Get as numeric HTML table if chosen
 
     # Get as heatmap if chosen
 
-    # f = open(wd + "/IHV_all_runs_dada2_abundance_table_PECAN_taxa_only_merged.csv", "r")
+    # f = open(pw.pd + "/IHV_all_runs_dada2_abundance_table_PECAN_taxa_only_merged.csv", "r")
     html = ""
     js = ""
     heatmapNbr = 1
@@ -577,6 +618,10 @@ def getAsvTables(wd):
         zmin = 0
         zmax = 0
         topMargin = 40
+        
+        print(file)
+        print(os.path.join(pw.pd, "REPORT"))
+        shutil.copyfile(os.path.join(file), os.path.join(pw.pd, "REPORT", os.path.basename(file)))
 
         taxnmy = fields[len(fields)-2]
         if taxnmy == "PECAN-SILVA":
@@ -590,7 +635,7 @@ def getAsvTables(wd):
         else:
             print("Error: can't determine count table file format from filename.")
         
-        opts['asvDfs'][file] = readAsvTable(os.path.join(wd, file))
+        opts['asvDfs'][file] = readAsvTable(pw.proj(file))
 
 
         # Get the one or two headers in the dataframe and determine whether
@@ -747,48 +792,52 @@ def getAsvTables(wd):
         
     sectionTemplate = opts['lookup'].get_template("countPage.html")
     selectorOpts = ""
-    for id in range(len(include)):
+    for id, filepath in enumerate(include):
         selectorOpts += '<option value="heatmapTab-' + \
-            str(id + 1) + '">' + include[id] + '</option>\n'
+            str(id + 1) + '">' + pw.relToProj(filepath) + '</option>\n'
     
     sectionHtml = sectionTemplate.render(tables=html, selectOptions=selectorOpts)
 
     return {'html': sectionHtml, 'js': js}
 
 
-def getCtrlPlots(wd, template_prefix, sample_regex):
+def getCtrlPlots(pw, template_prefix, sample_regex):
     if len(opts['asvDfs']) == 0:
         return {'html': "", 'js': ""}
 
     if(len(opts['controlTable']) == 0):
-        question = "Extract control data from " + \
-            opts['defaultAsvTable'] + " ?"
-
-        questions = [
-            {
-                'type': 'confirm',
-                'name': 'useDefault',
-                'message': question,
-                'default': True,
-            }
-        ]
-
-        if PyInquirer.prompt(questions, style=examples.custom_style_2)['useDefault']:
-            df = opts['defaultAsvTable']
-        else:
-            question = "Please choose the ASV table from which to extract control data:"
+        if args.interactive:
+            question = "Extract control data from " + \
+                opts['defaultAsvTable'] + " ?"
+    
             questions = [
                 {
-                    'type': 'list',
-                    'name': 'selection',
+                    'type': 'confirm',
+                    'name': 'useDefault',
                     'message': question,
-                    'choices': opts['asvDfs'].keys()
+                    'default': True,
                 }
             ]
-            df = PyInquirer.prompt(questions, style=examples.custom_style_2)[
-                'selection']
+    
+            if PyInquirer.prompt(questions, style=examples.custom_style_2)['useDefault']:
+                df = opts['defaultAsvTable']
+            else:
+                question = "Please choose the ASV table from which to extract control data:"
+                questions = [
+                    {
+                        'type': 'list',
+                        'name': 'selection',
+                        'message': question,
+                        'choices': opts['asvDfs'].keys()
+                    }
+                ]
+                df = PyInquirer.prompt(questions, style=examples.custom_style_2)[
+                    'selection']
+    
+            opts['controlTable'] = df
+        else:
+            opts['controlTable'] = glob.glob(pw.proj('*asvs+taxa.csv'), recursive=True)[0]
 
-        opts['controlTable'] = df
 
     # Get control samples
     mapping = pd.read_csv(opts['map'],
@@ -863,28 +912,28 @@ def getCtrlPlots(wd, template_prefix, sample_regex):
     return {'html': html, 'js': js}
 
 
-def minifyCss(wd):
-    wd = os.path.join(wd, "REPORT")
-    subprocess.check_call("css-purge -i " + enquote(os.path.join(wd, ".Report_files", "css")) + " -m " +
-                          enquote(os.path.join(wd, "Report.html")) + " -o " + enquote(os.path.join(wd, "report.css")), shell=True)
-    shutil.rmtree(os.path.join(wd, ".Report_files", "css"))
-    os.mkdir(os.path.join(wd, ".Report_files", "css"))
-    shutil.move(os.path.join(wd, "report.css"), os.path.join(
-        wd, ".Report_files", "css", "report.css"))
+def minifyCss(pw):
+    #pw = pw.proj("REPORT")
+    #subprocess.check_call("css-purge -i " + enquote(pw.proj(".Report_files", "css")) + " -m " +
+                          #enquote(pw.proj("Report.html")) + " -o " + enquote(pw.proj("report.css")), shell=True)
+    #shutil.rmtree(pw.proj(".Report_files", "css"))
+    #os.mkdir(pw.proj(".Report_files", "css"))
+    #shutil.move(pw.proj("report.css"), os.path.join(
+        #pw, ".Report_files", "css", "report.css"))
 
-    shutil.move(os.path.join(wd, "Report.html"),
-                os.path.join(wd, "Report.html.bak"))
-    with open(os.path.join(wd, "Report.html.bak")) as inFile:
-        with open(os.path.join(wd, "Report.html"), "w+") as outFile:
-            patt = re.compile(
-                '<link[^<]*(?=rel="stylesheet")[^>]*>', flags=re.DOTALL)
-            contents = inFile.read()
-            contents = re.sub(patt, "", contents, count=0)
-            patt = re.compile('</head>')
-            outFile.write(re.sub(patt, string=contents,
-                                 repl="\n<link href='.Report_files/css/report.css' rel='stylesheet'>\n</head>"))
+    #shutil.move(pw.proj("Report.html"),
+                #pw.proj("Report.html.bak"))
+    #with open(pw.proj("Report.html.bak")) as inFile:
+        #with open(pw.proj("Report.html"), "w+") as outFile:
+            #patt = re.compile(
+                #'<link[^<]*(?=rel="stylesheet")[^>]*>', flags=re.DOTALL)
+            #contents = inFile.read()
+            #contents = re.sub(patt, "", contents, count=0)
+            #patt = re.compile('</head>')
+            #outFile.write(re.sub(patt, string=contents,
+                                 #repl="\n<link href='.Report_files/css/report.css' rel='stylesheet'>\n</head>"))
 
-    os.remove(os.path.join(wd, "Report.html.bak"))
+    #os.remove(pw.proj("Report.html.bak"))
     return
 
 
@@ -894,12 +943,17 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='''A script that automatically populates fields in the HTML report template. ''',
         epilog="""""")
-    parser.add_argument("wd", nargs="+", metavar="dir",
+    parser.add_argument("wd", nargs=1, metavar="PROJECT_DIR",
                         help="The project directory containing a map, stats_file_cmp.txt, any ASV tables in CSV format, and run folder(s) with FastQC reports.")
     parser.add_argument("--verbose", action='store_true')
     parser.add_argument("--interactive", "-i", action='store_true')
+    parser.add_argument("--runs", "-r", nargs='+', help="The names of the run directories to include. These must be subdirectories of DIR. If not --interactive, --run is required.")
     args = parser.parse_args()
     np.set_printoptions(threshold=np.inf)
-
+    if not args.interactive and args.runs is None:
+        print("Requires either --interactive or --runs")
+        sys.exit(1)
     for wd in args.wd:
-        main(wd=os.path.abspath(wd), args=args)
+        pw = Pathwiz(scriptsDir=scriptDir,
+                     projectDir=wd)
+        main(pw, args=args)
