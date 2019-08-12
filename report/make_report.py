@@ -40,7 +40,7 @@ def main(wd, args):
     mytemplate = opts['lookup'].get_template("MSL_REPORT.html")
 
     map_table = getMapHTML(wd)
-    date = args.date or datetime.date.today().isoformat()
+    date = datetime.date.today().isoformat()
     dada2stats = getDada2Stats(wd)
     asvTables = getAsvTables(wd)
     contents = {
@@ -894,12 +894,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='''A script that automatically populates fields in the HTML report template. ''',
         epilog="""""")
-    # parser.add_argument("--author", "-a", help="The report\'s author")
-    parser.add_argument("--date", "-d", nargs="?",
-                        help="Optional date to override today\'s date")
     parser.add_argument("wd", nargs="+", metavar="dir",
                         help="The project directory containing a map, stats_file_cmp.txt, any ASV tables in CSV format, and run folder(s) with FastQC reports.")
     parser.add_argument("--verbose", action='store_true')
+    parser.add_argument("--interactive", "-i", action='store_true')
     args = parser.parse_args()
     np.set_printoptions(threshold=np.inf)
 
