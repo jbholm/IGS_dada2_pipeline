@@ -47,6 +47,25 @@ class Pathwiz(object):
     def relToProj(self, path):
         return str(Path(path).relative_to(self.pd))
 
+class controlsPar(object):
+    def __init__(self, title, prefix, patt):
+        self.title = title
+        self.prefix = prefix
+        self.patt = patt
+        self.urlsafe = urllib.parse.quote(title)
+
+def initControlsParams():
+    ctrlsPars = []
+    ctrlsPars.append(controlsPar('PCR Neg. Controls',
+                                    "pcrNeg",
+                                    "ntcctr|PCRNTC|PCR.NEG|PCR.NTC|PCRNEG|PCRNEGCTRL"))
+    ctrlsPars.append(controlsPar('PCR Pos. Controls', "pcrPos",
+                                    "PCRPOS|PCR.pos|pCR.pos|POSCTRL|POS.CTRL|POSCON|posctr"))
+    ctrlsPars.append(controlsPar('Extraction Neg. Controls', "extNeg",
+                                 "EXTNTC|NTC.EXT|NTCEXT|EXT.NTC|NTC|EXTNEG"))
+    # Add ext. pos. controls when the time comes
+    return(ctrlsPars)
+    
 def main(pw, args):
     os.chdir(pw.pd)
     reportDir = os.path.join(pw.pd, "REPORT")
@@ -65,24 +84,25 @@ def main(pw, args):
     date = datetime.date.today().isoformat()
     dada2stats = getDada2Stats(pw)
     asvTables = getAsvTables(pw)
-    contents = {
-        'PCR Neg. Controls': getCtrlPlots(pw, template_prefix="pcrNeg", sample_regex="ntcctr|PCRNTC|PCR.NEG|PCR.NTC|PCRNEG|PCRNEGCTRL"),
-        'PCR Pos. Controls': getCtrlPlots(pw, template_prefix="pcrPos", sample_regex="PCRPOS|PCR.pos|pCR.pos|POSCTRL|POS.CTRL|POSCON|posctr"),
-        'Extraction Controls': getCtrlPlots(pw, template_prefix="extNeg", sample_regex="EXTNTC|NTC.EXT|NTCEXT|EXT.NTC|NTC|EXTNEG")
-    }
+
+    # start off the table of contents
     toc = ["""<ul style="background: #ffffff;">
     <li><a href="#info"><span>Sample Information</span></a></li>
             <li><a href="#qc"><span>QC Report</span></a></li>
             <li>Results</li>
             <li><a href="#all-samples"><span class="nav-link-2">All Samples</span></a></li>"""]
-    # FIXME make these optional. At the same time, look for a convenient place to
-    # urllib.parse.quote() all the section titles (and put these in the pcrNegCtrlPlot.htmls too)
-    sectionOrder = ['PCR Neg. Controls',
-                    'PCR Pos. Controls', 'Extraction Controls']
-    for section in sectionOrder:
-        if(len(contents[section]['js']) > 0):
-            toc.append('<li><a href="#' + urllib.parse.quote(section) +
-                       '"><span class="nav-link-2">...' + section + """</span></a></li>""")
+
+    # Get content on controls.
+    ctrlPars = initControlsParams() # returns list. Order matters bc the toc is ordered!
+    ctrlContent = {}
+    for pars in ctrlPars:
+        # If this project contained controls, getCtrlPlots returns html and js
+        content = getCtrlPlots(pw, pars)
+        ctrlContent[pars.title] = content
+        if(len(content['js']) > 0):
+            toc.append('<li><a href="#' + pars.urlsafe +
+                       '"><span class="nav-link-2">' + pars.title + """</span></a></li>""")        
+
     toc.append("</ul>")
     toc = "\n".join(toc)
 
@@ -94,9 +114,9 @@ def main(pw, args):
                               dada2stats=dada2stats,
                               qc=fastqc(pw),
                               asvtableshtml=asvTables['html'],
-                              pcrNegCtrlHtml=contents['PCR Neg. Controls']['html'],
-                              pcrPosCtrlHtml=contents['PCR Pos. Controls']['html'],
-                              extNegCtrlHtml=contents['Extraction Controls']['html'],
+                              pcrNegCtrlHtml=ctrlContent['PCR Neg. Controls']['html'],
+                              pcrPosCtrlHtml=ctrlContent['PCR Pos. Controls']['html'],
+                              extNegCtrlHtml=ctrlContent['Extraction Neg. Controls']['html'],
                               toc=toc))
     f.close()
 
@@ -104,9 +124,9 @@ def main(pw, args):
     
     with open(pw.script("js/data.js"), "w") as f:
         f.write(mytemplate.render(asvtablesjs=asvTables['js'],
-                                  pcrNegCtrlJs=contents['PCR Neg. Controls']['js'],
-                                  pcrPosCtrlJs=contents['PCR Pos. Controls']['js'],
-                                  extNegCtrlJs=contents['Extraction Controls']['js'],
+                                  pcrNegCtrlJs=ctrlContent['PCR Neg. Controls']['js'],
+                                  pcrPosCtrlJs=ctrlContent['PCR Pos. Controls']['js'],
+                                  extNegCtrlJs=ctrlContent['Extraction Neg. Controls']['js'],
                 contaminants=", ".join([enquote(c) for c in opts['contaminants']])
                 )
                 )
@@ -776,7 +796,8 @@ def getAsvTables(pw):
         html += htmlTemplate.render(active=active,
                                     hmNbr=heatmapNbr,
                                     title=title,
-                                    tbody=tbody) + "\n"
+                                    tbody=tbody,
+                                    isAsvTable=len(asvIDs) > 0) + "\n"
         js += jsTemplate.render(abundances=data_str,
                                 taxa=", ".join(taxa), asvs=", ".join(asvIDs),
                                 samples=", ".join(sampleIDs),
@@ -794,14 +815,13 @@ def getAsvTables(pw):
     selectorOpts = ""
     for id, filepath in enumerate(include):
         selectorOpts += '<option value="heatmapTab-' + \
-            str(id + 1) + '">' + pw.relToProj(filepath) + '</option>\n'
+            str(id + 1) + '">...' + pw.relToProj(filepath) + '</option>\n'
     
     sectionHtml = sectionTemplate.render(tables=html, selectOptions=selectorOpts)
 
     return {'html': sectionHtml, 'js': js}
 
-
-def getCtrlPlots(pw, template_prefix, sample_regex):
+def getCtrlPlots(pw, pars):
     if len(opts['asvDfs']) == 0:
         return {'html': "", 'js': ""}
 
@@ -842,7 +862,7 @@ def getCtrlPlots(pw, template_prefix, sample_regex):
     # Get control samples
     mapping = pd.read_csv(opts['map'],
                           sep="\t", header=0, index_col=3)
-    ctrls = list(mapping.filter(regex=sample_regex, axis=0).iloc[:, 0])
+    ctrls = list(mapping.filter(regex=pars.patt, axis=0).iloc[:, 0])
     if(len(ctrls) == 0):
         return {'html': '',
                 'js': ''}
@@ -892,14 +912,14 @@ def getCtrlPlots(pw, template_prefix, sample_regex):
 
     opts['contaminants'] = asvIDs
 
-    html_template =opts['lookup'].get_template(template_prefix + "CtrlPlot.html")
+    html_template =opts['lookup'].get_template(pars.prefix + "CtrlPlot.html")
     sample_names = data.index.values.tolist()
     options = ['<option>' + name + '</option>' for name in sample_names]
     colors = list(colour.Color("#F0E442").range_to(
         colour.Color("#CC79A7"), len(sample_names)))
     colors = ",".join([enquote(col.hex) for col in colors])
 
-    template = opts['lookup'].get_template(template_prefix + "CtrlPlot.js")
+    template = opts['lookup'].get_template(pars.prefix + "CtrlPlot.js")
     js = template.render(xs=", ".join([str(x) for x in range(len(taxa))]),
                          ys=df_to_js(data.T),
                          taxa=", ".join([enquote(taxon) for taxon in taxa]),
@@ -908,7 +928,8 @@ def getCtrlPlots(pw, template_prefix, sample_regex):
                              ["{:.2f}".format(x) for x in sems]),
                          ntaxa=str(len(taxa)), colors=colors)
 
-    html = html_template.render(options="\n".join(options))
+    html = html_template.render(id=pars.urlsafe,
+                                options="\n".join(options))
     return {'html': html, 'js': js}
 
 

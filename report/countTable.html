@@ -6,6 +6,14 @@
     <div class = "heatmap plotly-container" id="heatmapInner-${hmNbr}"></div>
 </div>
 
+% if isAsvTable:
+    ${negCtrlCaption()}
+% endif
+
+<%def name="negCtrlCaption()">
+<div>Taxa printed in <font color="#f05f5e">red</font> appeared in PCR negative controls.</div>
+</%def>
+
 <div class="kable" style="border: 1px solid #ddd; padding: 0px; overflow-y: scroll; height:100%; overflow-x: scroll; width:100%; "><table class="table" style="margin-left: auto; margin-right: auto;">
 
 <thead>
