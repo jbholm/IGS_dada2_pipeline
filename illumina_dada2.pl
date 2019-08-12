@@ -387,6 +387,9 @@ if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
         }
     }
 
+    # Clean the error directory so only the report creator only finds the current
+    # mapping file.
+    unlink glob "'$error_log/*mapping*.txt'"; 
     print "--Validating $map\n";
     $cmd = "validate_mapping_file.py -m $map -s -o $error_log";
     execute_and_log( $cmd, 0, $dryRun );
