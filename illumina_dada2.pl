@@ -203,11 +203,11 @@ GetOptions(
   or pod2usage( verbose => 0, exitstatus => 1 );
 
 if (@dbg) {
-    my $e  = grep( /^barcodes$/, @dbg );
-    my $de = grep( /^demux$/,    @dbg );
-    my $s = grep( /^splitsamples$/,    @dbg );
-    my $t  = grep( /^tagclean$/, @dbg );
-    my $da = grep( /^dada2$/,    @dbg );
+    my $e  = grep( /^barcodes$/,     @dbg );
+    my $de = grep( /^demux$/,        @dbg );
+    my $s  = grep( /^splitsamples$/, @dbg );
+    my $t  = grep( /^tagclean$/,     @dbg );
+    my $da = grep( /^dada2$/,        @dbg );
     if ( $e + $de + $s + $t + $da == scalar @dbg ) { }
     else {
         die "Illegal debug option. Legal debug options are "
@@ -387,9 +387,9 @@ if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
         }
     }
 
-    # Clean the error directory so only the report creator only finds the current
-    # mapping file.
-    unlink glob "'$error_log/*mapping*.txt'"; 
+   # Clean the error directory so only the report creator only finds the current
+   # mapping file.
+    unlink glob "'$error_log/*mapping*.txt'";
     print "--Validating $map\n";
     $cmd = "validate_mapping_file.py -m $map -s -o $error_log";
     execute_and_log( $cmd, 0, $dryRun );
@@ -516,7 +516,6 @@ if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
     my $count = 0;
 
     my $step1;
-
 
     ###### BEGIN BARCODES ##########
     #######################################
@@ -662,7 +661,6 @@ if ( !@dbg || grep( /^demux$/, @dbg ) ) {
           convert_to_local_if_gz( $wd, $readsForInput, $readsRevInput );
     }
 
-    
     if ( !-e $rForSeqsFq || !-e $rRevSeqsFq || @dbg ) {
         print "---Producing $rForSeqsFq and $rRevSeqsFq\n";
         my $start = time;
@@ -766,7 +764,7 @@ if ( !@dbg || grep( /^demux$/, @dbg ) ) {
           . "mapping file correct? Exiting.\n";
         die;
     }
-    
+
     # Remove temporarily decompressed files
     if ($oneStep) {
         print "---Removing decompressed raw files from $wd\n";
@@ -777,8 +775,7 @@ if ( !@dbg || grep( /^demux$/, @dbg ) ) {
     }
 
     if ( @dbg && !grep( /^splitsamples$/, @dbg ) ) {
-        die
-"Finished demultiplexing libaries. Terminated "
+        die "Finished demultiplexing libaries. Terminated "
           . "because -d splitsamples was not specified.";
     }
 }
@@ -790,12 +787,13 @@ if ( !@dbg || grep( /^splitsamples$/, @dbg ) ) {
 
     my $do = 1;
 
-    if (!@dbg) {
+    if ( !@dbg ) {
+
         # Skip splitting by sample if step already done and not in debug mode
 
         # Determine the expected number of sample-specific files
         open SPLIT, "<$split_log"
-        or die "Cannot open $split_log for writing: " . "$OS_ERROR";
+          or die "Cannot open $split_log for writing: " . "$OS_ERROR";
         my @split;
         while (<SPLIT>) {
             if ( $_ =~ /\t/ ) {
@@ -817,18 +815,20 @@ if ( !@dbg || grep( /^splitsamples$/, @dbg ) ) {
         my @forFilenames = glob("$fwdSampleDir/*.fastq");
         my @revFilenames = glob("$revSampleDir/*.fastq");
 
-        if ( scalar(@forFilenames) == $newSamNo
-        && scalar(@revFilenames) == $newSamNo )
+        if (   scalar(@forFilenames) == $newSamNo
+            && scalar(@revFilenames) == $newSamNo )
         {
             $do = 0;
-            print "--$newSamNo sample-specific files present as expected. Skipping splitting by sample.\n";
-            print $logFH "$newSamNo sample-specific files present as expected. Skipping splitting by sample.\n";
+            print
+"--$newSamNo sample-specific files present as expected. Skipping splitting by sample.\n";
+            print $logFH
+"$newSamNo sample-specific files present as expected. Skipping splitting by sample.\n";
         }
     }
-    
-    if($do) {
+
+    if ($do) {
         my @cmds;
-        my $step3 = "split_sequence_file_on_sample_ids.py";
+        my $step3      = "split_sequence_file_on_sample_ids.py";
         my $rForSeqsFq = "$fwdProjDir/seqs.fastq";
         my $rRevSeqsFq = "$revProjDir/seqs.fastq";
 
@@ -924,8 +924,7 @@ if ( !@dbg || grep( /^splitsamples$/, @dbg ) ) {
     }
 
     if ( @dbg && !grep( /^tagclean$/, @dbg ) ) {
-        die
-"Finished splitting library by samples. Terminated "
+        die "Finished splitting library by samples. Terminated "
           . "because -d tagclean was not specified.";
     }
 }
@@ -941,6 +940,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
     my @outPatts = ( "_R1_tc", "_R2_tc" );
 
     if ( !@dbg ) {
+
         # Opportunity to skip tagcleaning. DON"T do this if the user requested
         # tagcleaning explicitly with --debug tagclean
 
@@ -1212,8 +1212,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
     }
 
     if ( @dbg && !grep( /^dada2$/, @dbg ) ) {
-        die
-"Finished tagcleaning. Terminated "
+        die "Finished tagcleaning. Terminated "
           . "because -d dada2 was not specified.\n";
     }
 }

@@ -260,6 +260,8 @@ def getMapHTML(pw):
             status = subprocess.call(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             if status != 0:
                 print("Unable to parse selected file as map.")
+                if not args.interactive:
+                    sys.exit(1)
                 opts['map'] = ""
         else:
             status = subprocess.call(cmd, shell=True)
