@@ -989,7 +989,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
-                        my $tc = "$wd/$Prefix" . "_R2_tc";
+                        my $tc = "$wd/$Prefix" . "_R1_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2 -trim_within 50";
                         push @cmds, $cmd;
@@ -997,21 +997,21 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 }
                 close R1;
 
-                opendir R4, $revSampleDir
+                opendir R2, $revSampleDir
                   or die "Cannot open directory $revSampleDir\n";
-                while ( $filename = readdir R4 ) {
+                while ( $filename = readdir R2 ) {
                     if ( $filename =~ /.fastq$/ ) {
 
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
-                        my $tc = "$wd/$Prefix" . "_R1_tc";
+                        my $tc = "$wd/$Prefix" . "_R2_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2 -trim_within 50";
                         push @cmds, $cmd;
                     }
                 }
-                close R4;
+                close R2;
             }
 
             if ( $var eq "V4" ) {
@@ -1032,9 +1032,9 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 }
                 close R1;
 
-                opendir R4, $revSampleDir
+                opendir R2, $revSampleDir
                   or die "Cannot open directory $revSampleDir\n";
-                while ( $filename = readdir R4 ) {
+                while ( $filename = readdir R2 ) {
                     if ( $filename =~ /.fastq$/ ) {
 
                         my @suffixes = ( ".fastq", ".fq" );
@@ -1046,7 +1046,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         push @cmds, $cmd;
                     }
                 }
-                close R4;
+                close R2;
             }
         } else {
             if ( $var eq "V3V4" ) {
@@ -1068,9 +1068,9 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 }
                 close R1;
 
-                opendir R4, $revSampleDir
+                opendir R2, $revSampleDir
                   or die "Cannot open directory $revSampleDir\n";
-                while ( $filename = readdir R4 ) {
+                while ( $filename = readdir R2 ) {
                     if ( $filename =~ /.fastq$/ ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
@@ -1082,7 +1082,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         push @cmds, $cmd;
                     }
                 }
-                close R4;
+                close R2;
             }
             if ( $var eq "V4" ) {
                 print "...Removing V4 primers from all sequences.\n";
@@ -1103,9 +1103,9 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 }
                 close R1;
 
-                opendir R4, $revSampleDir
+                opendir R2, $revSampleDir
                   or die "Cannot open directory $revSampleDir\n";
-                while ( $filename = readdir R4 ) {
+                while ( $filename = readdir R2 ) {
                     if ( $filename =~ /.fastq$/ ) {
 
                         my @suffixes = ( ".fastq", ".fq" );
@@ -1117,7 +1117,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         push @cmds, $cmd;
                     }
                 }
-                close R4;
+                close R2;
             }
             if ( $var eq "ITS" ) {
                 print "...Removing ITS primers from all sequences.\n";
@@ -1137,9 +1137,9 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 }
                 close R1;
 
-                opendir R4, $revSampleDir
+                opendir R2, $revSampleDir
                   or die "Cannot open directory $revSampleDir\n";
-                while ( $filename = readdir R4 ) {
+                while ( $filename = readdir R2 ) {
                     if ( $filename =~ /.fastq$/ ) {
 
                         my @suffixes = ( ".fastq", ".fq" );
@@ -1151,7 +1151,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         push @cmds, $cmd;
                     }
                 }
-                close R4;
+                close R2;
             }
         }
         execute_and_log( @cmds, 0, $dryRun );
