@@ -494,7 +494,7 @@ if ( $region eq 'ITS' ) {
 
 
 my $final_merge     = glob("*_taxa-merged.csv");
-my $final_taxa_only = glob("*_taxa.csv");
+unlink scalar( glob("*_taxa.csv") );
 my $final_ASV_taxa  = glob("*_asvs+taxa.csv");
 
 print LOG "---Final files succesfully produced!\n";
