@@ -396,8 +396,9 @@ print
 "---Renaming ASVs in FASTA, abundance tables, and SILVA classification key.\n";
 print LOG
 "---Renaming ASVs in FASTA, abundance tables, and SILVA classification key.\n";
+
 # BAD! Current version of the pipeline has exception case where both SILVA-PECAN
-# and SILVA-only count tables are produced, but only the first is renamed, 
+# and SILVA-only count tables are produced, but only the first is renamed,
 # according to the order of @taxonomies above. The next major release will
 # rename ASVs BEFORE taxa are applied to the count table.
 $cmd =
@@ -439,8 +440,7 @@ if ( !$oral ) {
     if ( $region eq 'V4' ) {
         print "---Classifying ASVs with $region with SILVA only\n";
         print LOG "---Classifying ASVs with $region with SILVA only\n";
-        $cmd =
-          "$scriptsDir/combine_tx_for_ASV.pl -s $projSilva -c $projabund";
+        $cmd = "$scriptsDir/combine_tx_for_ASV.pl -s $projSilva -c $projabund";
         print "\tcmd=$cmd\n" if $dryRun || $debug;
         system($cmd) == 0
           or die "system($cmd) failed with exit code: $?"
@@ -472,7 +472,8 @@ if ( !$oral ) {
 } else {
     print "---Classifying ASVs with $region with HOMD only\n";
     print LOG "---Classifying ASVs with $region with HOMD only\n";
-    $cmd = "$scriptsDir/combine_tx_for_ASV.pl --homd-file $projHOMD -c $projabund";
+    $cmd =
+      "$scriptsDir/combine_tx_for_ASV.pl --homd-file $projHOMD -c $projabund";
     print "\tcmd=$cmd\n" if $dryRun || $debug;
     system($cmd) == 0
       or die "system($cmd) failed with exit code: $?"
@@ -491,11 +492,9 @@ if ( $region eq 'ITS' ) {
     push @taxonomies, "UNITE";
 }
 
-
-
-my $final_merge     = glob("*_taxa-merged.csv");
+my $final_merge = glob("*_taxa-merged.csv");
 unlink scalar( glob("*_taxa.csv") );
-my $final_ASV_taxa  = glob("*_asvs+taxa.csv");
+my $final_ASV_taxa = glob("*_asvs+taxa.csv");
 
 print LOG "---Final files succesfully produced!\n";
 print LOG

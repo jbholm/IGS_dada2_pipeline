@@ -1,15 +1,21 @@
 #!/usr/bin/env python2
-import shutil, sys, math, os
+import shutil
+import sys
+import math
+import os
 import argparse
 
-parser=argparse.ArgumentParser(
+parser = argparse.ArgumentParser(
     description='''A script that renames ASVs in a 16S project. ASVs are given unique IDs in the template ASV###, where ### is a zero-padded number of sufficient length to uniquely identify all ASVs.''',
     epilog="""""")
-parser.add_argument('--project', '-p', required=True, help='The project name (the prefix for the abundance tables)')
-parser.add_argument('--pecan', nargs = "?", const = "", default = "", help = 'A pecan classification file (usu. *MC_order7_results.txt)')
+parser.add_argument('--project', '-p', required=True,
+                    help='The project name (the prefix for the abundance tables)')
+parser.add_argument('--pecan', nargs="?", const="", default="",
+                    help='A pecan classification file (usu. *MC_order7_results.txt)')
 parser.add_argument('--classif', '-c', nargs='*', help='Any non-PECAN classification CSVs containing one header line, ASVs in the first column and taxonomic assignments in the remaining columns. Do NOT omit the project prefix from these filenames, if present.')
-parser.add_argument('--labeledCsv', help='The *_abundance_table_<taxonomy>_w_taxa.csv file.')
-# Get rid of --labeledCsv asap; in the next versionof part2, renaming asvs will happen before 
+parser.add_argument(
+    '--labeledCsv', help='The *_abundance_table_<taxonomy>_w_taxa.csv file.')
+# Get rid of --labeledCsv asap; in the next versionof part2, renaming asvs will happen before
 # the count tables are labeled with taxa.
 args = parser.parse_args()
 
@@ -22,25 +28,26 @@ classifs = []
 for file in args.classif:
     classifs.append(file)
 
-# There are three files containing headers/rownames that reference sequences 
+# There are three files containing headers/rownames that reference sequences
 # in a FASTA. Are the sequences, headers, and rownames in the same order?
 
 file = open(csv, "r")
 csCSV = file.readline().strip()  # comma-separated string of asvs from the CSV
-csCSV = csCSV[1:len(csCSV)] # Remove a comma at the beginning of the line
+csCSV = csCSV[1:len(csCSV)]  # Remove a comma at the beginning of the line
 file.close()
 
 csFASTA = ""
 file = open(fasta, "r")
 ln = 1
 for line in file:
-    if ( ln % 2 == 1 ):
+    if (ln % 2 == 1):
         line = line.strip()
         line = line[1:len(line)]
-        csFASTA += "," + line # Join all even lines by a comma
+        csFASTA += "," + line  # Join all even lines by a comma
     ln += 1
 file.close()
-csFASTA = csFASTA[1:len(csFASTA)] # Remove a comma at the beginning of the line
+# Remove a comma at the beginning of the line
+csFASTA = csFASTA[1:len(csFASTA)]
 
 # csTaxaCSV = ""
 # with open(taxaCsv, "r") as file:
@@ -68,12 +75,12 @@ if args.pecan != "":
         csPecan = ""
         for line in file:
             csPecan += line.split()[0] + ","
-        
+
         csPecan = csPecan[0:(len(csPecan) - 1)]
     if csPecan != csCSV:
         pecanIdent = False
 
-# Test if all the classification files have ordered ASVs identical to the 
+# Test if all the classification files have ordered ASVs identical to the
 # abundance table
 classifsIdent = True
 for csClassif in csClassifs:
@@ -88,12 +95,17 @@ if any([csCSV != csFASTA, not classifsIdent, not pecanIdent]):
 shutil.move(csv, csv + ".bak")
 # Start a baks that we can use to rollback all changes or delete all backups
 baks = [csv + ".bak"]
+
+
 def revertBaks(baks):
     for file in baks:
         shutil.move(file, file[0:len(file) - 4])
+
+
 def removeBaks(baks):
     for file in baks:
         os.remove(file)
+
 
 asvIds = []
 try:
@@ -103,11 +115,12 @@ try:
         # Count the ASVs so they can be given _sortable_ IDs
         asvCount = len(csCSV.split(",")) - 1
         for i in range(asvCount):
-            asvIds.append("ASV" + str(i).zfill(int(math.ceil(math.log10(asvCount)))))
+            asvIds.append(
+                "ASV" + str(i).zfill(int(math.ceil(math.log10(asvCount)))))
         csAsvIds = "," + ",".join(asvIds) + "\n"
 
         # Write to new csv, and then copy from the backup to the new file
-        with open(csv, "w") as outFh: # write-after-truncate mode
+        with open(csv, "w") as outFh:  # write-after-truncate mode
             outFh.write(csAsvIds)
             line = inFh.readline()
             while (len(line) > 0):
@@ -170,7 +183,8 @@ for classif in classifs:
                     # For every other line, substitute in the new ASV ID
                     if ln != 1:
                         fields = line.split(",")
-                        line = asvIds[ln - 2] + "," + ",".join(fields[1:len(fields)])
+                        line = asvIds[ln - 2] + "," + \
+                            ",".join(fields[1:len(fields)])
                     outFh.write(line)
                     ln += 1
     except Exception as error:
