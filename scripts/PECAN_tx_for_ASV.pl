@@ -52,39 +52,34 @@ use Data::Dumper qw(Dumper);
 use Cwd;
 use File::Basename;
 
-
 $OUTPUT_AUTOFLUSH = 1;
 ####################################################################
 ##                             OPTIONS
 ####################################################################
 GetOptions(
-  "PECAN-taxonomy|p=s"  => \my $pecanFile,
-  "ASV-count-table|c=s" => \my $countTblFile,
-  "vaginal"             => \my $vaginal,
-  "quiet"               => \my $quiet,
-  "verbose|v"           => \my $verbose,
-  "debug"               => \my $debug,
-  "dry-run"             => \my $dryRun,
-  "help|h!"             => \my $help,
-  )
-  or pod2usage(verbose => 0,exitstatus => 1);
+    "PECAN-taxonomy|p=s"  => \my $pecanFile,
+    "ASV-count-table|c=s" => \my $countTblFile,
+    "vaginal"             => \my $vaginal,
+    "quiet"               => \my $quiet,
+    "verbose|v"           => \my $verbose,
+    "debug"               => \my $debug,
+    "dry-run"             => \my $dryRun,
+    "help|h!"             => \my $help,
+) or pod2usage( verbose => 0, exitstatus => 1 );
 
-if ($help)
-{
-  pod2usage(verbose => 2,exitstatus => 0);
-  exit 0;
+if ($help) {
+    pod2usage( verbose => 2, exitstatus => 0 );
+    exit 0;
 }
 
-if (!$pecanFile) 
-{
-  print "Please provide input PECAN taxonomy\n";
-  pod2usage(verbose => 2,exitstatus => 0);
-  exit 0;
+if ( !$pecanFile ) {
+    print "Please provide input PECAN taxonomy\n";
+    pod2usage( verbose => 2, exitstatus => 0 );
+    exit 0;
 }
 
-if ($vaginal)
-{
-  print "---Using vaginal-specific merge rules for taxa\n";
+if ($vaginal) {
+    print "---Using vaginal-specific merge rules for taxa\n";
 }
 
 ####################################################################
@@ -93,74 +88,68 @@ if ($vaginal)
 
 my %pecan = readTbl($pecanFile);
 my %cmbTx;
-my $count=0;
+my $count = 0;
 
-foreach my $x (keys %pecan)
-{ 
-  $count++;
-  my $tx = $pecan{$x};
-  $cmbTx{$x} = $tx;
-  if ($x =~ /GTACGTAAAAGTCGTAACAAGGTTTCCGTAGGTGAACCTGCGGAAGGATCATTACTGATTTGCTTAATTGCACCACATGTGTTTTTCTTTGAAACAAACTTGCTTTGGCGGTGGGCCCAGCCTGCCGCCAGAGGTCTAAACTTACAACCAATTTTTTATCAACTTGTCACACCAGATTATTACTAATAGTCAAAACTTTCAACAACGGATCTCTTGGTTCTCGCATCGATGAAGAACGCAGCGAAATGCGATACGTAATATGAATTGCAGATATTCGTGAATCATCGAGTCTTTGAACCATGAT/)
-  {
-    $cmbTx{$x} = "Candida_albicans";
-  }
+foreach my $x ( keys %pecan ) {
+    $count++;
+    my $tx = $pecan{$x};
+    $cmbTx{$x} = $tx;
+    if ( $x =~
+/GTACGTAAAAGTCGTAACAAGGTTTCCGTAGGTGAACCTGCGGAAGGATCATTACTGATTTGCTTAATTGCACCACATGTGTTTTTCTTTGAAACAAACTTGCTTTGGCGGTGGGCCCAGCCTGCCGCCAGAGGTCTAAACTTACAACCAATTTTTTATCAACTTGTCACACCAGATTATTACTAATAGTCAAAACTTTCAACAACGGATCTCTTGGTTCTCGCATCGATGAAGAACGCAGCGAAATGCGATACGTAATATGAATTGCAGATATTCGTGAATCATCGAGTCTTTGAACCATGAT/
+      )
+    {
+        $cmbTx{$x} = "Candida_albicans";
+    }
 }
 
 print "---Combined taxonomy written for $count ASVs to $countTblFile\n";
 my @suffixes = (".csv");
-my $Prefix = basename($countTblFile, @suffixes);
+my $Prefix   = basename( $countTblFile, @suffixes );
 
 print "---Adding taxonomy to $countTblFile\n";
-my $cntWtx = "$Prefix"."_w_taxa.csv";
+my $cntWtx = "${Prefix}_PECAN_asvs+taxa.csv";
 open ALL, ">$cntWtx", or die "Cannot open $cntWtx for writing: $OS_ERROR\n";
 
-my $cnttxon = "$Prefix"."_PECAN_taxa_only.csv";
+my $cnttxon = "${Prefix}_PECAN_taxa.csv";
 open TXON, ">$cnttxon", or die "Cannot open $cnttxon for writing: $OS_ERROR\n";
 
-my @list1 = get_file_data($countTblFile); 
-my $line = 0;
-my $head1;
-my $head2;
-my $i=0;
-foreach my $line1 (@list1) 
-{
-  chomp $line1;
-  $line++;
+my @list1 = get_file_data($countTblFile);
+my $line  = 0;
+my @asvs;
+my @taxa;
+my $i = 0;
+foreach my $line1 (@list1) {
+    chomp $line1;
+    $line++;
 
-  if ($line == 1) 
-  {  
-    my @ASVs = split (",", $line1);
-    shift @ASVs;
-    foreach my $asv (@ASVs) 
-    { 
-      chomp $asv;
-      $asv =~ s/[\r\n]+//;
-      $i++;
-      if (!exists $cmbTx{$asv}) 
-      {
-        print "HD not present: #$i $asv\n";
-      }
-      else
-      {
-        $head1 .= "$asv\,";
-        $head2 .= "$cmbTx{$asv}\,";
-      }
+    if ( $line == 1 ) {
+        my @ASVs = split( ",", $line1 );
+        shift @ASVs;
+        foreach my $asv (@ASVs) {
+            chomp $asv;
+            $asv =~ s/[\r\n]+//;
+            $i++;
+            if ( !exists $cmbTx{$asv} ) {
+                print "HD not present: #$i $asv\n";
+            } else {
+                push( @asvs, "$asv" );
+                push( @taxa, "$cmbTx{$asv}" );
+            }
+        }
     }
-  }
 }
-print ALL ",$head1\n";
-print ALL ",$head2\n";
-print TXON ",$head2\n";
+print ALL "," . join( ",", @asvs ) . "\n";
+my $taxaHead = "," . join( ",", @taxa ) . "\n";
+print ALL "$taxaHead";
+print TXON "$taxaHead";
 $line = 0;
-foreach my $line1 (@list1) 
-{
-  chomp $line1;
-  $line++;
-  if ($line > 1) 
-  {
-    print ALL "$line1\n";
-    print TXON "$line1\n";
-  } 
+foreach my $line1 (@list1) {
+    chomp $line1;
+    $line++;
+    if ( $line > 1 ) {
+        print ALL "$line1\n";
+        print TXON "$line1\n";
+    }
 }
 
 close TXON;
@@ -168,116 +157,115 @@ close ALL;
 print "TOTAL ASVs: $i\n";
 
 @suffixes = (".csv");
-$Prefix = basename($cnttxon, @suffixes);
-my $merged = $Prefix . "_merged.csv";
+$Prefix   = basename( $cnttxon, @suffixes );
+my $merged = $Prefix . "-merged.csv";
 
-if ($debug)
-{
-  if ($vaginal)
-  {
-    my $cmd = "/home/jholm/bin/vaginal_combine_tbl_cols.pl -i $cnttxon -o $merged --debug";
-    print "\tcmd=$cmd\n" if $dryRun || $debug;
-    system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-  }
-  else
-  {
-    my $cmd = "/home/jholm/bin/combine_tbl_cols.pl -i $cnttxon -o $merged --debug";
-    print "\tcmd=$cmd\n" if $dryRun || $debug;
-    system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-  }
+if ($debug) {
+    if ($vaginal) {
+        my $cmd =
+"/home/jholm/bin/vaginal_combine_tbl_cols.pl -i $cnttxon -o $merged --debug";
+        print "\tcmd=$cmd\n" if $dryRun || $debug;
+        system($cmd) == 0
+          or die "system($cmd) failed with exit code: $?"
+          if !$dryRun;
+    } else {
+        my $cmd =
+          "/home/jholm/bin/combine_tbl_cols.pl -i $cnttxon -o $merged --debug";
+        print "\tcmd=$cmd\n" if $dryRun || $debug;
+        system($cmd) == 0
+          or die "system($cmd) failed with exit code: $?"
+          if !$dryRun;
+    }
 }
 
-if (!$debug)
-{
-  if ($vaginal)
-  {
-    my $cmd = "/home/jholm/bin/vaginal_combine_tbl_cols.pl -i $cnttxon -o $merged";
-    print "\tcmd=$cmd\n" if $dryRun || $debug;
-    system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-  }
-  else
-  {
-    my $cmd = "/home/jholm/bin/combine_tbl_cols.pl -i $cnttxon -o $merged";
-    print "\tcmd=$cmd\n" if $dryRun || $debug;
-    system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
-  }
+if ( !$debug ) {
+    if ($vaginal) {
+        my $cmd =
+          "/home/jholm/bin/vaginal_combine_tbl_cols.pl -i $cnttxon -o $merged";
+        print "\tcmd=$cmd\n" if $dryRun || $debug;
+        system($cmd) == 0
+          or die "system($cmd) failed with exit code: $?"
+          if !$dryRun;
+    } else {
+        my $cmd = "/home/jholm/bin/combine_tbl_cols.pl -i $cnttxon -o $merged";
+        print "\tcmd=$cmd\n" if $dryRun || $debug;
+        system($cmd) == 0
+          or die "system($cmd) failed with exit code: $?"
+          if !$dryRun;
+    }
 }
 
 ####################################################################
 ##                               SUBS
 ####################################################################
-sub readTbl{
+sub readTbl {
 
-  my $file = shift;
+    my $file = shift;
 
-  if ( ! -f $file )
-  {
-    warn "\n\n\tERROR in readTbl(): $file does not exist";
-    print "\n\n";
-    exit 1;
-  }
+    if ( !-f $file ) {
+        warn "\n\n\tERROR in readTbl(): $file does not exist";
+        print "\n\n";
+        exit 1;
+    }
 
-  my %tbl;
-  open IN, "$file" or die "Cannot open $file for reading: $OS_ERROR\n";
-  foreach (<IN>)
-  {
-    chomp;
-    my ($id, $t) = split /\s+/,$_;
-    $tbl{$id} = $t;
-  }
-  close IN;
+    my %tbl;
+    open IN, "$file" or die "Cannot open $file for reading: $OS_ERROR\n";
+    foreach (<IN>) {
+        chomp;
+        my ( $id, $t ) = split /\s+/, $_;
+        $tbl{$id} = $t;
+    }
+    close IN;
 
-  return %tbl;
+    return %tbl;
 }
 
-sub read2colTbl{
+sub read2colTbl {
 
-  my $file = shift;
-  my %tbl;
+    my $file = shift;
+    my %tbl;
 
-  open IN, "$file" or die "Cannot open $file for reading: $OS_ERROR\n";
-  foreach (<IN>)
-  {
-    chomp;
-    next if $_ eq "";
-    my ($id, $t) = split (/\s+/,$_, 2);
-    $tbl{$id} = $t;
-  }
-  close IN;
+    open IN, "$file" or die "Cannot open $file for reading: $OS_ERROR\n";
+    foreach (<IN>) {
+        chomp;
+        next if $_ eq "";
+        my ( $id, $t ) = split( /\s+/, $_, 2 );
+        $tbl{$id} = $t;
+    }
+    close IN;
 
-  return %tbl;
+    return %tbl;
 }
 
-sub read3colTbl{
+sub read3colTbl {
 
-  my $file = shift;
-  my %tbl;
+    my $file = shift;
+    my %tbl;
 
-  open IN, "$file" or die "Cannot open $file for reading: $OS_ERROR\n";
-  foreach (<IN>)
-  {
-    chomp;
-    shift;
-    next if $_ eq "";
-    my ($id, $t) = split (/\s+/,$_, 2);
-    $tbl{$id} = $t;
-  }
-  close IN;
+    open IN, "$file" or die "Cannot open $file for reading: $OS_ERROR\n";
+    foreach (<IN>) {
+        chomp;
+        shift;
+        next if $_ eq "";
+        my ( $id, $t ) = split( /\s+/, $_, 2 );
+        $tbl{$id} = $t;
+    }
+    close IN;
 
-  return %tbl;
+    return %tbl;
 }
 
 sub get_file_data {
 
-    my($filename) = @_;
+    my ($filename) = @_;
 
     use strict;
     use warnings;
 
     # Initialize variables
-    my @filedata = (  );
+    my @filedata = ();
 
-    unless( open(GET_FILE_DATA, $filename) ) {
+    unless ( open( GET_FILE_DATA, $filename ) ) {
         print STDERR "Cannot open file \"$filename\"\n\n";
         exit;
     }
@@ -288,6 +276,5 @@ sub get_file_data {
 
     return @filedata;
 }
-
 
 exit;
