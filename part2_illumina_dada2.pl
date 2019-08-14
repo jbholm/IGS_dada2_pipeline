@@ -498,6 +498,7 @@ my $final_merge     = glob("*_taxa-merged.csv");
 unlink scalar( glob("*_taxa.csv") );
 my $final_ASV_taxa  = glob("*_asvs+taxa.csv");
 
+print "\nCreating report...\n";
 $cmd = "$pipelineDir/report/report16s.sh '$projDir' --runs @runs";
 execute_and_log( $cmd, $logFH, $dryRun );
 print $logFH "---Final files succesfully produced!\n";

@@ -613,7 +613,6 @@ def getAsvTables(pw):
         
     else:
         include = glob.glob(pw.proj('*asvs+taxa.csv'), recursive=True) + glob.glob(pw.proj('*taxa-merged.csv'), recursive=True)
-        print(include)
         
 
      # for selection in include:
@@ -641,8 +640,6 @@ def getAsvTables(pw):
         zmax = 0
         topMargin = 40
         
-        print(file)
-        print(os.path.join(pw.pd, "REPORT"))
         shutil.copyfile(os.path.join(file), os.path.join(pw.pd, "REPORT", os.path.basename(file)))
 
         taxnmy = fields[len(fields)-2]
