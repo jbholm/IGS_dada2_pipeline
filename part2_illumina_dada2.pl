@@ -140,11 +140,13 @@ if ( !$region ) {
     exit 1;
 }
 my $models;
+
+my @taxonomies;
 if ( $region eq 'V3V4' ) {
     $models = "/local/projects-t2/jholm/PECAN/v1.0/V3V4/merged_models/";
 }
 if ( $region eq 'V4' && !$oral ) {
-    print "Using SILVA taxonomy only\n";
+    print "Using SILVA taxonomy\n";
 }
 if ( $region eq 'V4' && $oral ) {
     print "Using HOMD taxonomy only\n";
@@ -285,7 +287,6 @@ if ( $region eq 'ITS' ) {
     print
 "---Merged, chimera-removed abundance tables written to all_runs_dada2_abundance_table.csv\n";
     print "---ASVs classified via HOMD written to homd_classification.csv\n";
-    print "---ASVs classified via RDP written to rdp_classification.csv\n";
     print
 "---Final ASVs written to all_runs_dada2_ASV.fasta for classification via PECAN\n";
     print "---dada2 completed successfully\n";
@@ -358,11 +359,11 @@ if ( $region eq 'ITS' ) {
 
     push @classifs, $projSilva;
 }
-my $projpecan = $project . "_" . "MC_order7_results.txt";
 
 # Combine dada2 stats from all runs, and the overall project, into one file
 Stats_gen::combine_dada2_stats($projDir);
 
+my $projpecan = "";
 if ( $region eq 'V3V4' && !$oral ) {
     print
       "---Classifying ASVs with $region PECAN models (located in $models)\n";
@@ -379,84 +380,9 @@ if ( $region eq 'V3V4' && !$oral ) {
       if !$dryRun;
 
     my $pecan = "MC_order7_results.txt";
+    $projpecan = $project . "_" . "MC_order7_results.txt";
 
     $cmd = "mv $pecan $projpecan";
-    print "\tcmd=$cmd\n" if $dryRun || $debug;
-    system($cmd) == 0
-      or die "system($cmd) failed with exit code: $?"
-      if !$dryRun;
-}
-#################################################################
-#########APPLY CLASSIFICATIONS TO COUNT TABLE ###################
-#################################################################
-
-#### APPLY PECAN+SILVA CLASSIFICATIONS TO COUNT TABLE (V3V4) ####
-#################################################################
-if ($pecanSilva) {
-    if ($notVaginal) {
-        $cmd =
-"/home/jholm/bin/combine_tx_for_ASV.pl -p $projpecan -s $projSilva -c $projabund";
-        print "\tcmd=$cmd\n" if $dryRun || $debug;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
-    } else {
-        $cmd =
-"/home/jholm/bin/combine_tx_for_ASV.pl -p $projpecan -s $projSilva -c $projabund --vaginal";
-        print "\tcmd=$cmd\n" if $dryRun || $debug;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
-    }
-}
-#### APPLY PECAN-ONLY CLASSIFICATIONS TO COUNT TABLE (V3V4) ####
-################################################################
-if ( !$oral ) {
-    if ( $region eq 'V3V4' ) {
-        if ($notVaginal) {
-            $cmd =
-              "/home/jholm/bin/PECAN_tx_for_ASV.pl -p $projpecan -c $projabund";
-            print "\tcmd=$cmd\n" if $dryRun || $debug;
-            system($cmd) == 0
-              or die "system($cmd) failed with exit code: $?"
-              if !$dryRun;
-        } else {
-            $cmd =
-"/home/jholm/bin/PECAN_tx_for_ASV.pl -p $projpecan -c $projabund --vaginal";
-            print "\tcmd=$cmd\n" if $dryRun || $debug;
-            system($cmd) == 0
-              or die "system($cmd) failed with exit code: $?"
-              if !$dryRun;
-        }
-    }
-
-#### APPLY NON-PECAN CLASSIFICATIONS TO COUNT TABLE (V4) ####
-##############################################################
-    if ( $region eq 'V4' ) {
-        print "---Classifying ASVs with $region with SILVA only\n";
-        print LOG "---Classifying ASVs with $region with SILVA only\n";
-        $cmd =
-          "/home/jholm/bin/combine_tx_for_ASV.pl -s $projSilva -c $projabund";
-        print "\tcmd=$cmd\n" if $dryRun || $debug;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
-    }
-
-} else {
-    print "---Classifying ASVs with $region with HOMD only\n";
-    print LOG "---Classifying ASVs with $region with HOMD only\n";
-    $cmd = "/home/jholm/bin/combine_tx_for_ASV.pl -s $projHOMD -c $projabund";
-    print "\tcmd=$cmd\n" if $dryRun || $debug;
-    system($cmd) == 0
-      or die "system($cmd) failed with exit code: $?"
-      if !$dryRun;
-}
-
-if ( $region eq 'ITS' ) {
-    print "---Classifying ASVs with $region with UNITE only\n";
-    print LOG "---Classifying ASVs with $region with UNITE only\n";
-    $cmd = "/home/jholm/bin/combine_tx_for_ASV.pl -u $projUNITE -c $projabund";
     print "\tcmd=$cmd\n" if $dryRun || $debug;
     system($cmd) == 0
       or die "system($cmd) failed with exit code: $?"
@@ -470,22 +396,109 @@ print
 "---Renaming ASVs in FASTA, abundance tables, and SILVA classification key.\n";
 print LOG
 "---Renaming ASVs in FASTA, abundance tables, and SILVA classification key.\n";
-$projpecan = -e $projpecan ? $projpecan : "";
+
+# BAD! Current version of the pipeline has exception case where both SILVA-PECAN
+# and SILVA-only count tables are produced, but only the first is renamed,
+# according to the order of @taxonomies above. The next major release will
+# rename ASVs BEFORE taxa are applied to the count table.
 $cmd =
-"python $scriptsDir/rename_asvs.py -p $project -c @classifs --pecan $projpecan";
+"python2 $scriptsDir/rename_asvs.py -p $project -c @classifs --pecan $projpecan";
 print "\tcmd=$cmd\n" if $dryRun || $debug;
 system($cmd) == 0
   or print "$cmd failed with exit code: $?. Continuing...\n"
   if !$dryRun;
 print LOG "$cmd\n";
 
-my $final_merge     = glob("*_taxa_only_merged.csv");
-my $final_taxa_only = glob("*_taxa_only.csv");
-my $final_ASV_taxa  = glob("*_w_taxa.csv");
+#################################################################
+#########APPLY CLASSIFICATIONS TO COUNT TABLE ###################
+#################################################################
+
+#### APPLY PECAN+SILVA CLASSIFICATIONS TO COUNT TABLE (V3V4) ####
+#################################################################
+if ($pecanSilva) {
+    if ($notVaginal) {
+        $cmd =
+"$scriptsDir/combine_tx_for_ASV.pl -p $projpecan -s $projSilva -c $projabund";
+        print "\tcmd=$cmd\n" if $dryRun || $debug;
+        system($cmd) == 0
+          or die "system($cmd) failed with exit code: $?"
+          if !$dryRun;
+    } else {
+        $cmd =
+"$scriptsDir/combine_tx_for_ASV.pl -p $projpecan -s $projSilva -c $projabund --vaginal";
+        print "\tcmd=$cmd\n" if $dryRun || $debug;
+        system($cmd) == 0
+          or die "system($cmd) failed with exit code: $?"
+          if !$dryRun;
+    }
+    push @taxonomies, "SILVA-PECAN";
+}
+
+if ( !$oral ) {
+#### APPLY NON-PECAN CLASSIFICATIONS TO COUNT TABLE (V4) ####
+##############################################################
+    if ( $region eq 'V4' ) {
+        print "---Classifying ASVs with $region with SILVA only\n";
+        print LOG "---Classifying ASVs with $region with SILVA only\n";
+        $cmd = "$scriptsDir/combine_tx_for_ASV.pl -s $projSilva -c $projabund";
+        print "\tcmd=$cmd\n" if $dryRun || $debug;
+        system($cmd) == 0
+          or die "system($cmd) failed with exit code: $?"
+          if !$dryRun;
+        push @taxonomies, "SILVA";
+    }
+
+#### APPLY PECAN-ONLY CLASSIFICATIONS TO COUNT TABLE (V3V4) ####
+################################################################
+    if ( $region eq 'V3V4' ) {
+        if ($notVaginal) {
+            $cmd =
+              "$scriptsDir/PECAN_tx_for_ASV.pl -p $projpecan -c $projabund";
+            print "\tcmd=$cmd\n" if $dryRun || $debug;
+            system($cmd) == 0
+              or die "system($cmd) failed with exit code: $?"
+              if !$dryRun;
+        } else {
+            $cmd =
+"$scriptsDir/PECAN_tx_for_ASV.pl -p $projpecan -c $projabund --vaginal";
+            print "\tcmd=$cmd\n" if $dryRun || $debug;
+            system($cmd) == 0
+              or die "system($cmd) failed with exit code: $?"
+              if !$dryRun;
+        }
+        push @taxonomies, "PECAN";
+    }
+
+} else {
+    print "---Classifying ASVs with $region with HOMD only\n";
+    print LOG "---Classifying ASVs with $region with HOMD only\n";
+    $cmd =
+      "$scriptsDir/combine_tx_for_ASV.pl --homd-file $projHOMD -c $projabund";
+    print "\tcmd=$cmd\n" if $dryRun || $debug;
+    system($cmd) == 0
+      or die "system($cmd) failed with exit code: $?"
+      if !$dryRun;
+    push @taxonomies, "HOMD";
+}
+
+if ( $region eq 'ITS' ) {
+    print "---Classifying ASVs with $region with UNITE only\n";
+    print LOG "---Classifying ASVs with $region with UNITE only\n";
+    $cmd = "$scriptsDir/combine_tx_for_ASV.pl -u $projUNITE -c $projabund";
+    print "\tcmd=$cmd\n" if $dryRun || $debug;
+    system($cmd) == 0
+      or die "system($cmd) failed with exit code: $?"
+      if !$dryRun;
+    push @taxonomies, "UNITE";
+}
+
+my $final_merge = glob("*_taxa-merged.csv");
+unlink scalar( glob("*_taxa.csv") );
+my $final_ASV_taxa = glob("*_asvs+taxa.csv");
 
 print LOG "---Final files succesfully produced!\n";
 print LOG
-"Final merged read count table: $final_merge\nFinal unmerged taxa table: $final_taxa_only\nFinal ASV table with taxa: $final_ASV_taxa\nFinal ASV count table: $projabund\nASV sequences: all_runs_dada2_ASV.fasta\n"
+"Final merged read count table: $final_merge\nFinal ASV table with taxa: $final_ASV_taxa\nFinal ASV count table: $projabund\nASV sequences: all_runs_dada2_ASV.fasta\n"
   ;    #Read survival stats: $finalStats\n";
 close LOG;
 
@@ -699,10 +712,13 @@ st <- st[,order(colSums(st), decreasing=TRUE)]
 
 ##st.all<-mergeSequenceTables(runs)
 # Remove chimeras
-seqtab <- removeBimeraDenovo(st, method="consensus", multithread=TRUE)
-# Assign taxonomy
+seqtab <- removeBimeraDenovo(st, method="consensus", multithread=TRUE)# THIS is the source of ASV names and sequences
+# Assign taxonomy (requires colnames of seqtab to be ASV sequences)
 unite <- assignTaxonomy(seqtab, "/home/jholm/bin/sh_general_release_dynamic_01.12.2017.fasta", multithread=TRUE)
 silva <- assignTaxonomy(seqtab, "$pipelineDir/taxonomy/silva_nr_v128_train_set.fa.gz", multithread=TRUE)
+
+# Name ASVs (Due to the constraints of assignTaxonomy, this step must occur after it)
+
 # Write to disk
 saveRDS(seqtab, "all_runs_dada2_abundance_table.rds") # CHANGE ME to where you want sequence table saved
 write.csv(seqtab, "all_runs_dada2_abundance_table.csv", quote=FALSE)
@@ -713,7 +729,7 @@ fc = file("all_runs_dada2_ASV.fasta")
 fltp = character()
 for( i in 1:ncol(seqtab))
 {
-  fltp <- append(fltp, paste0(">", colnames(seqtab)[i]))
+  fltp <- append(fltp, paste0(">", colnames(seqtab)[i])) # This reference FASTA is actually created from colnames(seqtab)
   fltp <- append(fltp, colnames(seqtab)[i])
 }
 writeLines(fltp, fc)
