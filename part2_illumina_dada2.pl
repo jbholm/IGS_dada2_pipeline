@@ -498,7 +498,7 @@ my $final_ASV_taxa = glob("*_asvs+taxa.csv");
 
 print LOG "---Final files succesfully produced!\n";
 print LOG
-"Final merged read count table: $final_merge\nFinal unmerged taxa table: $final_taxa_only\nFinal ASV table with taxa: $final_ASV_taxa\nFinal ASV count table: $projabund\nASV sequences: all_runs_dada2_ASV.fasta\n"
+"Final merged read count table: $final_merge\nFinal ASV table with taxa: $final_ASV_taxa\nFinal ASV count table: $projabund\nASV sequences: all_runs_dada2_ASV.fasta\n"
   ;    #Read survival stats: $finalStats\n";
 close LOG;
 
