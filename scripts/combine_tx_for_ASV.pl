@@ -303,7 +303,7 @@ foreach my $x ( keys %cmbTx ) {
 }
 close OUT;
 
-print "---Combined taxonomy written for $count ASVs to $countTblFile\n";
+print "---Combined taxonomy written for $count ASVs to $cmbTblFile\n";
 my @suffixes = (".csv");
 my $Prefix   = basename( $countTblFile, @suffixes );
 

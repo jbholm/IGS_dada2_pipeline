@@ -1712,7 +1712,7 @@ sub dada2 {
   v<-rowSums(seqtab)
   v0<-numeric(nrow(out))
   track<-cbind(out, v0)
-  rownames(track)<-gsub("_R1_tc.fastq","",rownames(track))
+  rownames(track)<-Map(function(x) strsplit(x, split = "_", fixed = TRUE)[[1]][1], rownames(track))
   track[names(v),3]<-v
   colnames(track) <- c("input", "filtered", "merged")
   write.table(track, "dada2_part1_stats.txt", quote=FALSE, append=FALSE, sep=\t, row.names=TRUE, col.names=TRUE)
