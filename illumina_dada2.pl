@@ -387,6 +387,9 @@ if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
         }
     }
 
+   # Clean the error directory so only the report creator only finds the current
+   # mapping file.
+    unlink glob "'$error_log/*mapping*.txt'";
     print "--Validating $map\n";
     $cmd = "validate_mapping_file.py -m $map -s -o $error_log";
     execute_and_log( $cmd, 0, $dryRun );
@@ -707,13 +710,13 @@ if ( !@dbg || grep( /^demux$/, @dbg ) ) {
 
         # Replace this with calls to execute_and_log after merging in master
         $cmd =
-"qsub -cwd -b y -l mem_free=300M -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log fastqc --outdir $fwdProjDir $fwdProjDir/seqs.fastq";
+"qsub -cwd -b y -l mem_free=300M -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log fastqc --limits $pipelineDir/ext/fastqc/limits.txt --outdir $fwdProjDir $fwdProjDir/seqs.fastq";
         print "\tcmd=$cmd\n" if $verbose;
         system($cmd) == 0
           or die "system($cmd) failed with exit code: $?"
           if !$dryRun;
         $cmd =
-"qsub -cwd -b y -l mem_free=300M -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log fastqc --outdir $revProjDir $revProjDir/seqs.fastq";
+"qsub -cwd -b y -l mem_free=300M -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log fastqc --limits $pipelineDir/ext/fastqc/limits.txt --outdir $revProjDir $revProjDir/seqs.fastq";
         print "\tcmd=$cmd\n" if $verbose;
         system($cmd) == 0
           or die "system($cmd) failed with exit code: $?"

@@ -188,8 +188,8 @@ my $perlScript =
   File::Spec->catfile( $pipelineDir, "scripts", "log_version.pl" );
 system( $^X, $perlScript, $log );
 
-open LOG, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
-print LOG "This file logs the progress of "
+open my $logFH, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
+print $logFH "This file logs the progress of "
   . scalar(@runs)
   . " runs for $project 16S amplicon sequences through the illumina_dada2.pl pipeline.\n";
 
@@ -203,20 +203,20 @@ if ( scalar(@runs) > 1 ) {
     print "---Copying "
       . scalar(@runs)
       . " abundance tables to this directory & combining\n";
-    print LOG "---Copying "
+    print $logFH "---Copying "
       . scalar(@runs)
       . " abundance tables to this directory & combining\n";
-    print LOG "Runs:\n";
+    print $logFH "Runs:\n";
 } else {
     print "---Copying 1 abundance table to this directory\n";
     print "---Proceeding to chimera removal for 1 run\n";
-    print LOG "---Copying 1 abundance table to this directory\n";
-    print LOG "---Proceeding to chimera removal for 1 run\n";
-    print LOG "Run:\n";
+    print $logFH "---Copying 1 abundance table to this directory\n";
+    print $logFH "---Proceeding to chimera removal for 1 run\n";
+    print $logFH "Run:\n";
 }
 
 foreach my $i (@runs) {
-    print LOG "$i\n";
+    print $logFH "$i\n";
     my $currTbl = $i . "/dada2_abundance_table.rds";
     my $newTbl  = $project . "_" . $i . "-dada2_abundance_table.rds";
     my $cmd     = "cp $currTbl $newTbl";
@@ -224,7 +224,7 @@ foreach my $i (@runs) {
     system($cmd) == 0
       or die "system($cmd) failed with exit code: $?"
       if !$dryRun;
-    print LOG "$cmd\n";
+    print $logFH "$cmd\n";
 
     my $currStats = $i . "/dada2_part1_stats.txt";
     my $newStats  = $project . "_" . $i . "-dada2_part1_stats.txt";
@@ -233,7 +233,7 @@ foreach my $i (@runs) {
     system($cmd) == 0
       or die "system($cmd) failed with exit code: $?"
       if !$dryRun;
-    print LOG "$cmd\n";
+    print $logFH "$cmd\n";
 }
 
 my $abundance = "all_runs_dada2_abundance_table.csv";
@@ -248,7 +248,7 @@ my @classifs  = ();
 
 print
 "---Performing chimera removal on merged tables and classifying amplicon sequence variants (ASVs)\n";
-print LOG
+print $logFH
 "---Performing chimera removal on merged tables and classifying amplicon sequence variants (ASVs)\n";
 if ( $region eq 'ITS' ) {
     dada2_combine_and_classifyITS($inRuns);
@@ -256,28 +256,28 @@ if ( $region eq 'ITS' ) {
 "---Merged, chimera-removed abundance tables written to all_runs_dada2_abundance_table.csv\n";
     print "---ASVs classified via UNITE written to unite_classification.csv\n";
     print "---dada2 completed successfully\n";
-    print LOG
+    print $logFH
 "---Merged, chimera-removed abundance tables written to all_runs_dada2_abundance_table.csv\n";
-    print LOG
+    print $logFH
       "---ASVs classified via UNITE written to unite_classification.csv\n";
-    print LOG "---dada2 completed successfully\n";
+    print $logFH "---dada2 completed successfully\n";
 
-    print LOG "---Renaming dada2 files for project\n";
+    print $logFH "---Renaming dada2 files for project\n";
     $cmd = "mv $abundance $projabund";
     print "\tcmd=$cmd\n" if $dryRun || $debug;
     system($cmd) == 0
       or die "system($cmd) failed with exit code: $?"
       if !$dryRun;
-    print LOG "$cmd\n";
+    print $logFH "$cmd\n";
 
     print "---Renaming UNITE classification file for project\n";
-    print LOG "---Renaming UNITE classification file for project\n";
+    print $logFH "---Renaming UNITE classification file for project\n";
     $cmd = "mv $unite $projUNITE";
     print "\tcmd=$cmd\n" if $dryRun || $debug;
     system($cmd) == 0
       or die "system($cmd) failed with exit code: $?"
       if !$dryRun;
-    print LOG "$cmd\n";
+    print $logFH "$cmd\n";
 
     # SILVA file not renamed after DADA2 combine and classify R script
     push @classifs, ( $projUNITE, "silva_classification.csv" );
@@ -291,32 +291,33 @@ if ( $region eq 'ITS' ) {
 "---Final ASVs written to all_runs_dada2_ASV.fasta for classification via PECAN\n";
     print "---dada2 completed successfully\n";
 
-    print LOG
+    print $logFH
 "---Merged, chimera-removed abundance tables written to all_runs_dada2_abundance_table.csv\n";
-    print LOG
+    print $logFH
       "---ASVs classified via HOMD written to homd_classification.csv\n";
-    print LOG "---ASVs classified via RDP written to rdp_classification.csv\n";
-    print LOG
+    print $logFH
+      "---ASVs classified via RDP written to rdp_classification.csv\n";
+    print $logFH
 "---Final ASVs written to all_runs_dada2_ASV.fasta for classification via PECAN\n";
-    print LOG "---dada2 completed successfully\n";
+    print $logFH "---dada2 completed successfully\n";
 
     print "---Renaming dada2 files for project\n";
-    print LOG "---Renaming dada2 files for project\n";
+    print $logFH "---Renaming dada2 files for project\n";
     $cmd = "mv $abundance $projabund";
     print "\tcmd=$cmd\n" if $dryRun || $debug;
     system($cmd) == 0
       or die "system($cmd) failed with exit code: $?"
       if !$dryRun;
-    print LOG "$cmd\n";
+    print $logFH "$cmd\n";
 
     print "---Renaming HOMD classification file for project\n";
-    print LOG "---Renaming HOMD classification file for project\n";
+    print $logFH "---Renaming HOMD classification file for project\n";
     $cmd = "mv $homd $projHOMD";
     print "\tcmd=$cmd\n" if $dryRun || $debug;
     system($cmd) == 0
       or die "system($cmd) failed with exit code: $?"
       if !$dryRun;
-    print LOG "$cmd\n";
+    print $logFH "$cmd\n";
 
     push @classifs, $projHOMD;
 } else {
@@ -330,32 +331,33 @@ if ( $region eq 'ITS' ) {
 "---Final ASVs written to all_runs_dada2_ASV.fasta for classification via PECAN\n";
     print "---dada2 completed successfully\n";
 
-    print LOG
+    print $logFH
 "---Merged, chimera-removed abundance tables written to all_runs_dada2_abundance_table.csv\n";
-    print LOG
+    print $logFH
       "---ASVs classified via silva written to silva_classification.csv\n";
-    print LOG "---ASVs classified via RDP written to rdp_classification.csv\n";
-    print LOG
+    print $logFH
+      "---ASVs classified via RDP written to rdp_classification.csv\n";
+    print $logFH
 "---Final ASVs written to all_runs_dada2_ASV.fasta for classification via PECAN\n";
-    print LOG "---dada2 completed successfully\n";
+    print $logFH "---dada2 completed successfully\n";
 
     print "---Renaming dada2 files for project\n";
-    print LOG "---Renaming dada2 files for project\n";
+    print $logFH "---Renaming dada2 files for project\n";
     $cmd = "mv $abundance $projabund";
     print "\tcmd=$cmd\n" if $dryRun || $debug;
     system($cmd) == 0
       or die "system($cmd) failed with exit code: $?"
       if !$dryRun;
-    print LOG "$cmd\n";
+    print $logFH "$cmd\n";
 
     print "---Renaming SILVA classification file for project\n";
-    print LOG "---Renaming SILVA classification file for project\n";
+    print $logFH "---Renaming SILVA classification file for project\n";
     $cmd = "mv $silva $projSilva";
     print "\tcmd=$cmd\n" if $dryRun || $debug;
     system($cmd) == 0
       or die "system($cmd) failed with exit code: $?"
       if !$dryRun;
-    print LOG "$cmd\n";
+    print $logFH "$cmd\n";
 
     push @classifs, $projSilva;
 }
@@ -367,7 +369,7 @@ my $projpecan = "";
 if ( $region eq 'V3V4' && !$oral ) {
     print
       "---Classifying ASVs with $region PECAN models (located in $models)\n";
-    print LOG
+    print $logFH
       "---Classifying ASVs with $region PECAN models (located in $models)\n";
     my $fasta;
     $fasta = "all_runs_dada2_ASV.fasta";
@@ -394,7 +396,7 @@ if ( $region eq 'V3V4' && !$oral ) {
 # and unite classification csvs are created)
 print
 "---Renaming ASVs in FASTA, abundance tables, and SILVA classification key.\n";
-print LOG
+print $logFH
 "---Renaming ASVs in FASTA, abundance tables, and SILVA classification key.\n";
 
 # BAD! Current version of the pipeline has exception case where both SILVA-PECAN
@@ -407,7 +409,7 @@ print "\tcmd=$cmd\n" if $dryRun || $debug;
 system($cmd) == 0
   or print "$cmd failed with exit code: $?. Continuing...\n"
   if !$dryRun;
-print LOG "$cmd\n";
+print $logFH "$cmd\n";
 
 #################################################################
 #########APPLY CLASSIFICATIONS TO COUNT TABLE ###################
@@ -439,7 +441,7 @@ if ( !$oral ) {
 ##############################################################
     if ( $region eq 'V4' ) {
         print "---Classifying ASVs with $region with SILVA only\n";
-        print LOG "---Classifying ASVs with $region with SILVA only\n";
+        print $logFH "---Classifying ASVs with $region with SILVA only\n";
         $cmd = "$scriptsDir/combine_tx_for_ASV.pl -s $projSilva -c $projabund";
         print "\tcmd=$cmd\n" if $dryRun || $debug;
         system($cmd) == 0
@@ -471,7 +473,7 @@ if ( !$oral ) {
 
 } else {
     print "---Classifying ASVs with $region with HOMD only\n";
-    print LOG "---Classifying ASVs with $region with HOMD only\n";
+    print $logFH "---Classifying ASVs with $region with HOMD only\n";
     $cmd =
       "$scriptsDir/combine_tx_for_ASV.pl --homd-file $projHOMD -c $projabund";
     print "\tcmd=$cmd\n" if $dryRun || $debug;
@@ -483,7 +485,7 @@ if ( !$oral ) {
 
 if ( $region eq 'ITS' ) {
     print "---Classifying ASVs with $region with UNITE only\n";
-    print LOG "---Classifying ASVs with $region with UNITE only\n";
+    print $logFH "---Classifying ASVs with $region with UNITE only\n";
     $cmd = "$scriptsDir/combine_tx_for_ASV.pl -u $projUNITE -c $projabund";
     print "\tcmd=$cmd\n" if $dryRun || $debug;
     system($cmd) == 0
@@ -492,15 +494,18 @@ if ( $region eq 'ITS' ) {
     push @taxonomies, "UNITE";
 }
 
-my $final_merge = glob("*_taxa-merged.csv");
+my $final_merge     = glob("*_taxa-merged.csv");
 unlink scalar( glob("*_taxa.csv") );
-my $final_ASV_taxa = glob("*_asvs+taxa.csv");
+my $final_ASV_taxa  = glob("*_asvs+taxa.csv");
 
-print LOG "---Final files succesfully produced!\n";
-print LOG
+print "\nCreating report...\n";
+$cmd = "$pipelineDir/report/report16s.sh '$projDir' --runs @runs";
+execute_and_log( $cmd, $logFH, $dryRun );
+print $logFH "---Final files succesfully produced!\n";
+print $logFH
 "Final merged read count table: $final_merge\nFinal ASV table with taxa: $final_ASV_taxa\nFinal ASV count table: $projabund\nASV sequences: all_runs_dada2_ASV.fasta\n"
   ;    #Read survival stats: $finalStats\n";
-close LOG;
+close $logFH;
 
 ####################################################################
 ##                               SUBS
@@ -772,5 +777,25 @@ sub run_R_script {
         }
     }
     close IN;
+}
+
+################################################################################
+# Execute the given commands;
+# the second to last argument must evaluate false to prevent loggin to log file.
+# the last argument is 1 if this is a dry run
+sub execute_and_log {
+    my $dryRun = pop @_;
+    my $logFH  = pop @_;
+
+    # CAREFUL, $cmd holds a reference to a variable in the caller!
+    foreach my $cmd (@_) {
+        print "\t$cmd\n" if $debug;
+        if ($logFH) {
+            print $logFH "\t$cmd\n";
+        }
+        system($cmd) == 0
+          or die "system($cmd) failed with exit code: $?"
+          if !$dryRun;
+    }
 }
 exit 0;
