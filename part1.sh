@@ -111,6 +111,14 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         VERBOSE=$1
         shift 1
         ;;
+    --dada2-mem)
+        if [[ "$2" =~ ^- || ! -n "$2" ]]; then
+            stop "--debug missing its value. Unable to continue."
+        else 
+            DADA2MEM="--dada2-mem $2"
+            shift 2
+        fi
+        ;;
     --dada2*)
         DADA2="$1"
         if [[ ! -n "${DADA2#*--dada2}" || ! $DADA2 =~ "=" ]]; then  
@@ -323,7 +331,7 @@ perl $LOG_VERSION $log
 printf "`date`\n" >> $log 
 
 # Remove extra spaces caused by joining empty arguments with a whitespace
-OPTSARR=("$DADA2" "$DBG" "$VERBOSE" "$DRY_RUN" "$ONESTEP" "$PARAMS")
+OPTSARR=("$DADA2" "$DADA2MEM" "$DBG" "$VERBOSE" "$DRY_RUN" "$ONESTEP" "$PARAMS")
 OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 
@@ -511,6 +519,11 @@ of the parameters. The parameters should be given within double quotes as shown
 below:
 
 part1.sh --dada2="--dada2-maxEE 5 --dada2-minQ 10" ...
+
+=item B<--dada2-mem> memory
+
+The amount of memory to request for the DADA2 qsub job. Use Sun Grid Engine
+syntax: 10G, 500M, etc.
 
 =back 
 
