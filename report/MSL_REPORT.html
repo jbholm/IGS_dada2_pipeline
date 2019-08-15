@@ -24,6 +24,44 @@
         });
     </script>
     <style>
+        #loading {
+  z-index: 999;
+  margin: 0 auto;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+}
+
+/* Transparent Overlay */
+#loading:before {
+  content: '';
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0,0,0,0.1);
+}
+
+/* :not(:required) hides these rules from IE9 and below */
+#loading #text {
+    text-align: center;
+    margin: 0 auto;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  -ms-transform: translateX(-50%) translateY(-50%);
+  transform: translateX(-50%) translateY(-50%);
+  text-shadow: none;
+  background-color: transparent;
+  border: 0;
+}
+#page{
+            display: none;
+        }
+
             html {
                 font-size: 100%
             }
@@ -109,8 +147,9 @@
 </head>
 
 <body>
-
-    <!-- Navigation -->
+        <div id="loading"><p id="text">Loading&#8230;</p></div></div>
+        <!-- Navigation -->
+        <div id="page">
     <nav class="navbar navbar-inverse navbar-static-top" role="navigation">
         <!--<div class="container">
             <div class="navbar-header">
@@ -220,7 +259,7 @@
     </div>
     <!-- /.container -->
 
-
+</div>
 
     <!-- Bootstrap Core JavaScript -->
     <script defer> 

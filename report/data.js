@@ -260,4 +260,7 @@ function parseTf (a)
         ${ extNegCtrlJs }
 
         
-    
+(function () { // Remove the loading screen
+    document.getElementById("page").style.display = "block";
+    document.getElementById("loading").style.display = "none";
+})();

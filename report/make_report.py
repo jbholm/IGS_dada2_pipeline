@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # -*- coding: utf-8 -*-
-import subprocess, glob, argparse, datetime, os, shutil, re, sys, json, urllib.parse, math
+import subprocess, glob, argparse, datetime, os, shutil, re, sys, json, urllib.parse, math, zipfile
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -300,14 +300,20 @@ def getDada2Stats(pw):
             if i != 0 and status == 0:
                 line = lines[i].rstrip()
                 fields = line.split("\t")
+                if len(fields) == 1:
+                    break
                 try:
                     ans += "<tr>\n<td>" + fields[0] + "</td>\n<td>" + fields[1] + "</td>\n<td>" + fields[2] + "</td>\n<td>" + \
                         fields[3] + "</td>\n<td>" + fields[4] + "</td>\n</tr>\n"
                 except:
-                    print("Parsing DADA2 stats file failed.\nPlease select a different file.")
-                    status = 2
-                    oldStatsFile = askFile(pw.pd, "Please choose a stats file (combined part1-part2 DADA2 stats)\n")
-                    break
+                    if args.interactive:
+                        print("Parsing DADA2 stats file failed.\nPlease select a different file.")
+                        status = 2
+                        oldStatsFile = askFile(pw.pd, "Please choose a stats file (combined part1-part2 DADA2 stats)\n")
+                        break
+                    else:
+                        print("Parsing DADA2 stats file failed. Please validate.\n")
+                        sys.exit(1)
 
 
     ans += "\n"
@@ -333,9 +339,9 @@ def fastqc(pw):
 
         subdirs = [x for x in p.iterdir() if x.is_dir()]
 
-# Get the directory names of the forward and reverse FastQC folders.
-        fwdFastQc = [os.path.join(x, "seqs_fastqc") for x in subdirs if os.path.basename(x) in ["R1split", "fwdSplit"] and os.path.exists(os.path.join(x, "seqs_fastqc"))]
-        revFastQc = [os.path.join(x, "seqs_fastqc") for x in subdirs if os.path.basename(x) in ["R2split", "R4split", "revSplit"] and os.path.exists(os.path.join(x, "seqs_fastqc"))]
+        # Get the directory names of the forward and reverse FastQC folders.
+        fwdFastQc = [os.path.join(x, "seqs_fastqc.zip") for x in subdirs if os.path.basename(x) in ["R1split", "fwdSplit"] and os.path.isfile(os.path.join(x, "seqs_fastqc.zip"))]
+        revFastQc = [os.path.join(x, "seqs_fastqc.zip") for x in subdirs if os.path.basename(x) in ["R2split", "R4split", "revSplit"] and os.path.isfile(os.path.join(x, "seqs_fastqc.zip"))]
         # for subdir in subdirs:
         #     
         #     if subdir == "R1split" or subdir == "fwdSplit":
@@ -368,12 +374,18 @@ def fastqc(pw):
             }
             ]
             fwdFastQc = [PyInquirer.prompt(questions, style=examples.custom_style_2)['chooser']]
-        ###
+        ### Now fwdFastQc and revFastQc are lists containing zero or one filename to a zip folder
 
         if (len(fwdFastQc) == 1) and (len(revFastQc) == 1):
             runs += 1
             fwdFastQc = str(fwdFastQc[0])
             revFastQc = str(revFastQc[0])
+
+            for zipdir in (fwdFastQc, revFastQc):
+                with zipfile.ZipFile(zipdir, 'r') as zip_ref:
+                    zip_ref.extractall(os.path.dirname(zipdir[0:len(zipdir) - 4]))
+            fwdFastQc = fwdFastQc[0:len(fwdFastQc) - 4]
+            revFastQc = revFastQc[0:len(revFastQc)-4]
 
             def processDir(dir, desc):
                 ans = ""
@@ -398,7 +410,7 @@ def fastqc(pw):
             fwd = processDir(fwdFastQc, "Forward reads")
             rev = processDir(revFastQc, "Reverse reads")
 
-            sectionHead = htmltag.h2(rundir)
+            sectionHead = htmltag.h2(os.path.basename(rundir))
             ans += htmltag.div(
                 htmltag.HTML(
                     sectionHead +
