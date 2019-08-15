@@ -172,6 +172,7 @@ $OUTPUT_AUTOFLUSH = 1;
 
 my @dbg;
 my $oneStep = 0;
+my $dada2mem = "1G";
 GetOptions(
     "raw-path|i=s"           => \my $inDir,
     "r1=s"                   => \my $r1file,
@@ -194,6 +195,7 @@ GetOptions(
     "dada2-maxLen:s"         => \my $maxLen,
     "dada2-minLen:s"         => \my $minLen,
     "dada2-minQ:s"           => \my $minQ,
+    "dada2-mem:s"            => \$dada2mem,
     "1Step"                  => \$oneStep,
     "working-dir|wd=s"       => \my $wd,
     "qsub-project|qp:s"      => \my $qproj,
@@ -1744,7 +1746,7 @@ sub run_R_script {
         print $logFH "Running DADA2 for $var region\n";
 
         $cmd =
-"qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
+"qsub -cwd -b y -l mem_free=$dada2mem -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
         execute_and_log( $cmd, 0, $dryRun );
 
         while ( !-e $outR ) {
