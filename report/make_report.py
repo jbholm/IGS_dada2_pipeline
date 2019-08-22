@@ -258,13 +258,13 @@ def getMapHTML(pw):
         cmd = "Rscript " + "mappingToHtml.R -m " + enquote(opts['map'])
         if not args.verbose:
             status = subprocess.call(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            if status != 0:
-                print("Unable to parse selected file as map.")
-                if not args.interactive:
-                    sys.exit(1)
-                opts['map'] = ""
         else:
             status = subprocess.call(cmd, shell=True)
+        if status != 0:
+            print("Unable to parse selected file as map.")
+            if not args.interactive:
+                sys.exit(1)
+            opts['map'] = ""
 
     f = open("mapping.html.frag", "r")
     map_table = f.read()
@@ -558,7 +558,7 @@ def readAsvTable(filepath):
                 headers.append(i)
 
     # must do this to get columns with duplicate names
-    df = pd.read_csv(filepath, header=None, index_col=0) # note header=None
+    df = pd.read_csv(filepath, header=None, index_col=0, dtype="str") # note header=None
     if df.isnull().sum().sum() > 0:
         print("Warning: Missing values in " + filepath + " have been replaced with 0. Inspect the original CSV with extreme caution!")
         df.fillna(0, inplace = True) # Prevent errors in next step (extra columns should be visible to user in final report)
