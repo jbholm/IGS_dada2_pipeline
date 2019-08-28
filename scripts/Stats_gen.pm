@@ -16,7 +16,8 @@ use File::Spec::Functions qw(splitdir);
 #####Usage: /home/jgeorge/scripts/16s/stats_gen.pl /local/scratch/jgeorge/HMP
 
 sub combine_dada2_stats {
-    my $path = $_[0] or die "Please specify which directory to search";
+    my $path = shift or die "Please specify which directory to search";
+    my @runs = @_; # remaining arguments are run directory names
     $path =~ s/\/$//;    # Remove possible trailing slash
 
 ########get an array of path to the folders for each run within the project
@@ -36,8 +37,9 @@ sub combine_dada2_stats {
     print OUTFILE "sample_id\tinput\tfiltered\tmerged\n";
 
 ########Go inside each run folders and concatenate the dada2+part1_stats file of each run to part1Joined
-    foreach (@list_of_dirs) {
-        opendir( SUBDIR, $_ ) || die "Could not open file $!";
+    foreach (@runs) {
+        opendir( SUBDIR, "$path/$_" ) || die "Could not open file $!";
+        print "Retrieving DADA2 stats from $path/$_\n";
         my @folders = readdir(SUBDIR);
         closedir(SUBDIR);
         foreach my $file (@folders) {
@@ -104,6 +106,7 @@ sub combine_dada2_stats {
 
     close INFILE3;
     close OUTFILE2;
+    unlink $part1Joined; # delete temporary file
 
     print "Complete DADA2 stats file:\n$outfile2\n\n";
 }
