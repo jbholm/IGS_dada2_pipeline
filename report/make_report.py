@@ -86,11 +86,12 @@ def main(pw, args):
     asvTables = getAsvTables(pw)
 
     # start off the table of contents
-    toc = ["""<ul style="background: #ffffff;">
-    <li><a href="#info"><span>Sample Information</span></a></li>
-            <li><a href="#qc"><span>QC Report</span></a></li>
-            <li>Results</li>
-            <li><a href="#all-samples"><span class="nav-link-2">All Samples</span></a></li>"""]
+    toc = ["""<ul style="background: #ffffff;">"""]
+    if map_table is not None:
+        toc.append("""<li><a href="#info"><span>Sample Information</span></a></li>""")
+    toc.append("""<li><a href="#qc"><span>QC Report</span></a></li>""")
+    toc.append("""<li>Results</li>
+<li><a href="#all-samples"><span class="nav-link-2">All Samples</span></a></li>""")
 
     # Get content on controls.
     ctrlPars = initControlsParams() # returns list. Order matters bc the toc is ordered!
@@ -206,8 +207,9 @@ def getMappingFile(pw):
     opts['map'] = ""
     oldCwd = os.getcwd()
     os.chdir(pw.pd)
-    while len(opts['map']) == 0:
-        if args.interactive:
+    if args.interactive:
+        while len(opts['map']) == 0:
+
             candidates = glob.glob('**/*mapping*.txt', recursive=True)
             questions = [
             {
@@ -225,10 +227,19 @@ def getMappingFile(pw):
                 sys.exit(0)
             else:
                 opts['map'] = pw.proj(choice)
-        else:
-            # look recursively in the run directories we were given
-            maps = [glob.glob(rundir + '/**/*mapping*.txt', recursive=True)[0] for rundir in args.runs]  
-            opts['map'] = pw.proj(joinMaps(maps))
+    else:
+        # look recursively in the run directories we were given
+        glb = [glob.glob(rundir + '/**/*mapping*.txt', recursive=True) for rundir in args.runs]
+        def f(obj):
+            return obj[0] if inheritsType(obj, list) else None
+        maps = []
+        for obj in glb:
+            try:
+                maps.append(obj[0])
+            except IndexError: # glob returns empty list if a map wasn't found
+                pass
+
+        opts['map'] = pw.proj(joinMaps(maps)) if len(maps) > 0 else None
     os.chdir(oldCwd)
     return()
 
@@ -255,7 +266,10 @@ def getMapHTML(pw):
         getMappingFile(pw)
         os.chdir(scriptDir)
         
-        cmd = "Rscript " + "mappingToHtml.R -m " + enquote(opts['map'])
+        try:
+            cmd = "Rscript " + "mappingToHtml.R -m " + enquote(opts['map'])
+        except TypeError:
+            return None #if this project doesn't have a mapping file
         if not args.verbose:
             status = subprocess.call(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else:
@@ -264,7 +278,7 @@ def getMapHTML(pw):
             print("Unable to parse selected file as map.")
             if not args.interactive:
                 sys.exit(1)
-            opts['map'] = ""
+            opts['map'] = ""  # allows user to choose another mapping file
 
     f = open("mapping.html.frag", "r")
     map_table = f.read()
@@ -322,6 +336,7 @@ def getDada2Stats(pw):
 
 def fastqc(pw):
     ans = ""
+    script = ""
 
     rundirs = ()
     imgDir = os.path.join(pw.proj("REPORT"), "FastQC")
@@ -425,14 +440,15 @@ def fastqc(pw):
                 checkedDirs = "\n".join([os.path.join(str(rundir), subdir) for subdir in ["R2split", "R4split", "revSplit"]])
                 print("Warning: FastQC files for reverse reads in run " + os.path.basename(str(rundir)) + " not found. Looked for:\n" + checkedDirs + "\n")
 
-    script = htmltag.HTML("""
-                          <script>
-                    $( ".accordion" ).accordion({collapsible: true, heightStyle: "content"});
-                    $( ".accordionRun" ).accordion( "option", "active", 0 );
-            </script>""")
-    if runs == 1:
-        script = script.append("""$( ".accordionRun" ).accordion( "option", "collapsible", false );
-                              """)
+    if len(ans) > 0:
+        script = htmltag.HTML("""
+                            <script>
+                        $( ".accordion" ).accordion({collapsible: true, heightStyle: "content"});
+                        $( ".accordionRun" ).accordion( "option", "active", 0 );
+                </script>""")
+        if runs == 1:
+            script = script.append("""$( ".accordionRun" ).accordion( "option", "collapsible", false );
+                                """)
     return ans + script
 
 
@@ -670,57 +686,71 @@ def getAsvTables(pw):
         
         opts['asvDfs'][file] = readAsvTable(pw.proj(file))
 
+        # Get rid of rows with 0 sum (no surviving reads)
+        rowsums = opts['asvDfs'][file].sum(axis=1)
+        goodRows = [i for i, rowsum in enumerate(rowsums) if rowsum != 0]
+        rowsums = [rowsums[i] for i in goodRows]
+        dfZeroSafe = opts['asvDfs'][file].iloc[goodRows]
 
         # Get the one or two headers in the dataframe and determine whether
         # they are ASV IDs or taxa
         for i in range(2):
             try:
                 colnames = list(
-                    opts['asvDfs'][file].columns.get_level_values(i))
+                    dfZeroSafe.columns.get_level_values(i))
                 if all([str(name)[0:3] == "ASV" for name in colnames]):
                     asvIDs = colnames
                 else:
                     taxa = colnames
             except IndexError:
                 break
-        sampleIDs = [enquote(id) for id in list(opts['asvDfs'][file].index)]
+        sampleIDs = [enquote(id) for id in list(dfZeroSafe.index)]
 
         # Create an HTML table body for displaying a table of samples, total reads, and top hits
         tdata = []
         for index, row in opts['asvDfs'][file].iterrows():
-            tophiti = row.values.argmax() # index of top hit
+            if sum(row) > 0:
+                tophiti = row.values.argmax() # index of top hit
 
-            if isinstance(tophiti, slice):
-                tophiti = str(tophiti)
-                tophiti = int(re.search("(?<=slice\()[0-9]+", str(tophiti)).group(0))
-            topASV = asvIDs[tophiti] if len(asvIDs) > 0 else ""
-            topTaxon = taxa[tophiti] if len(taxa) > 0 else ""
+                if isinstance(tophiti, slice):
+                    tophiti = str(tophiti)
+                    tophiti = int(re.search("(?<=slice\()[0-9]+", str(tophiti)).group(0))
 
+                topASV = asvIDs[tophiti] if len(asvIDs) > 0 else ""
+                topTaxon = taxa[tophiti] if len(taxa) > 0 else ""
+            else: # sample had no surviving reads
+                topASV = "--"
+                topTaxon = ""
             tdata.append([index, sum(row), [topASV, topTaxon]])
 
         def maketd(data):
             return ("""<td style="text-align:left;">""" + str(data) + "</td>\n")
-
+        omittedRowCounter = 0
         def makerow(row, i):
+            nonlocal omittedRowCounter
             tr = ["<tr>"]
             tr.append(maketd(row[0]))
             tr.append(maketd(row[1]))
             sample = row[0]
             asv = row[2][0]
             taxon = row[2][1]
-            taxonStr = " (" + taxon + ")" if(len(taxon) > 0) else ""
-            tr.append(maketd("<a onclick=\"asvHeatmapMaxHighlight(" + str(i) + ", 'heatmapInner-" + str(heatmapNbr) + "')\" href=\"#\">" + asv + taxonStr + "</a>"))
+            taxonStr = " (" + taxon + ")" if (len(taxon) > 0) else ""
+            tablecell = asv + taxonStr
+            if row[2][0] == "--":
+                omittedRowCounter += 1
+            else:
+                tablecell = "<a onclick=\"asvHeatmapMaxHighlight(" + str(i - omittedRowCounter) + ", 'heatmapInner-" + str(heatmapNbr) + "')\" href=\"#!\">" + tablecell + "</a>"
+            tr.append(maketd(tablecell))
             tr.append("</tr>")
-            return("\n".join(tr))
+            return ("\n".join(tr))
+
         tbody = "\n".join([makerow(row, i) for i, row in enumerate(tdata)])
 
         # Add quotes to each xlabel (for javascript syntax)
         taxa = [enquote(taxon) for taxon in taxa]
         asvIDs = [enquote(asvID) for asvID in asvIDs]
-
-        #data_np = np.array(data_arr, dtype=float)
-        rowsums = opts['asvDfs'][file].sum(axis=1)
-        relAbund = opts['asvDfs'][file].div(rowsums, axis="index")
+                
+        relAbund = opts['asvDfs'][file].iloc[goodRows].div(rowsums, axis="index")
         zmin = relAbund.min().min()
         zmax = relAbund.max().max()
         zmax = zmax if zmax < 0.3 else np.ceil(zmax * 10) / 10
@@ -835,8 +865,10 @@ def getAsvTables(pw):
     return {'html': sectionHtml, 'js': js}
 
 def getCtrlPlots(pw, pars):
+    ans = {'html': '',
+                'js': ''}
     if len(opts['asvDfs']) == 0:
-        return {'html': "", 'js': ""}
+        return ans
 
     if(len(opts['controlTable']) == 0):
         if args.interactive:
@@ -873,12 +905,14 @@ def getCtrlPlots(pw, pars):
 
 
     # Get control samples
-    mapping = pd.read_csv(opts['map'],
+    try:
+        mapping = pd.read_csv(opts['map'],
                           sep="\t", header=0, index_col=3)
+    except ValueError:
+        return ans
     ctrls = list(mapping.filter(regex=pars.patt, axis=0).iloc[:, 0])
     if(len(ctrls) == 0):
-        return {'html': '',
-                'js': ''}
+        return ans
 
     # Get the taxa/ASV IDs
     asvIDs = []

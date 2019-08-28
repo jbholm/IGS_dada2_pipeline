@@ -189,9 +189,11 @@
     <!-- Table of contents sidebar -->
     <div id="tabs">
         ${toc}
-        <div id="info" class="ui-tabs-hide">
-            <p>${mapping}</p>
-        </div>
+        % if mapping is not None:
+            <div id="info" class="ui-tabs-hide">
+                <p>${mapping}</p>
+            </div>
+        % endif
         <div id="qc" class="ui-tabs-hide">
             <h2>Project QC Summary</h2>
             <div id=dada2-div>
@@ -225,8 +227,10 @@
                         }, 0)
                     }
             </script>
-            <h2>Sequencing runs contributing to this project:</h2>
-                ${qc}
+            % if len(qc) > 0:
+                <h2>Sequencing runs contributing to this project:</h2>
+                    ${qc}
+            % endif
         </div>
         <div id="all-samples" class="ui-tabs-hide">
             ${asvtableshtml}

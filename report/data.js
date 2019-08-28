@@ -57,8 +57,9 @@ var makeHighlight = function (zValues, xTopValues, divSelector) {
         use.id = "sample-asv-highlighter-use";
         svg.appendChild(use);
         if (scroll) {
-            container.scrollLeft(x - Math.round(width / 2) - $(window).width() / 2);
-            container.scrollTop(y - Math.round(height / 2) - $(window).height() / 2);
+            container.scrollLeft(x - width / 2 - container.width() / 2);
+            window.scrollTo(0,
+                y + canvas.offset().top - $(window).height() / 2);
         }
 
         this.highlightElems = [use, highlight, highlightblack];
@@ -69,14 +70,17 @@ var highlightMax = function (zValues) {
     
     var lookup = zValues.map(row => row.reduce((iMax, x, i, arr) => x > arr[iMax] ? i : iMax, 0) );
     return function(sampleI) {
-        console.log(lookup);
         this.highlight({ sample: sampleI, asvID: lookup[sampleI], scroll: true, type: "index" });
+        return false;
     };
 };
 var asvHeatmapMaxHighlight = function (sampleI, divname) {
     var d = document.getElementById(divname);
     d.highlightMax(sampleI);
+    return false;
 };
+    
+
     
 
     ${asvtablesjs}
