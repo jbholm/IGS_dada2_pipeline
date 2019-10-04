@@ -139,7 +139,7 @@ foreach my $line1 (@list1) {
     }
 }
 print ALL "," . join( ",", @asvs ) . "\n";
-my $taxaHead = "," . join( ",", @taxa ) . "\n";
+my $taxaHead = "sampleID" . "," . join( ",", @taxa ) . "\n";
 print ALL "$taxaHead";
 print TXON "$taxaHead";
 $line = 0;
