@@ -1,18 +1,68 @@
-
 <div class="tab-pane fade ${active} in" id="heatmapTab-${hmNbr}" role="tabpanel">
-<h2>${title}</h2>
-<div class="heatmapContainer">
-    <div class="heatmapLegend" id="heatmapScale-${hmNbr}"></div>
-    <div class = "heatmap plotly-container" id="heatmapInner-${hmNbr}"></div>
+    <h2>${title}</h2>
+    <div class="heatmapContainer">
+        % if plotly:
+        <div class="heatmapLegend" id="heatmapScale-${hmNbr}"></div>
+        <div class = "heatmap plotly-container" id="heatmapInner-${hmNbr}"></div>
+        % else:
+        <div class="heatmapLegend" id="heatmapScale-${hmNbr}">
+            <img src="${legendFilepath}" />
+        </div>
+        <div style="width: auto;">
+            <div class="figlabel rotate90"><p>Sample</p></div>
+        </div>
+        <div class="yaxis">
+            <!--contains y-axis-->
+            <div class="axisViewport yaxisBumper">
+                <div class="axistiles left viewportContent">
+                                    <!-- shifts it downward to line up with heatmap-->
+                % for file in yaxisImages:
+                <img src="${file}" />
+                % endfor
+            </div>
+        </div>
+    </div>
+    <div class="centralHeatmapDiv">
+            <div class="xaxisTop">
+                    <div class="xaxisSpacer"></div>
+        <div class="figlabel">
+            % if len(xaxisTopImages) > 0:
+                Amplicon Sequence Variant
+            % endif
+        </div>
+            <div class="axisViewport">
+                <div class="axistiles top viewportContent">
+                    % for file in xaxisTopImages:
+                    <img src="${file}" />
+                    % endfor
+                </div>
+            </div>
+        </div>
+
+            <div class="horizScrollContainer fullHeight heatmap">
+                <div> <!-- Remove me please-->
+                    <div class="pixel">
+                        <img src="${heatmap}" alt="Heatmap showing abundance of ASVs by sample" />
+                    </div>
+                <div class="axistiles bot">
+                    % for file in xaxisBotImages:
+                    <img src="${file}" />
+                    % endfor
+                </div>
+                <div class="figlabel">Assigned Taxon</div>
+            </div>
+        </div>
+        % endif
+    </div>
 </div>
 
-% if isAsvTable:
+    % if isAsvTable:
     ${negCtrlCaption()}
-% endif
+    % endif
 
-<%def name="negCtrlCaption()">
-<div>Taxa printed in <font color="#f05f5e">red</font> appeared in PCR negative controls.</div>
-</%def>
+    <%def name="negCtrlCaption()">
+    <div>Taxa printed in <font color="#f05f5e">red</font> appeared in PCR negative controls.</div>
+    </%def>
 
 <div class="kable" style="border: 1px solid #ddd; padding: 0px; overflow-y: scroll; height:100%; overflow-x: scroll; width:100%; "><table class="table" style="margin-left: auto; margin-right: auto;">
 
@@ -20,7 +70,13 @@
         <tr>
          <th style="text-align:left;position: sticky; top:0; background-color: #FFFFFF;"> ID </th>
          <th style="text-align:left;position: sticky; top:0; background-color: #FFFFFF;"> Reads </th>
-         <th style="text-align:left;position: sticky; top:0; background-color: #FFFFFF;"> Top Hit </th>
+         <th style="text-align:left;position: sticky; top:0; background-color: #FFFFFF;"> 
+% if form == "taxa-merged":
+Top Taxon
+% else:
+Top ASV
+% endif
+        </th>
         </tr>
        </thead>
         <tbody>

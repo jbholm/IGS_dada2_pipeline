@@ -1,7 +1,17 @@
 #!/usr/bin/env python3
 
-# -*- coding: utf-8 -*-
-import subprocess, glob, argparse, datetime, os, shutil, re, sys, json, urllib.parse, math, zipfile
+import subprocess
+import glob
+import argparse
+import datetime
+import os
+import shutil
+import re
+import sys
+import json
+import urllib.parse
+import math
+import zipfile
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -11,41 +21,54 @@ import htmltag  # Installed manually from github
 import PyInquirer  # pip install PyInquirer
 import examples
 import colour
+import matplotlib as mpl  # conda install matplotlib
+import matplotlib.pyplot as plt
+from matplotlib.transforms import TransformedBbox, Affine2D, ScaledTranslation
+import matplotlib.font_manager as fm
+
 
 # ALLOW THIS VARIABLE TO DROP THROUGH INTO CHILD FUNCTIONS
 opts = {
     'map': "",
     'tests': ["Per base sequence quality", "Per tile sequence quality",
-                  "Sequence Length Distribution"],
-        'qcCaptions': {
-    "Per base sequence quality": ("", ""),
-    "Per tile sequence quality": ("", ""),
-    "Sequence Length Distribution": ("Illumina MiSeq machines yield 301-bp reads", "Illumina MiSeq machines yield 301-bp reads")
-},
+              "Sequence Length Distribution"],
+    'qcCaptions': {
+        "Per base sequence quality": ("", ""),
+        "Per tile sequence quality": ("", ""),
+        "Sequence Length Distribution": ("Illumina MiSeq machines yield 301-bp reads", "Illumina MiSeq machines yield 301-bp reads")
+    },
     'contaminants': [],
     'asvDfs': {},  # dataframes containing abundance tables
     'defaultAsvTable': "",
     'controlTable': "",
     'lookup': None
 }
-    
+
+
 class Pathwiz(object):
     def __init__(self, scriptsDir, projectDir):
-        self.sd = scriptsDir # These are publicly visible
+        self.sd = scriptsDir  # These are publicly visible
         self.pd = projectDir
-    
+
     # Converts a relative path in the project directory to an abs path
     def proj(self, path):
         return os.path.join(self.pd, path)
-    
+
     # Converts relative path in the script directory to abs path
     def script(self, path):
         return os.path.join(self.sd, path)
-    
+
+    def res(self, path):
+        return os.path.join(self.pd, "REPORT/.Report_files", path)
+
     # Gets a path relative to the project directory. As a side-effect, makes
     # paths with whitespace safe.
     def relToProj(self, path):
         return str(Path(path).relative_to(self.pd))
+
+    def relToRep(self, path):
+        return str(Path(path).relative_to(os.path.join(self.pd, "REPORT")))
+
 
 class controlsPar(object):
     def __init__(self, title, prefix, patt):
@@ -54,18 +77,20 @@ class controlsPar(object):
         self.patt = patt
         self.urlsafe = urllib.parse.quote(title)
 
+
 def initControlsParams():
     ctrlsPars = []
     ctrlsPars.append(controlsPar('PCR Neg. Controls',
-                                    "pcrNeg",
-                                    "ntcctr|PCRNTC|PCR.NEG|PCR.NTC|PCRNEG|PCRNEGCTRL"))
+                                 "pcrNeg",
+                                 "ntcctr|PCRNTC|PCR.NEG|PCR.NTC|PCRNEG|PCRNEGCTRL"))
     ctrlsPars.append(controlsPar('PCR Pos. Controls', "pcrPos",
-                                    "PCRPOS|PCR.pos|pCR.pos|POSCTRL|POS.CTRL|POSCON|posctr"))
+                                 "PCRPOS|PCR.pos|pCR.pos|POSCTRL|POS.CTRL|POSCON|posctr"))
     ctrlsPars.append(controlsPar('Extraction Neg. Controls', "extNeg",
                                  "EXTNTC|NTC.EXT|NTCEXT|EXT.NTC|NTC|EXTNEG"))
     # Add ext. pos. controls when the time comes
     return(ctrlsPars)
-    
+
+
 def main(pw, args):
     os.chdir(pw.pd)
     reportDir = os.path.join(pw.pd, "REPORT")
@@ -73,17 +98,18 @@ def main(pw, args):
     try:
         overwriteDir(reportDir)
         overwriteDir(reportFilesDir)
+        overwriteDir(os.path.join(reportFilesDir, "img"))
     except OSError:
         print(reportDir + " already exists")
-    
 
-    opts['lookup'] = TemplateLookup(directories=[scriptDir])
+    opts['lookup'] = TemplateLookup(directories=[scriptDir],
+                                    strict_undefined=True)
     mytemplate = opts['lookup'].get_template("MSL_REPORT.html")
 
     map_table = getMapHTML(pw)
     date = datetime.date.today().isoformat()
     dada2stats = getDada2Stats(pw)
-    asvTables = getAsvTables(pw)
+    getAsvTables(pw)
 
     # start off the table of contents
     toc = ["""<ul style="background: #ffffff;">"""]
@@ -94,7 +120,8 @@ def main(pw, args):
 <li><a href="#all-samples"><span class="nav-link-2">All Samples</span></a></li>""")
 
     # Get content on controls.
-    ctrlPars = initControlsParams() # returns list. Order matters bc the toc is ordered!
+    # returns list. Order matters bc the toc is ordered!
+    ctrlPars = initControlsParams()
     ctrlContent = {}
     for pars in ctrlPars:
         # If this project contained controls, getCtrlPlots returns html and js
@@ -102,12 +129,13 @@ def main(pw, args):
         ctrlContent[pars.title] = content
         if(len(content['js']) > 0):
             toc.append('<li><a href="#' + pars.urlsafe +
-                       '"><span class="nav-link-2">' + pars.title + """</span></a></li>""")        
+                       '"><span class="nav-link-2">' + pars.title + """</span></a></li>""")
 
     toc.append("</ul>")
     toc = "\n".join(toc)
 
-
+    # must get contaminants from getCtrlPlots() before creating axis labels here
+    asvTables = createAsvHeatmaps(pw)
 
     f = open(os.path.join(reportDir, "Report.html"), "w+")
     f.write(mytemplate.render(date=date,
@@ -122,37 +150,38 @@ def main(pw, args):
     f.close()
 
     mytemplate = opts['lookup'].get_template("data.js")
-    
+
     with open(pw.script("js/data.js"), "w") as f:
         f.write(mytemplate.render(asvtablesjs=asvTables['js'],
                                   pcrNegCtrlJs=ctrlContent['PCR Neg. Controls']['js'],
                                   pcrPosCtrlJs=ctrlContent['PCR Pos. Controls']['js'],
                                   extNegCtrlJs=ctrlContent['Extraction Neg. Controls']['js'],
-                contaminants=", ".join([enquote(c) for c in opts['contaminants']])
+                                  contaminants=", ".join(
+                                      [enquote(c) for c in opts['contaminants']]),
+                                  plotly=args.plotly
+                                  )
                 )
-                )
-
-    myDir = scriptDir
-
-    def cpAssets(srcs):
-        for src in srcs:
-            srcAbs = os.path.join(myDir, src)
-            dest = os.path.join(reportFilesDir, src)
-            try:
-                shutil.rmtree(dest)
-                print("Overwriting " + dest)
-            except:
-                pass
-            shutil.copytree(srcAbs, dest)
 
     #        files = os.listdir(srcAbs)
     #        for f in files:
     #            shutil.move(os.path.join(srcAbs, f), os.path)
-    cpAssets(("js", "css"))
+    cpAssets([os.path.join(scriptDir, subdir)
+              for subdir in ("js", "css")], reportFilesDir)
 
     # minifyCss(pw.pd)
 
     print("Report created at " + os.path.join(reportDir, "Report.html"))
+
+
+def cpAssets(srcs, dest):
+    for src in srcs:
+        dsub = os.path.join(dest, os.path.basename(src))
+        try:
+            shutil.rmtree(dsub)
+            print("Overwriting " + src)
+        except:
+            pass
+        shutil.copytree(src, dsub)
 
 
 def overwriteDir(directory):
@@ -170,27 +199,28 @@ def softMkDir(directory):
     except OSError:
         pass
 
-def askFile(dir, msg = "Please choose a file:"):
+
+def askFile(dir, msg="Please choose a file:"):
     oldwd = os.getcwd()
     os.chdir(dir)
     ans = ""
     while len(ans) == 0:
-        it = os.scandir()
         choices = list()
-        for i, entry in enumerate(os.scandir()):
+        for entry in os.scandir():
             letter = "D " if entry.is_dir() else "F "
             choices.append(letter + entry.name)
         choices.sort()
         choices = [".", "..", "Cancel"] + choices
         questions = [
-        {
-            'type': 'list',
-            'name': 'chooser',
-            'message': msg,
-            'choices': choices,
-        }
+            {
+                'type': 'list',
+                'name': 'chooser',
+                'message': msg,
+                'choices': choices,
+            }
         ]
-        choice = PyInquirer.prompt(questions, style=examples.custom_style_2)['chooser']
+        choice = PyInquirer.prompt(
+            questions, style=examples.custom_style_2)['chooser']
 
         if choice != "." and choice != ".." and choice[0] == "F":
             ans = os.path.join(os.getcwd(), choice[2:len(choice)])
@@ -203,6 +233,7 @@ def askFile(dir, msg = "Please choose a file:"):
     os.chdir(oldwd)
     return(ans)
 
+
 def getMappingFile(pw):
     opts['map'] = ""
     oldCwd = os.getcwd()
@@ -212,14 +243,15 @@ def getMappingFile(pw):
 
             candidates = glob.glob('**/*mapping*.txt', recursive=True)
             questions = [
-            {
-                'type': 'list',
-                'name': 'useGlobbed',
-                'message': "Choose a mapping file",
-                'choices': candidates + ["Browse...", "Cancel"]
-            }
+                {
+                    'type': 'list',
+                    'name': 'useGlobbed',
+                    'message': "Choose a mapping file",
+                    'choices': candidates + ["Browse...", "Cancel"]
+                }
             ]
-            choice = PyInquirer.prompt(questions, style=examples.custom_style_2)['useGlobbed']
+            choice = PyInquirer.prompt(questions, style=examples.custom_style_2)[
+                'useGlobbed']
             if choice == "Browse...":
                 # open file chooser
                 opts['map'] = askFile(pw.pd, "Please choose a mapping file")
@@ -230,8 +262,6 @@ def getMappingFile(pw):
     else:
         # look recursively in the run directories we were given
         glb = [glob.glob(rundir + '/**/*mapping*.txt', recursive=True) for rundir in args.runs]
-        def f(obj):
-            return obj[0] if inheritsType(obj, list) else None
         maps = []
         for obj in glb:
             try:
@@ -243,7 +273,8 @@ def getMappingFile(pw):
     os.chdir(oldCwd)
     return()
 
-def joinMaps(files): # concatenates files into a tab-delimited mapping file in the current directory
+
+def joinMaps(files):  # concatenates files into a tab-delimited mapping file in the current directory
     dest = "project_map.txt"
     with open(dest, "w") as outF:
         with open(files[0], "r") as inF:
@@ -254,11 +285,13 @@ def joinMaps(files): # concatenates files into a tab-delimited mapping file in t
                 for i, line in enumerate(inF):
                     if i != 0 and re.search(r'^\S+(\t\S+){3}', line) is not None:
                         outF.write(line)
-    
+
     return(dest)
 
-def enquote(s):
+
+def endoublequote(s):
     return("\"" + s + "\"")
+
 
 def getMapHTML(pw):
     status = -1
@@ -271,7 +304,8 @@ def getMapHTML(pw):
         except TypeError:
             return None #if this project doesn't have a mapping file
         if not args.verbose:
-            status = subprocess.call(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            status = subprocess.call(
+                cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else:
             status = subprocess.call(cmd, shell=True)
         if status != 0:
@@ -290,7 +324,7 @@ def getDada2Stats(pw):
     statsFile = os.path.join(pw.proj("REPORT"), "DADA2_stats.txt")
     oldStatsFile = pw.proj("stats_file_cmp.txt")
 
-    status = -1 # Status of whole operation
+    status = -1  # Status of whole operation
     while status != 0:
         status1 = -1
         lines = []
@@ -303,12 +337,14 @@ def getDada2Stats(pw):
                 status1 = 0
             except FileNotFoundError:
                 print("Couldn't find " + oldStatsFile)
-                oldStatsFile = askFile(pw.pd, "Please choose a stats file (combined part1-part2 DADA2 stats)\n")
+                oldStatsFile = askFile(
+                    pw.pd, "Please choose a stats file (combined part1-part2 DADA2 stats)\n")
             except BaseException as e:
                 print(str(e))
-                oldStatsFile = askFile(pw.pd, "Please choose a stats file (combined part1-part2 DADA2 stats)\n")
-        
-        status = 0 # Good unless parsing errors encountered in loop
+                oldStatsFile = askFile(
+                    pw.pd, "Please choose a stats file (combined part1-part2 DADA2 stats)\n")
+
+        status = 0  # Good unless parsing errors encountered in loop
         ans = "\n\t"
         for i in range(len(lines)):
             if i != 0 and status == 0:
@@ -318,17 +354,19 @@ def getDada2Stats(pw):
                     break
                 try:
                     ans += "<tr>\n<td>" + fields[0] + "</td>\n<td>" + fields[1] + "</td>\n<td>" + fields[2] + "</td>\n<td>" + \
-                        fields[3] + "</td>\n<td>" + fields[4] + "</td>\n</tr>\n"
+                        fields[3] + "</td>\n<td>" + \
+                        fields[4] + "</td>\n</tr>\n"
                 except:
                     if args.interactive:
-                        print("Parsing DADA2 stats file failed.\nPlease select a different file.")
+                        print(
+                            "Parsing DADA2 stats file failed.\nPlease select a different file.")
                         status = 2
-                        oldStatsFile = askFile(pw.pd, "Please choose a stats file (combined part1-part2 DADA2 stats)\n")
+                        oldStatsFile = askFile(
+                            pw.pd, "Please choose a stats file (combined part1-part2 DADA2 stats)\n")
                         break
                     else:
                         print("Parsing DADA2 stats file failed. Please validate.\n")
                         sys.exit(1)
-
 
     ans += "\n"
     return ans
@@ -355,10 +393,12 @@ def fastqc(pw):
         subdirs = [x for x in p.iterdir() if x.is_dir()]
 
         # Get the directory names of the forward and reverse FastQC folders.
-        fwdFastQc = [os.path.join(x, "seqs_fastqc.zip") for x in subdirs if os.path.basename(x) in ["R1split", "fwdSplit"] and os.path.isfile(os.path.join(x, "seqs_fastqc.zip"))]
-        revFastQc = [os.path.join(x, "seqs_fastqc.zip") for x in subdirs if os.path.basename(x) in ["R2split", "R4split", "revSplit"] and os.path.isfile(os.path.join(x, "seqs_fastqc.zip"))]
+        fwdFastQc = [os.path.join(x, "seqs_fastqc.zip") for x in subdirs if os.path.basename(
+            x) in ["R1split", "fwdSplit"] and os.path.isfile(os.path.join(x, "seqs_fastqc.zip"))]
+        revFastQc = [os.path.join(x, "seqs_fastqc.zip") for x in subdirs if os.path.basename(x) in [
+            "R2split", "R4split", "revSplit"] and os.path.isfile(os.path.join(x, "seqs_fastqc.zip"))]
         # for subdir in subdirs:
-        #     
+        #
         #     if subdir == "R1split" or subdir == "fwdSplit":
         #         fwdFastQc = os.path.join(subdir, "seqs_fastqc")
         #     elif (subdir in ["R2split", "R4split", "revSplit"]):
@@ -366,30 +406,34 @@ def fastqc(pw):
 
         ### UNTESTED ###
         if len(revFastQc) > 1:
-            print("Error: multiple FastQC directories for reverse reads in run " + os.path.basename(str(rundir)) + " found.")
-            
+            print("Error: multiple FastQC directories for reverse reads in run " +
+                  os.path.basename(str(rundir)) + " found.")
+
             questions = [
-            {
-                'type': 'list',
-                'name': 'chooser',
-                'message': "Please choose one:",
-                'choices': revFastQc,
-            }
+                {
+                    'type': 'list',
+                    'name': 'chooser',
+                    'message': "Please choose one:",
+                    'choices': revFastQc,
+                }
             ]
-            revFastQc = [PyInquirer.prompt(questions, style=examples.custom_style_2)['chooser']]
+            revFastQc = [PyInquirer.prompt(
+                questions, style=examples.custom_style_2)['chooser']]
         if len(fwdFastQc) > 1:
-            print("Error: multiple FastQC directories for forward reads in run " + os.path.basename(str(rundir)) + " found.")
-            
+            print("Error: multiple FastQC directories for forward reads in run " +
+                  os.path.basename(str(rundir)) + " found.")
+
             questions = [
-            {
-                'type': 'list',
-                'name': 'chooser',
-                'message': "Please choose one:",
-                'choices': fwdFastQc,
-            }
+                {
+                    'type': 'list',
+                    'name': 'chooser',
+                    'message': "Please choose one:",
+                    'choices': fwdFastQc,
+                }
             ]
-            fwdFastQc = [PyInquirer.prompt(questions, style=examples.custom_style_2)['chooser']]
-        ### Now fwdFastQc and revFastQc are lists containing zero or one filename to a zip folder
+            fwdFastQc = [PyInquirer.prompt(
+                questions, style=examples.custom_style_2)['chooser']]
+        # Now fwdFastQc and revFastQc are lists containing zero or one filename to a zip folder
 
         if (len(fwdFastQc) == 1) and (len(revFastQc) == 1):
             runs += 1
@@ -398,7 +442,8 @@ def fastqc(pw):
 
             for zipdir in (fwdFastQc, revFastQc):
                 with zipfile.ZipFile(zipdir, 'r') as zip_ref:
-                    zip_ref.extractall(os.path.dirname(zipdir[0:len(zipdir) - 4]))
+                    zip_ref.extractall(os.path.dirname(
+                        zipdir[0:len(zipdir) - 4]))
             fwdFastQc = fwdFastQc[0:len(fwdFastQc) - 4]
             revFastQc = revFastQc[0:len(revFastQc)-4]
 
@@ -434,11 +479,15 @@ def fastqc(pw):
                 _class="accordion accordionRun")
         else:
             if (len(fwdFastQc) == 0):
-                checkedDirs = "\n".join([os.path.join(str(rundir), subdir, "seqs_fastqc") for subdir in ["R1split", "fwdSplit"]])
-                print("Warning: FastQC files for forward reads in run " + os.path.basename(str(rundir)) + " not found. Looked for:\n" + checkedDirs + "\n")
+                checkedDirs = "\n".join([os.path.join(
+                    str(rundir), subdir, "seqs_fastqc") for subdir in ["R1split", "fwdSplit"]])
+                print("Warning: FastQC files for forward reads in run " + os.path.basename(
+                    str(rundir)) + " not found. Looked for:\n" + checkedDirs + "\n")
             if (len(revFastQc) == 0):
-                checkedDirs = "\n".join([os.path.join(str(rundir), subdir) for subdir in ["R2split", "R4split", "revSplit"]])
-                print("Warning: FastQC files for reverse reads in run " + os.path.basename(str(rundir)) + " not found. Looked for:\n" + checkedDirs + "\n")
+                checkedDirs = "\n".join([os.path.join(str(rundir), subdir) for subdir in [
+                                        "R2split", "R4split", "revSplit"]])
+                print("Warning: FastQC files for reverse reads in run " + os.path.basename(
+                    str(rundir)) + " not found. Looked for:\n" + checkedDirs + "\n")
 
     if len(ans) > 0:
         script = htmltag.HTML("""
@@ -464,8 +513,8 @@ def getFastqcLocal(directory):
 
     # Get the images in this fastqc analysis
     imgs = [os.path.join(directory, "Images", filename) for filename in
-                    ("per_base_quality.png", "per_tile_quality.png",
-                     "sequence_length_distribution.png")]
+            ("per_base_quality.png", "per_tile_quality.png",
+             "sequence_length_distribution.png")]
 
     # R1_fastqc, R2_fastqc, or R4_fastqc, depending on the project directory layout
     dirSpecificDir = os.path.join(imgDir, run, os.path.basename(
@@ -487,6 +536,8 @@ From the fastQC summary.txt, read the test results from four tests:
     Sequence Length Distribution
     Per base N content
 '''
+
+
 def parseFastqcSummary(directory):
     ans = {}
 
@@ -504,6 +555,8 @@ def parseFastqcSummary(directory):
 For each FastQC image, create an <img> tag that is HTML-ready. Return tags as
 a list.
 '''
+
+
 def tagFastqc(img):
     name = os.path.basename(img).split(".")[0]
     altText = " ".join(name.split("_"))
@@ -560,8 +613,62 @@ def captionFastqc(test, status):
 def enquote(s):
     return "'" + s + "'"
 
+def getAsvTables(pw):
+    os.chdir(pw.pd)
+    csvs = glob.glob("*.csv", recursive=True)
+
+    chooseNth = 1
+    include = []
+
+    if args.interactive:
+        while (chooseNth > 0):
+
+            if chooseNth == 1:
+                question = "Please choose the first table to include"
+            else:
+                question = "Please choose the next table to include"
+
+            questions = [
+                {
+                    'type': 'list',
+                    'name': 'selection',
+                    'message': question,
+                    'choices': csvs + [PyInquirer.Separator(), "Abort", "Done"]
+                }
+            ]
+
+            selected = PyInquirer.prompt(
+                questions, style=examples.custom_style_2)['selection']
+
+            if selected == "Abort":
+                sys.exit(0)
+            elif selected == "Done":
+                chooseNth = 0
+            else:
+                include.append(selected)
+                i = csvs.index(selected)
+                csvs = csvs[0:i] + csvs[i + 1:]
+
+                # Remember which ASV table was chosen first
+                if chooseNth == 1:
+                    opts['defaultAsvTable'] = selected
+
+                chooseNth += 1
+                print("\n")
+
+    else:
+        include = glob.glob(pw.proj('*asvs+taxa.csv'), recursive=True) + \
+            glob.glob(pw.proj('*taxa-merged.csv'), recursive=True)
+
+    for file in include:
+        opts['asvDfs'][file] = readAsvTable(pw.proj(file))
+    
+    return True
 
 def readAsvTable(filepath):
+    if args.verbose:
+        print("Reading " + filepath + " ...")
+
     headers = []
     with open(filepath, "r") as f:
         for i in [0, 1]:
@@ -574,13 +681,17 @@ def readAsvTable(filepath):
                 headers.append(i)
 
     # must do this to get columns with duplicate names
-    df = pd.read_csv(filepath, header=None, index_col=0, dtype="str") # note header=None
+    df = pd.read_csv(filepath, header=None, index_col=0,
+                     dtype="str")  # note header=None
     if df.isnull().sum().sum() > 0:
-        print("Warning: Missing values in " + filepath + " have been replaced with 0. Inspect the original CSV with extreme caution!")
-        df.fillna(0, inplace = True) # Prevent errors in next step (extra columns should be visible to user in final report)
-    
+        print("Warning: Missing values in " + filepath +
+              " have been replaced with 0. Inspect the original CSV with extreme caution!")
+        # Prevent errors in next step (extra columns should be visible to user in final report)
+        df.fillna(0, inplace=True)
+
     df.columns = pd.MultiIndex.from_frame(df.iloc[headers].T.astype(str))
-    df = df.iloc[ [x not in headers for x in range(len(df.index)) ] ]  # drop header rows
+    # drop header rows
+    df = df.iloc[[x not in headers for x in range(len(df.index))]]
     df = df.astype(int)  # allow dataframe to fix itself
     return(df)
 
@@ -598,66 +709,16 @@ def df_to_js(df, float_format=None):
     return "".join(items)
 
 
-def getAsvTables(pw):
+def createAsvHeatmaps(pw):
     os.chdir(pw.pd)
-    csvs = glob.glob("*.csv", recursive=True)
 
-    chooseNth = 1
-    include = []
-    
-    if args.interactive:
-        while (chooseNth > 0):
-    
-            if chooseNth == 1:
-                question = "Please choose the first table to include"
-            else:
-                question = "Please choose the next table to include"
-        
-            questions = [
-                {
-                    'type': 'list',
-                    'name': 'selection',
-                    'message': question,
-                    'choices': csvs + [PyInquirer.Separator(), "Abort", "Done"]
-                }
-            ]
-        
-            selected = PyInquirer.prompt(
-                questions, style=examples.custom_style_2)['selection']
-        
-            if selected == "Abort":
-                sys.exit(0)
-            elif selected == "Done":
-                chooseNth = 0
-            else:
-                include.append(selected)
-                i = csvs.index(selected)
-                csvs = csvs[0:i] + csvs[i + 1:]
-        
-                # Remember which ASV table was chosen first
-                if chooseNth == 1:
-                    opts['defaultAsvTable'] = selected
-        
-                chooseNth += 1
-                print("\n")
-        
-    else:
-        include = glob.glob(pw.proj('*asvs+taxa.csv'), recursive=True) + glob.glob(pw.proj('*taxa-merged.csv'), recursive=True)
-        
-
-     # for selection in include:
-    # Get as numeric HTML table if chosen
-
-    # Get as heatmap if chosen
-
-    # f = open(pw.pd + "/IHV_all_runs_dada2_abundance_table_PECAN_taxa_only_merged.csv", "r")
     html = ""
     js = ""
     heatmapNbr = 1
-    for file in include:
+    for file in opts['asvDfs'].keys():
         fields = os.path.splitext(file)[0].split(sep="_")
-        
-        active = "active" if heatmapNbr == 1 else ""        
+
+        active = "active" if heatmapNbr == 1 else ""
         title = ""
         tbody = ""
         data_str = ""
@@ -669,22 +730,24 @@ def getAsvTables(pw):
         zmin = 0
         zmax = 0
         topMargin = 40
-        
-        shutil.copyfile(os.path.join(file), os.path.join(pw.pd, "REPORT", os.path.basename(file)))
+
+        if args.verbose:
+            print("Preparing " + file + " for the report.")
+
+        shutil.copyfile(os.path.join(file), os.path.join(
+            pw.pd, "REPORT", os.path.basename(file)))
 
         taxnmy = fields[len(fields)-2]
         if taxnmy == "PECAN-SILVA":
             taxnmy += "*"
-        
+
         form = fields[len(fields)-1]
         if form in ("taxa", "taxa+asvs", "asvs+taxa"):
-            title="ASV counts labeled with " + taxnmy + " taxonomic assignments"
+            title = "ASV counts labeled with " + taxnmy + " taxonomic assignments"
         elif form == "taxa-merged":
             title = "Counts by " + taxnmy + " taxonomic assignment"
         else:
             print("Error: can't determine count table file format from filename.")
-        
-        opts['asvDfs'][file] = readAsvTable(pw.proj(file))
 
         # Get rid of rows with 0 sum (no surviving reads)
         rowsums = opts['asvDfs'][file].sum(axis=1)
@@ -704,7 +767,11 @@ def getAsvTables(pw):
                     taxa = colnames
             except IndexError:
                 break
-        sampleIDs = [enquote(id) for id in list(dfZeroSafe.index)]
+        if args.plotly:
+            sampleIDs = [enquote(id) for id in list(dfZeroSafe.index)]
+        else:
+            sampleIDs = list(dfZeroSafe.index)
+
 
         # Create an HTML table body for displaying a table of samples, total reads, and top hits
         tdata = []
@@ -731,15 +798,17 @@ def getAsvTables(pw):
             tr = ["<tr>"]
             tr.append(maketd(row[0]))
             tr.append(maketd(row[1]))
-            sample = row[0]
             asv = row[2][0]
             taxon = row[2][1]
-            taxonStr = " (" + taxon + ")" if (len(taxon) > 0) else ""
+            taxonStr = taxon if (len(taxon) > 0) else ""
+            if form != "taxa-merged":
+                taxonStr = "(" + taxonStr + ")"
             tablecell = asv + taxonStr
             if row[2][0] == "--":
                 omittedRowCounter += 1
             else:
-                tablecell = "<a onclick=\"asvHeatmapMaxHighlight(" + str(i - omittedRowCounter) + ", 'heatmapInner-" + str(heatmapNbr) + "')\" href=\"#!\">" + tablecell + "</a>"
+                if args.plotly:
+                    tablecell = "<a onclick=\"asvHeatmapMaxHighlight(" + str(i - omittedRowCounter) + ", 'heatmapInner-" + str(heatmapNbr) + "')\" href=\"#!\">" + tablecell + "</a>"
             tr.append(maketd(tablecell))
             tr.append("</tr>")
             return ("\n".join(tr))
@@ -747,34 +816,32 @@ def getAsvTables(pw):
         tbody = "\n".join([makerow(row, i) for i, row in enumerate(tdata)])
 
         # Add quotes to each xlabel (for javascript syntax)
-        taxa = [enquote(taxon) for taxon in taxa]
-        asvIDs = [enquote(asvID) for asvID in asvIDs]
+        if args.plotly:
+            taxa = [enquote(taxon) for taxon in taxa]
+            asvIDs = [enquote(asvID) for asvID in asvIDs]
                 
         relAbund = opts['asvDfs'][file].iloc[goodRows].div(rowsums, axis="index")
         zmin = relAbund.min().min()
         zmax = relAbund.max().max()
         zmax = zmax if zmax < 0.3 else np.ceil(zmax * 10) / 10
-        
+
         # Reorder by sum(relative abundance) across samples
         colsums = relAbund.sum(axis=0)
         relAbundOrder = list(colsums.argsort().iloc[::-1])
         relAbund = relAbund.iloc[:, relAbundOrder]
         if len(taxa) > 0:
             taxa = [taxa[i] for i in relAbundOrder]
-            
-            
+
         if len(asvIDs) > 0:
-            asvIDs = [asvIDs[i] for i in relAbundOrder] 
+            asvIDs = [asvIDs[i] for i in relAbundOrder]
             topMargin = 100
-        
-        data_str = df_to_js(
-            relAbund, float_format='{:.' + str(int(np.amax(np.ceil(np.log10(rowsums))))) + 'f}')
-        #data_str = "[[" + data_str[0:(len(data_str) - 4)] + "]]\n"
         nCol = len(taxa) if len(taxa) > 0 else len(asvIDs)
-        
-        
-        
-        relAbundOrder = "[" + ", ".join([str(x) for x in relAbundOrder]) + "]\n"
+
+        if args.plotly:
+            data_str = df_to_js(
+                relAbund, float_format='{:.' + str(int(np.amax(np.ceil(np.log10(rowsums))))) + 'f}')
+            data_str = "[[" + data_str[0:(len(data_str) - 4)] + "]]\n"
+            relAbundOrder = "[" + ", ".join([str(x) for x in relAbundOrder]) + "]\n"
 
         htmlTemplate = opts['lookup'].get_template("countTable.html")
         jsTemplate = opts['lookup'].get_template("countTable.js")
@@ -833,15 +900,47 @@ def getAsvTables(pw):
             }))
         },"""
         if len(taxa) == 0 and len(asvIDs) == 0:
-            print("WARNING: Abundance tables did not have headers. Plotting might be broken.")
+            print(
+                "WARNING: Abundance tables did not have headers. Plotting might be broken.")
         data += "]"
+
+
+        if not args.plotly:
+            dfar = relAbund.to_numpy()
+            heatmapFilepath = os.path.join(
+                pw.pd, "REPORT", ".Report_files", "img", "heatmap-" + str(heatmapNbr) + ".png")
+            mpl.pyplot.imsave(heatmapFilepath, dfar)
+            heatmapFilepath = pw.relToRep(heatmapFilepath)
+            legendFilepath = pw.relToRep(
+                colorbar(pw.res("img/heatmap-" + str(heatmapNbr) + "_colorbar.png"), relAbund))
+            xBots = xaxis(pw.res("img/heatmap-" + str(heatmapNbr) + "_xaxisbot"), taxa, "Assigned taxon", "bottom")
+            xBots = [pw.relToRep(path) for path in xBots]
+            xTops = xaxis(pw.res("img/heatmap-" + str(heatmapNbr) + "_xaxistop"), asvIDs,
+                        "Amplicon Sequence Variant", "top")
+            xTops = [pw.relToRep(path) for path in xTops]
+            yLefts = yaxis(pw.res("img/heatmap-" + str(heatmapNbr) + "_yaxis"), sampleIDs, "")
+            yLefts = [pw.relToRep(path) for path in yLefts]
+        else:
+            heatmapFilepath = None
+            legendFilepath = None
+            yLefts = None
+            xTops = None
+            xBots = None
 
         html += htmlTemplate.render(active=active,
                                     hmNbr=heatmapNbr,
+                                    legendFilepath=legendFilepath,
+                                    yaxisImages=yLefts,
+                                    xaxisTopImages=xTops,
+                                    heatmap=heatmapFilepath,
+                                    xaxisBotImages=xBots,
                                     title=title,
                                     tbody=tbody,
-                                    isAsvTable=len(asvIDs) > 0) + "\n"
-        js += jsTemplate.render(abundances=data_str,
+                                    isAsvTable=len(asvIDs) > 0,
+                                    plotly=args.plotly,
+                                    form=form) + "\n"
+        if args.plotly:
+            js += jsTemplate.render(abundances=data_str,
                                 taxa=", ".join(taxa), asvs=", ".join(asvIDs),
                                 samples=", ".join(sampleIDs),
                                 nCol=nCol,
@@ -853,16 +952,18 @@ def getAsvTables(pw):
                                 hmNbr=heatmapNbr)
 
         heatmapNbr += 1
-        
+
     sectionTemplate = opts['lookup'].get_template("countPage.html")
     selectorOpts = ""
-    for id, filepath in enumerate(include):
+    for id, filepath in enumerate(opts['asvDfs'].keys()):
         selectorOpts += '<option value="heatmapTab-' + \
             str(id + 1) + '">...' + pw.relToProj(filepath) + '</option>\n'
-    
-    sectionHtml = sectionTemplate.render(tables=html, selectOptions=selectorOpts)
+
+    sectionHtml = sectionTemplate.render(
+        tables=html, selectOptions=selectorOpts)
 
     return {'html': sectionHtml, 'js': js}
+
 
 def getCtrlPlots(pw, pars):
     ans = {'html': '',
@@ -874,7 +975,7 @@ def getCtrlPlots(pw, pars):
         if args.interactive:
             question = "Extract control data from " + \
                 opts['defaultAsvTable'] + " ?"
-    
+
             questions = [
                 {
                     'type': 'confirm',
@@ -883,7 +984,7 @@ def getCtrlPlots(pw, pars):
                     'default': True,
                 }
             ]
-    
+
             if PyInquirer.prompt(questions, style=examples.custom_style_2)['useDefault']:
                 df = opts['defaultAsvTable']
             else:
@@ -898,12 +999,15 @@ def getCtrlPlots(pw, pars):
                 ]
                 df = PyInquirer.prompt(questions, style=examples.custom_style_2)[
                     'selection']
-    
+
             opts['controlTable'] = df
         else:
-            opts['controlTable'] = glob.glob(pw.proj('*asvs+taxa.csv'), recursive=True)[0]
+            opts['controlTable'] = glob.glob(
+                pw.proj('*asvs+taxa.csv'), recursive=True)[0]
 
-
+    if args.verbose:
+        print("Creating figure for " + pars.title + "\n")
+        
     # Get control samples
     try:
         mapping = pd.read_csv(opts['map'],
@@ -928,16 +1032,16 @@ def getCtrlPlots(pw, pars):
         except IndexError:
             break
     if(len(asvIDs) == 0):
-        print("Warning: " + opts['controlTable'] + \
-            " does not have ASV IDs. Unable to highlight ASVs appearing in " + \
-            template_prefix + " controls.")
+        print("Warning: " + opts['controlTable'] +
+              " does not have ASV IDs. Unable to highlight ASVs appearing in " +
+              pars.prefix + " controls.")
 
     # Get their data
     data = opts['asvDfs'][opts['controlTable']].filter(items=ctrls, axis=0)
     meds = list(data.median(axis=0))
     sems = list(data.sem(axis=0).div(math.sqrt(len(ctrls))))
 
-    # subset the taxa with mean abundance > 0
+    # subset the taxa with median abundance > 0
     idxs = [i for i, x in enumerate(meds) if x > 0]
     meds = [meds[i] for i in idxs]
     data = data.iloc[:, idxs]
@@ -957,9 +1061,10 @@ def getCtrlPlots(pw, pars):
     if(len(asvIDs) > 0):
         asvIDs = [asvIDs[i] for i in abundOrder]
 
-    opts['contaminants'] = asvIDs
+    if pars.prefix == "pcrNeg":
+        opts['contaminants'] = asvIDs
 
-    html_template =opts['lookup'].get_template(pars.prefix + "CtrlPlot.html")
+    html_template = opts['lookup'].get_template(pars.prefix + "CtrlPlot.html")
     sample_names = data.index.values.tolist()
     options = ['<option>' + name + '</option>' for name in sample_names]
     colors = list(colour.Color("#F0E442").range_to(
@@ -980,28 +1085,150 @@ def getCtrlPlots(pw, pars):
     return {'html': html, 'js': js}
 
 
+def colorbar(file, data):
+    dims = [3.0, 5.0]
+    axismar = [0.1, 0.03, 0.2, 0.85]
+    norm = mpl.colors.Normalize(vmin=data.min().min(), vmax=data.max().max())
+    fig = plt.figure(figsize=dims)
+    ax = fig.add_axes(axismar)
+    cb = mpl.colorbar.ColorbarBase(ax, norm=norm, orientation='vertical')
+    cb.ax.set_title('Relative abundance',
+                    fontsize="xx-large", loc='left', pad=20)
+    cb.ax.tick_params(labelsize='xx-large')
+    plt.savefig(os.path.abspath(file))
+    return os.path.abspath(file)
+
+
+def xaxis(filebase, ticklabels, title, topbot):
+    dpi = 100 #matplotlib default
+    scalefactor = 15 # we want 15px per label
+    maxDim = 15000
+    maxNPerImg = math.floor(maxDim / scalefactor)
+    filepaths = []
+    prop = fm.FontProperties(fname=pw.script('Open_Sans/OpenSans-Regular.ttf'))
+    
+    def render(ticklabels, nTicks, imgNbr): # FIXME 1 more tick than label being rendered???
+        dims = (nTicks / dpi * scalefactor, 5)  # 150 in -> room for 150 / 15 * 100 = 1000 tickmarks
+        axismar = [0, 1, 1, 1 / dpi] if topbot == "bottom" else [0, 0, 1, 1 / dpi]
+        fig = plt.figure(figsize=dims)
+        ax = fig.add_axes(axismar)
+        
+        ax.set(xlim=(0, dims[0] * dpi / scalefactor))
+        plt.xticks([x + 0.5 for x in range(nTicks)])
+        ax.xaxis.set_ticks_position(topbot)
+        ax.xaxis.set_label_position(topbot)
+        ax.set_xticklabels(ticklabels, rotation=270, fontproperties=prop, fontsize=9)
+            
+        bbox = fig.get_tightbbox(fig.canvas.get_renderer())
+        bounds = bbox.bounds
+        plt.close('all')
+
+        dims = (dims[0], bounds[3])
+        fig = plt.figure(figsize=dims)
+        ax = fig.add_axes(axismar)
+        ax.set(xlim=(0, dims[0] * dpi / scalefactor))
+
+        plt.xticks([x + 0.5 for x in range(nTicks)])
+        ax.xaxis.set_ticks_position(topbot)
+        ax.xaxis.set_label_position(topbot)
+        ax.set_xticklabels(ticklabels, rotation=270, fontproperties=prop, fontsize=9)
+
+        if topbot == "top": # print contaminants in red
+            tickTexts = ax.get_xticklabels()
+            for tickText in tickTexts:
+                if tickText.get_text() in opts['contaminants']:
+                    tickText.set_color('#f05f5e')
+        
+        dx = 5/100.; dy = 0/100. 
+        # offset = ScaledTranslation(dx, dy, fig.dpi_scale_trans)
+        # # apply offset transform to all x ticklabels.
+        # if topbot == "top":
+        #     for label in ax.xaxis.get_majorticklabels():
+        #         label.set_transform(label.get_transform() + offset)
+
+        filepath = os.path.abspath(filebase + "-" + str(imgNbr) + ".png")
+        plt.savefig(filepath)
+        plt.close('all')
+        return filepath
+    i = 0
+    while i < math.floor(len(ticklabels) / maxNPerImg):
+        filepaths.append(render(ticklabels[i * 1000:(i + 1) * 1000],
+                maxNPerImg, i))
+        i += 1
+    nTicks = len(ticklabels) - i * 1000
+    if nTicks > 0:
+        filepaths.append(render(ticklabels[i * 1000:len(ticklabels)], nTicks, i))
+    return filepaths
+
+def yaxis(filebase, ticklabels, title):
+    filepaths = []
+    dpi = 100  #matplotlib default
+    maxDim = 15000
+    scalefactor = 15  # we want 15px per label
+    maxNPerImg = math.floor(maxDim / scalefactor)
+    prop = fm.FontProperties(fname=pw.script('Open_Sans/OpenSans-Regular.ttf'))
+    propBold = fm.FontProperties(fname=pw.script('Open_Sans/OpenSans-Bold.ttf'))
+    def render(ticklabels, nTicks, imgNbr):
+        dims = (5, nTicks / (dpi / scalefactor))  # 150 in -> room for 150 / 15 * 100 = 1000 tickmarks
+        axismar = [1, 0, 1 / dpi, 1]
+        fig = plt.figure(figsize=dims)
+        ax = fig.add_axes(axismar)
+        ax.set_ylabel(title, fontproperties=propBold, fontsize = 10.5)
+        ax.set(ylim=(0, dims[1] * (dpi / scalefactor)))
+        plt.yticks([y + 0.5 for y in range(nTicks)])
+        ax.yaxis.set_ticks_position("left")
+        ax.yaxis.set_label_position("left")
+        ax.set_yticklabels(ticklabels, fontproperties=prop, fontsize=9)
+        bbox = fig.get_tightbbox(fig.canvas.get_renderer())
+        bounds = bbox.bounds
+        plt.close('all')
+        # plot again with updated figure dimensions
+        dims = (bounds[2], dims[1])
+        fig = plt.figure(figsize=dims)
+        ax = fig.add_axes(axismar)
+        ax.set_ylabel(title, fontproperties=propBold, fontsize = 10.5)
+        ax.set(ylim=(0, dims[1] * dpi / scalefactor))
+        plt.gca().invert_yaxis()
+        plt.yticks([x + 0.5 for x in range(nTicks)])
+        ax.yaxis.set_ticks_position("left")
+        ax.yaxis.set_label_position("left")
+        ax.set_yticklabels(ticklabels, fontproperties=prop, fontsize=9)
+        filepath = os.path.abspath(filebase + "-" + str(imgNbr) + ".png")
+        plt.savefig(filepath)
+        plt.close('all')
+        return filepath
+    i = 0
+    while i < math.floor(len(ticklabels) / maxNPerImg):
+        filepaths.append(render(ticklabels[i * 1000:(i + 1) * 1000],
+        maxNPerImg, i))
+        i += 1
+    nTicks = len(ticklabels) - i * 1000
+    if nTicks > 0:
+        filepaths.append(render(ticklabels[i * 1000:len(ticklabels)], nTicks, i))
+    return filepaths
+
 def minifyCss(pw):
     #pw = pw.proj("REPORT")
-    #subprocess.check_call("css-purge -i " + enquote(pw.proj(".Report_files", "css")) + " -m " +
-                          #enquote(pw.proj("Report.html")) + " -o " + enquote(pw.proj("report.css")), shell=True)
+    # subprocess.check_call("css-purge -i " + enquote(pw.proj(".Report_files", "css")) + " -m " +
+                          # enquote(pw.proj("Report.html")) + " -o " + enquote(pw.proj("report.css")), shell=True)
     #shutil.rmtree(pw.proj(".Report_files", "css"))
     #os.mkdir(pw.proj(".Report_files", "css"))
-    #shutil.move(pw.proj("report.css"), os.path.join(
-        #pw, ".Report_files", "css", "report.css"))
+    # shutil.move(pw.proj("report.css"), os.path.join(
+        # pw, ".Report_files", "css", "report.css"))
 
-    #shutil.move(pw.proj("Report.html"),
-                #pw.proj("Report.html.bak"))
-    #with open(pw.proj("Report.html.bak")) as inFile:
-        #with open(pw.proj("Report.html"), "w+") as outFile:
-            #patt = re.compile(
-                #'<link[^<]*(?=rel="stylesheet")[^>]*>', flags=re.DOTALL)
+    # shutil.move(pw.proj("Report.html"),
+                # pw.proj("Report.html.bak"))
+    # with open(pw.proj("Report.html.bak")) as inFile:
+        # with open(pw.proj("Report.html"), "w+") as outFile:
+            # patt = re.compile(
+                # '<link[^<]*(?=rel="stylesheet")[^>]*>', flags=re.DOTALL)
             #contents = inFile.read()
             #contents = re.sub(patt, "", contents, count=0)
             #patt = re.compile('</head>')
-            #outFile.write(re.sub(patt, string=contents,
-                                 #repl="\n<link href='.Report_files/css/report.css' rel='stylesheet'>\n</head>"))
+            # outFile.write(re.sub(patt, string=contents,
+                                 # repl="\n<link href='.Report_files/css/report.css' rel='stylesheet'>\n</head>"))
 
-    #os.remove(pw.proj("Report.html.bak"))
+    # os.remove(pw.proj("Report.html.bak"))
     return
 
 
@@ -1015,13 +1242,24 @@ if __name__ == '__main__':
                         help="The project directory containing a map, stats_file_cmp.txt, any ASV tables in CSV format, and run folder(s) with FastQC reports.")
     parser.add_argument("--verbose", action='store_true')
     parser.add_argument("--interactive", "-i", action='store_true')
-    parser.add_argument("--runs", "-r", nargs='+', help="The names of the run directories to include. These must be subdirectories of DIR. If not --interactive, --run is required.")
+    parser.add_argument("--runs", "-r", nargs='+',
+                        help="The names of the run directories to include. These must be subdirectories of DIR. If not --interactive, --run is required.")
+    parser.add_argument("--plotly", action='store_true', help="Use Plotly for heatmaps. Not recommended for HiSeq-size projects.")
     args = parser.parse_args()
     np.set_printoptions(threshold=np.inf)
     if not args.interactive and args.runs is None:
         print("Requires either --interactive or --runs")
         sys.exit(1)
+    if args.verbose:
+        if not sys.warnoptions:
+            import warnings
+            warnings.simplefilter("default") # print all warnings
+    os.environ["PYTHONWARNINGS"] = "default" # Also affect subprocesses
     for wd in args.wd:
         pw = Pathwiz(scriptsDir=scriptDir,
-                     projectDir=wd)
+                     projectDir=os.path.abspath(os.path.expanduser(wd)))
+        for run in args.runs:
+            if not os.path.isdir(pw.proj(run)):
+                print("Cannot find " + pw.proj(run) + "\n")
+                sys.exit(256)
         main(pw, args=args)
