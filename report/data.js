@@ -1,3 +1,12 @@
+function pxToVh(px) {
+  var h = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);
+  return px / h * 100;
+}
+
+function pxToVw(px) {
+  var w = Math.max(document.documentElement.clientWidth, window.innerWidth || 0);
+  return px / w * 100;
+}
 
 var makeHighlight = function (zValues, xTopValues, divSelector) {
     z = zValues;
@@ -79,30 +88,23 @@ var asvHeatmapMaxHighlight = function (sampleI, divname) {
     d.highlightMax(sampleI);
     return false;
 };
-    
-
-    
 
     ${asvtablesjs}
 
+    % if plotly:
+      $(".heatmap").click(function(e) {
+          var x = e.offsetX;
+          var y = e.offsetY;
+          var canvas = $('#all-samples .heatmap.plotly-container rect.nsewdrag');
+          if(x > canvas.attr('X') && x < parseInt(canvas.attr('X')) + parseInt(canvas.attr("width")) && (y > canvas.attr('Y')) && y < parseInt(canvas.attr('Y')) + parseInt(canvas.attr("height"))) {
+          } else {
+              var d = document.getElementById('heatmapInner-1');
+              removeHighlight(d.highlightElems);
+          }
 
-    $(".heatmap").click(function(e) {
-        var x = e.offsetX;
-        var y = e.offsetY;
-        var canvas = $('#all-samples .heatmap.plotly-container rect.nsewdrag');
-        if(x > canvas.attr('X') && x < parseInt(canvas.attr('X')) + parseInt(canvas.attr("width")) && (y > canvas.attr('Y')) && y < parseInt(canvas.attr('Y')) + parseInt(canvas.attr("height"))) {
-        } else {
-            var d = document.getElementById('heatmapInner-1');
-            removeHighlight(d.highlightElems);
-        }
+      })
+    % endif
 
-    })
-
-    $("div.plotly-container > div").css({
-        'height': '100%', // Should take up the height of its parent (which fills the screen). 
-        // same for width, but we defined this property in the <head> stylesheet
-        'overflow': 'auto' // Causes the div immediately outside svg to have scrollbars automatically
-    });
     var bodyFontSize = window.getComputedStyle(document.body, null).fontSize;
     bodyFontSize = parseInt(bodyFontSize, 10) * 1.35;
 
@@ -167,7 +169,6 @@ function parseTf (a)
           ys = ys.map(arr => [arr[sample - 1]]);
           dotColor = cols[sample - 1];
         }
-        console.log(ys);
         ysFlat = ys.reduce((prevVal, curVal) => prevVal.concat(curVal));
         var dsorted = ysFlat.slice(0).sort((a, b) => a - b);
         var min = 0;
@@ -178,9 +179,6 @@ function parseTf (a)
         for (var i = 1; i < ysFlat.length; i++)  diffs[i - 1] = Math.abs((ysFlat[i] - ysFlat[i - 1]))
         var minDiff = Math.min(...diffs);
         ysFlat = ysFlat.map(i => i + Math.min(min, minDiff) / 10);
-        
-        console.log(xTickPos.map(val => Array(ys[0].length).fill(val)).reduce((prevVal, curVal) => prevVal.concat(curVal)));
-        console.log(ysFlat);
         
         Plotly.newPlot(div, {
         data: [{
@@ -268,3 +266,73 @@ function parseTf (a)
     document.getElementById("page").style.display = "block";
     document.getElementById("loading").style.display = "none";
 })();
+
+% if not plotly:
+(function () { // Remove the loading screen
+  document.getElementById("page").style.display = "block";
+  document.getElementById("loading").style.display = "none";
+})();
+
+var bumpAxes = function (id) {
+  var elem = document.getElementById(id);
+
+  var container = elem.getElementsByClassName("xaxisTop")[0];
+  var labelHeight = container.getElementsByClassName("figlabel")[0].offsetHeight;
+  var axisHeight = container.getElementsByClassName("axisViewport")[0].offsetHeight;
+  var xAxisSpace = "7rem";
+  var expr = "calc(" + xAxisSpace + " - " + labelHeight + "px - " + axisHeight + "px)";
+  var xAxisContainer = container.getElementsByClassName("xaxisSpacer")[0];
+  xAxisContainer.style.height = expr;
+
+  var mainHeight = elem.getElementsByClassName("horizScrollContainer fullHeight heatmap")[0].offsetHeight;
+  var mainHeight = pxToVh(mainHeight);
+  var expr = "calc(" + xAxisSpace + " + " + (mainHeight / 2) + "vh - " + elem.getElementsByClassName("figlabel rotate90")[0].offsetHeight / 2 + "px)";
+  elem.getElementsByClassName("figlabel rotate90")[0].style.marginTop = expr;
+
+  elem.getElementsByClassName("yaxisBumper")[0].style.marginTop = xAxisSpace;
+  elem.getElementsByClassName("heatmapLegend")[0].style.marginTop = xAxisSpace;
+};
+document.getElementById('asvHeatmapSelect').addEventListener("change", function (s) {
+  bumpAxes($(s.currentTarget).val());
+});
+$("#main-tabs").bind("tabsactivate", function (event, ui) {
+  if (ui.newPanel.attr("id") == "all-samples") {
+    bumpAxes(ui.newPanel.attr("id"));
+  }
+});
+
+var xLabsShift = function () {
+  var elem = document.getElementById("heatmap-tabs").getElementsByClassName("active in")[0];
+    var heatmapContainer = elem.getElementsByClassName("horizScrollContainer fullHeight heatmap")[0];
+    pos = heatmapContainer.scrollLeft;
+  elem.getElementsByClassName("top viewportContent")[0].style.left = "-" + pos + "px";
+  
+  elem.getElementsByClassName("horizScrollContainer")[0].getElementsByClassName("figlabel")[0].style.left = pos + "px";
+
+}
+
+var yLabsShift = function () {
+  var elem = document.getElementById("heatmap-tabs").getElementsByClassName("active in")[0];
+    var heatmapContainer = elem.getElementsByClassName("horizScrollContainer fullHeight heatmap")[0];
+    pos = heatmapContainer.scrollTop;
+    elem.getElementsByClassName("viewportContent left")[0].style.top = "-" + pos + "px";
+}
+
+var scrollAdjust = function () {
+  yLabsShift();
+  xLabsShift();
+}
+  
+for (var elem of document.getElementById("heatmap-tabs").children) {
+  elem.getElementsByClassName("horizScrollContainer fullHeight heatmap")[0].onscroll =
+  scrollAdjust;
+}
+
+window.addEventListener('resize', scrollAdjust);
+$("#main-tabs").bind("tabsactivate", function (event, ui) {
+  if (ui.newPanel.attr("id") == "all-samples") {
+    scrollAdjust();
+  }
+});
+document.getElementById('asvHeatmapSelect').addEventListener("change", scrollAdjust);
+% endif

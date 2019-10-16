@@ -144,6 +144,9 @@ if ( !$region ) {
     pod2usage( verbose => 2, exitstatus => 0 );
     exit 1;
 }
+if ( List::Util::none { $_ eq $region } ('V3V4', 'V4', 'ITS') ) {
+  die "Illegal --variable-region (-v). V3V4, V4, and ITS are accepted.";
+}
 my $models;
 
 my @taxonomies;
@@ -166,6 +169,7 @@ if ( $region eq 'V3V4' && !$oral ) {
         print "Using UNITE taxonomy only\n";
     }
 }
+
 
 if ( $region eq 'V3V4' && !$models ) {
     print "Please provide a valid variable region\n\n";

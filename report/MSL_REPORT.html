@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en" class="no-js">
 
 <head>
@@ -65,6 +65,12 @@
             html {
                 font-size: 100%
             }
+
+            .container.h1 {
+                margin-left: 2.4rem;
+                padding-left:0rem;
+                padding-right:0rem;
+            }
     
             .h1, h1 {
                 font-size: 2.08rem !important;
@@ -119,15 +125,121 @@
             .ui-accordion-header { outline: 0px; }
             .accordionRun > h2.ui-accordion-header > .ui-accordion-header-icon {display: none;}
             .tab-pane {height:100%;}    
-            .heatmapContainer {display: inline-flex;}
-            .heatmapLegend { display: inline-block; width: 200px;}
-            .heatmap {width: calc(100% - 150px);}
+            .heatmapContainer {display: inline-flex;
+                flex-direction: row;
+            }
 
+            .heatmap  {
+                height: 70vh;
+                overflow-x: scroll;
+                overflow-y: scroll;
+            }
+            .centralHeatmapDiv {
+                flex-shrink: 1;
+                flex-grow: 1;
+                width: 100px;
+                text-align: center;
+            }
+            .heatmapLegend { display: inline-block; width: 150px; flex-shrink: 0;}
+            .heatmapLegend img {
+                max-width: 100%;
+            }
+
+            .rotate90 {
+                transform: rotate(-90deg);
+
+
+                /* Legacy vendor prefixes that you probably don't need... */
+
+                /* Safari */
+                -webkit-transform: rotate(-90deg);
+
+                /* Firefox */
+                -moz-transform: rotate(-90deg);
+
+                /* IE */
+                -ms-transform: rotate(-90deg);
+
+                /* Opera */
+                -o-transform: rotate(-90deg);
+
+                /* Internet Explorer */
+                filter: progid:DXImageTransform.Microsoft.BasicImage(rotation=3)
+            }
+
+            .heatmapContainer .yaxis {
+                width: auto;
+                overflow-y: hidden;
+            }
+            .yaxisBumper {
+                position: relative;
+
+            }
             img.fastqc {
                 margin:0 auto;
                 max-width:100%;
                 display:block;
             }
+
+            .heatmapImg {
+                overflow: visible;
+                position: relative;
+                float: left;
+                height: auto;
+                width: auto;
+            }
+
+            .heatmapImg img.fakeimg {
+                float: left;
+                visibility: hidden;
+                width: auto;
+            }
+
+            .img_wrap {
+                position: absolute;
+                top: 0;
+                right: 0;
+                bottom: 0;
+                left: 0;
+            }
+            .axistiles {
+                display: flex;
+            }
+            .axistiles.top img, .axistiles.left img {
+                align-self: flex-end;
+            }
+            .axistiles.bot img {
+                align-self: flex-start;
+            }
+
+
+            .axisViewport{
+                overflow-x: hidden;
+                overflow-y: hidden;
+            }
+
+            .yaxis .axisViewport{
+                height: 70vh;
+            }
+
+            .viewportContent{
+                position: relative;
+            }
+
+
+            .axistiles.left {
+                flex-direction: column
+            }
+            .figlabel {
+                font-weight: bold;
+                font-family: "Open Sans", verdana, arial, sans-serif;
+                position: relative;
+                width: auto;
+                white-space: nowrap
+            }
+            .pixel img {
+                image-rendering: pixelated
+            }​
             </style>
 
 <link href=".Report_files/css/bootstrap-table.min.css" rel="stylesheet">
@@ -151,43 +263,19 @@
         <!-- Navigation -->
         <div id="page">
     <nav class="navbar navbar-inverse navbar-static-top" role="navigation">
-        <!--<div class="container">
-            <div class="navbar-header">
-                <ul class="nav navbar-nav navbar-right">
-                    <li class="dropdown active"><a href="#">Contents<b class="caret"></b></a><ul id="TOC" class="tocify dropdown-menu"></ul></li>
-                </ul>
-            </div>
-            <div class="navbar-collapse" id="bs-example-navbar-collapse-1">
-                <ul class="nav navbar-nav navbar-right">
-                    <li class="dropdown">
-                            <a href="#" class="dropdown-toggle" data-toggle="dropdown">Produced by the Microbiome Service Laboratory<b class="caret"></b></a>
-                            <ul class="dropdown-menu">
-                            <li>
-                                <a href="http://msl.igs.umaryland.edu/" target="_blank">Website</a>
-                            </li>
-                            <li>
-                                <a href="mailto:mhumphrys@som.umaryland.edu">Email: Mike Humphrys</a>
-                            </li>
-                        </ul>
-                    </li>
-                </ul>
-            </div>
-        </div>-->
     </nav>
 
     <!-- Page Content -->
 
     <!-- Overarching title -->
-    <div>
-        <div class="container">
+        <div class="container h1">
             <h1 class="page-header">Microbiome Sequencing Report
                 <small>${date}</small>
             </h1>
         </div>
-    </div>
 
     <!-- Table of contents sidebar -->
-    <div id="tabs">
+    <div id="main-tabs">
         ${toc}
         % if mapping is not None:
             <div id="info" class="ui-tabs-hide">
@@ -243,7 +331,7 @@
         </div>
         <script>
         
-        $( "#tabs" ).tabs().addClass( "ui-tabs-vertical ui-helper-clearfix" );
+        $( "#main-tabs" ).tabs().addClass( "ui-tabs-vertical ui-helper-clearfix" );
         $( "#tabs li" ).removeClass( "ui-corner-top" );
         </script>
     
@@ -275,16 +363,22 @@
     
 
 
-    function downloadJSAtOnload() {
-    var element = document.createElement("script");
-    element.src = ".Report_files/js/data.js";
-    document.body.appendChild(element);
-    }
-    if (window.addEventListener)
-    window.addEventListener("load", downloadJSAtOnload, false);
-    else if (window.attachEvent)
-    window.attachEvent("onload", downloadJSAtOnload);
-    else window.onload = downloadJSAtOnload;
+    function onLoadTasks() {
+        $('.fullHeight').each(function(){
+            nh = $( this ).children().children(".pixel").children()[0].height;
+            nw = $( this ).children().children(".pixel").children()[0].width;
+            $( this ).children().children(".pixel").children().height(nh * 15);
+            $( this ).children().children(".pixel").children().width(nw * 15);
+        });
+        var element = document.createElement("script");
+            element.src = ".Report_files/js/data.js";
+            document.body.appendChild(element);
+        }
+        if (window.addEventListener)
+        window.addEventListener("load", onLoadTasks, false);
+        else if (window.attachEvent)
+        window.attachEvent("onload", onLoadTasks);
+        else window.onload = onLoadTasks;
     </script>
 
 </body>
