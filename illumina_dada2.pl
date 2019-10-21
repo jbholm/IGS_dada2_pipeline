@@ -271,7 +271,6 @@ if ( $var eq 'V4' || $var eq 'ITS' ) {
 if ( !$wd ) {
     die "\n***Please choose a working directory (-wd).";
 }
-$wd =~ s/\/$//;    # remove trailing slash
 
 # Check if there are at least two directories in $wd
 if (
@@ -288,6 +287,56 @@ if ( $f && !$r ) {
     print "***\nPlease provide truncation lengths for forward and reverse "
       . "reads\n";
     die;
+}
+
+# Refine and validate all variables that refer to the filesystem
+my (@paths) = (
+    {
+        path => \$wd,
+        name => "Working directory"
+    },
+    {
+        path => \$inDir,
+        name => "Raw file directory"
+    },
+    {
+        path => \$r1file,
+        name => "Raw forward reads file"
+    },
+    {
+        path => \$r2file,
+        name => "Raw reverse reads file"
+    },
+    {
+        path => \$i1file,
+        name => "Raw forward index file"
+    },
+    {
+        path => \$i2file,
+        name => "Raw reverse index file"
+    },
+    {
+        path => \$map,
+        name => "Mapping file"
+    }
+);
+foreach (@paths) {
+    if ( ${$$_{path}} ) {    # If the variable is a non-empty string...
+        my $copy = ${$$_{path}};
+        $copy =~ s/\/$//;    # remove any trailing slash
+        my $relPath = $copy;
+        $copy = abs_path( $relPath );    # get abs path
+            # At the same time, abs_path returns undef if the path doesn't exist
+            # so we can verify the existence of each file and directory
+        if ( !defined $copy ) {
+            die $$_{name}
+              . " not found. Looked for "
+              . $relPath . ".\n"
+              . "Current working directory: "
+              . getcwd() . "\n";
+        }
+        ${$$_{path}} = $copy; # external variable referenced by path has now been edited.
+    }
 }
 
 if ( !$qproj ) {
