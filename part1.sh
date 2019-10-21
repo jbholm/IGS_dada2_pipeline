@@ -316,8 +316,7 @@ fi
 
 # Acquire binaries
 use sge
-cd /usr/local/packages/qiime-1.9.1 || stop $?
-. ./activate.sh
+. /usr/local/packages/qiime-1.9.1/activate.sh
 export PATH=/usr/local/packages/python-2.7.14/bin:$PATH
 export LD_LIBRARY_PATH=/usr/local/packages/python-2.7.14/lib:/usr/local/packages/gcc/lib64:$LD_LIBRARY_PATH
 . /usr/local/packages/usepackage/share/usepackage/use.bsh
@@ -335,7 +334,7 @@ OPTSARR=("$DADA2" "$DADA2MEM" "$DBG" "$VERBOSE" "$DRY_RUN" "$ONESTEP" "$PARAMS")
 OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 
-ARGS=("-cwd" "-b y" "-l mem_free=200M" "-P" "$QP" "-q threaded.q" "-pe thread 4" "-V" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "$QSUB_ARGS" "${MY_DIR}/illumina_dada2.pl" "$INPUT" "-wd" "$SD" "-v" "$VAR" "-m" "$MAP" "$OPTS")
+ARGS=("-cwd" "-b y" "-l mem_free=4G" "-P" "$QP" "-q threaded.q" "-pe thread 4" "-V" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "$QSUB_ARGS" "${MY_DIR}/illumina_dada2.pl" "$INPUT" "-wd" "$SD" "-v" "$VAR" "-m" "$MAP" "$OPTS")
 CMD=()
 for ARG in "${ARGS[@]}"; do
     if [[ -n "$ARG" ]]; then
