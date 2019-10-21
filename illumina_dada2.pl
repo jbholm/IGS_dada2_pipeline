@@ -209,6 +209,9 @@ GetOptions(
 
   or pod2usage( verbose => 0, exitstatus => 1 );
 
+$verbose = 1;
+
+
 if (@dbg) {
     my $e  = grep( /^barcodes$/,     @dbg );
     my $de = grep( /^demux$/,        @dbg );
