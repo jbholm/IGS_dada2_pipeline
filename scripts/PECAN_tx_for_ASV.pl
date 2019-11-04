@@ -94,11 +94,27 @@ foreach my $x ( keys %pecan ) {
     $count++;
     my $tx = $pecan{$x};
     $cmbTx{$x} = $tx;
-    if ( $x =~
-/GTACGTAAAAGTCGTAACAAGGTTTCCGTAGGTGAACCTGCGGAAGGATCATTACTGATTTGCTTAATTGCACCACATGTGTTTTTCTTTGAAACAAACTTGCTTTGGCGGTGGGCCCAGCCTGCCGCCAGAGGTCTAAACTTACAACCAATTTTTTATCAACTTGTCACACCAGATTATTACTAATAGTCAAAACTTTCAACAACGGATCTCTTGGTTCTCGCATCGATGAAGAACGCAGCGAAATGCGATACGTAATATGAATTGCAGATATTCGTGAATCATCGAGTCTTTGAACCATGAT/
-      )
-    {
-        $cmbTx{$x} = "Candida_albicans";
+}
+
+# Sequence-specific name substitutions
+my %subs = (
+"GTACGTAAAAGTCGTAACAAGGTTTCCGTAGGTGAACCTGCGGAAGGATCATTACTGATTTGCTTAATTGCACCACATGTGTTTTTCTTTGAAACAAACTTGCTTTGGCGGTGGGCCCAGCCTGCCGCCAGAGGTCTAAACTTACAACCAATTTTTTATCAACTTGTCACACCAGATTATTACTAATAGTCAAAACTTTCAACAACGGATCTCTTGGTTCTCGCATCGATGAAGAACGCAGCGAAATGCGATACGTAATATGAATTGCAGATATTCGTGAATCATCGAGTCTTTGAACCATGAT"
+      => "Candida_albicans", );
+
+if (%subs) {
+
+    # First search the ASV name-sequence reference:
+    open my $refFH, "<all_runs_dada2_ASV.fasta";
+    my $previous;    # contents of previous line
+    while ( my $line = <$refFH> ) {
+        chomp $line;
+        ( my $match ) = grep ( /$line/, keys %subs );
+        if ($match) {
+            my $asvName = substr $previous, 1;
+            chomp $asvName;
+            $cmbTx{$asvName} = $subs{$match};
+        }
+        $previous = $line;
     }
 }
 
