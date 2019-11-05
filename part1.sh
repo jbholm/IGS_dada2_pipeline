@@ -148,6 +148,9 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
   esac
 done
 
+# directory of this script (part1.sh)
+MY_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+
 # Normally PARAMS would contain positional parameters, but our script doesn't take any
 if [[ -n $PARAMS ]]; then
     printf "\nPassing unknown parameters through to illumina_dada2.pl: $PARAMS\n"
@@ -321,13 +324,8 @@ export PATH=/usr/local/packages/python-2.7.14/bin:$PATH
 export LD_LIBRARY_PATH=/usr/local/packages/python-2.7.14/lib:/usr/local/packages/gcc/lib64:$LD_LIBRARY_PATH
 . /usr/local/packages/usepackage/share/usepackage/use.bsh
 
-# Begin log (will be continued by illumina_dada2.pl)
-# Print pipeline version, system time, and qsub/illumina_dada2.pl command
-log="$SD/${PROJECT}_${RUN}_16S_pipeline_log.txt";
-MY_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-LOG_VERSION="$MY_DIR/scripts/log_version.pl"
-perl $LOG_VERSION $log
-printf "`date`\n" >> $log 
+# # Begin log (will be continued by illumina_dada2.pl)
+log="$SD/${PROJECT}_${RUN}_16S_pipeline_log.txt"
 
 # Remove extra spaces caused by joining empty arguments with a whitespace
 OPTSARR=("$DADA2" "$DADA2MEM" "$DBG" "$VERBOSE" "$DRY_RUN" "$ONESTEP" "$PARAMS")
