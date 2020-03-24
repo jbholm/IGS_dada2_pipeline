@@ -100,6 +100,8 @@ BEGIN {
 use lib $scriptsDir;    # .pm files in ./scripts/ can be loaded
 
 require Stats_gen;
+require Version;
+
 
 use Pod::Usage;
 use English qw( -no_match_vars );
@@ -210,11 +212,10 @@ my @runs = split( ",", $inRuns );
 
 my $log = "$project" . "_part2_16S_pipeline_log.txt";
 
-my $perlScript =
-  File::Spec->catfile( $pipelineDir, "scripts", "log_version.pl" );
-system( $^X, $perlScript, $log );
 
 open my $logFH, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
+
+print $logFH "PIPELINE VERSION: " . Version::version() . "\n";
 print $logFH "This file logs the progress of "
   . scalar(@runs)
   . " runs for $project 16S amplicon sequences through the illumina_dada2.pl pipeline.\n";
@@ -569,7 +570,7 @@ if ( $region eq 'ITS' ) {
 }
 
 my $final_merge = glob("*_taxa-merged.csv");
-unlink scalar( glob("*_taxa.csv") );
+unlink glob "*_taxa.csv";
 my $final_ASV_taxa = glob("*_asvs+taxa.csv");
 
 print "\nCreating report...\n";
