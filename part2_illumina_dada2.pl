@@ -72,6 +72,9 @@
 =item B<--nocsts>
   Flag to skip CST assignment. By default, CSTs are assigned if the V3V4 variable region is being analyzed and samples are non-oral. Assignment data are written to *_PECAN_taxa-merged_StR_CST.csv.
 
+=item B<--noreport>
+  Flag to skip creating HTML report.
+
 =item B<-h|--help>
   Print help message and exit successfully.
 
@@ -102,7 +105,6 @@ use lib $scriptsDir;    # .pm files in ./scripts/ can be loaded
 require Stats_gen;
 require Version;
 
-
 use Pod::Usage;
 use English qw( -no_match_vars );
 use Getopt::Long qw(:config no_ignore_case no_auto_abbrev pass_through);
@@ -119,9 +121,11 @@ $OUTPUT_AUTOFLUSH = 1;
 ##                             OPTIONS
 ####################################################################
 
-my $csts = 1;
+my $csts   = 1;
+my $report = 1;
+
 # this is the way it is only to preserve the interface of --notVaginal. In the future, please change to --no-vaginal
-my $vaginal = 1;
+my $vaginal    = 1;
 my $notVaginal = 0;
 GetOptions(
     "input-runs|i=s"      => \my $inRuns,
@@ -135,7 +139,8 @@ GetOptions(
     "notVaginal"          => \$notVaginal,
     "pecan-silva"         => \my $pecanSilva,
     "oral"                => \my $oral,
-    "csts!"               => \$csts
+    "csts!"               => \$csts,
+    "report!"             => \$report
   )
 
   or pod2usage( verbose => 0, exitstatus => 1 );
@@ -145,19 +150,20 @@ if ($help) {
     exit 1;
 }
 
-$ENV{'LD_LIBRARY_PATH'} = $ENV{'LD_LIBRARY_PATH'} . ":/usr/local/packages/gcc/lib64";
+$ENV{'LD_LIBRARY_PATH'} =
+  $ENV{'LD_LIBRARY_PATH'} . ":/usr/local/packages/gcc/lib64";
 my $R = "/usr/local/packages/r-3.4.0/bin/R";
 
 if ($notVaginal) {
-  $vaginal = 0;
+    $vaginal = 0;
 }
 if ( !$region ) {
     print "Please provide a variable region (-v), V3V4 or V4\n";
     pod2usage( verbose => 2, exitstatus => 0 );
     exit 1;
 }
-if ( List::Util::none { $_ eq $region } ('V3V4', 'V4', 'ITS') ) {
-  die "Illegal --variable-region (-v). V3V4, V4, and ITS are accepted.";
+if ( List::Util::none { $_ eq $region } ( 'V3V4', 'V4', 'ITS' ) ) {
+    die "Illegal --variable-region (-v). V3V4, V4, and ITS are accepted.";
 }
 my $models;
 
@@ -181,7 +187,6 @@ if ( $region eq 'V3V4' && !$oral ) {
         print "Using UNITE taxonomy only\n";
     }
 }
-
 
 if ( $region eq 'V3V4' && !$models ) {
     print "Please provide a valid variable region\n\n";
@@ -211,7 +216,6 @@ my $projDir = Cwd::cwd;
 my @runs = split( ",", $inRuns );
 
 my $log = "$project" . "_part2_16S_pipeline_log.txt";
-
 
 open my $logFH, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
 
@@ -474,76 +478,78 @@ print $logFH "$cmd\n";
 #### APPLY NON-PECAN CLASSIFICATIONS TO COUNT TABLE (V4) ####
 ##############################################################
 if ( $region eq 'V4' || $region eq 'V3V4' ) {
-  if ( !$oral ) {
-    print "---Creating count table with SILVA classifications only\n";
-    print $logFH "---Creating count table with SILVA classifications only\n";
-    $cmd = "$scriptsDir/combine_tx_for_ASV.pl -s $projSilva -c $projabund";
-    print "\tcmd=$cmd\n" if $dryRun || $debug;
-    system($cmd) == 0
-      or die "system($cmd) failed with exit code: $?"
-      if !$dryRun;
-    push @taxonomies, "SILVA";
-  }
+    if ( !$oral ) {
+        print "---Creating count table with SILVA classifications only\n";
+        print $logFH
+          "---Creating count table with SILVA classifications only\n";
+        $cmd = "$scriptsDir/combine_tx_for_ASV.pl -s $projSilva -c $projabund";
+        print "\tcmd=$cmd\n" if $dryRun || $debug;
+        system($cmd) == 0
+          or die "system($cmd) failed with exit code: $?"
+          if !$dryRun;
+        push @taxonomies, "SILVA";
+    }
 }
 
-if ($region eq 'V3V4') {
-  if ( !$oral ) {
+if ( $region eq 'V3V4' ) {
+    if ( !$oral ) {
 
-    my $vopt = "";
-    if ($vaginal) {
-      $vopt = "--vaginal";
-    }
+        my $vopt = "";
+        if ($vaginal) {
+            $vopt = "--vaginal";
+        }
 
 #### APPLY PECAN-ONLY CLASSIFICATIONS TO COUNT TABLE (V3V4) ####
 ################################################################
-    print "---Creating count table with PECAN classifications\n";
-    print $logFH "---Creating count table with PECAN classifications\n";
+        print "---Creating count table with PECAN classifications\n";
+        print $logFH "---Creating count table with PECAN classifications\n";
 
-    $cmd =
-"$scriptsDir/PECAN_tx_for_ASV.pl -p $projpecan -c $projabund $vopt";
-    print "\tcmd=$cmd\n" if $dryRun || $debug;
-    system($cmd) == 0
-      or die "system($cmd) failed with exit code: $?"
-      if !$dryRun;
-    
-    push @taxonomies, "PECAN";
+        $cmd =
+          "$scriptsDir/PECAN_tx_for_ASV.pl -p $projpecan -c $projabund $vopt";
+        print "\tcmd=$cmd\n" if $dryRun || $debug;
+        system($cmd) == 0
+          or die "system($cmd) failed with exit code: $?"
+          if !$dryRun;
 
-    if ($csts) {
-        $ENV{'LD_LIBRARY_PATH'} = $ENV{'LD_LIBRARY_PATH'} . ':/usr/local/packages/python-3.5/lib';
-        my $pecanCountTbl =
-          basename( $projabund, (".csv") ) . "_PECAN_taxa-merged.csv";
+        push @taxonomies, "PECAN";
 
-        if ( !-e basename( $pecanCountTbl, (".csv") ) . "_StR_CST.csv" ) {
-            print "---Assigning CSTs with Valencia\n";
-            print $logFH "---Assigning CSTs with Valencia\n";
-            $cmd =
-"$scriptsDir/valencia_wrapper.py "
-              . catdir( $pipelineDir, "ext", "valencia",
-                "CST_profiles_jan28_mean.csv" )
-              . " $pecanCountTbl";
-            print "\tcmd=$cmd\n" if $dryRun || $debug;
-            system($cmd) == 0
-              or die "system($cmd) failed with exit code: $?"
-              if !$dryRun;
-        } else {
-          print "---Count table with CSTs already exists.\n";
+        if ($csts) {
+            $ENV{'LD_LIBRARY_PATH'} =
+              $ENV{'LD_LIBRARY_PATH'} . ':/usr/local/packages/python-3.5/lib';
+            my $pecanCountTbl =
+              basename( $projabund, (".csv") ) . "_PECAN_taxa-merged.csv";
+
+            if ( !-e basename( $pecanCountTbl, (".csv") ) . "_StR_CST.csv" ) {
+                print "---Assigning CSTs with Valencia\n";
+                print $logFH "---Assigning CSTs with Valencia\n";
+                $cmd = "$scriptsDir/valencia_wrapper.py "
+                  . catdir( $pipelineDir, "ext", "valencia",
+                    "CST_profiles_jan28_mean.csv" )
+                  . " $pecanCountTbl";
+                print "\tcmd=$cmd\n" if $dryRun || $debug;
+                system($cmd) == 0
+                  or die "system($cmd) failed with exit code: $?"
+                  if !$dryRun;
+            } else {
+                print "---Count table with CSTs already exists.\n";
+            }
+
         }
 
-    }
-
-    #### APPLY PECAN+SILVA CLASSIFICATIONS TO COUNT TABLE (V3V4) ####
-    #################################################################
-    print "---Creating count table with SILVA+PECAN classifications\n";
-    print $logFH "---Creating count table with SILVA+PECAN classifications\n";
-    $cmd =
+        #### APPLY PECAN+SILVA CLASSIFICATIONS TO COUNT TABLE (V3V4) ####
+        #################################################################
+        print "---Creating count table with SILVA+PECAN classifications\n";
+        print $logFH
+          "---Creating count table with SILVA+PECAN classifications\n";
+        $cmd =
 "$scriptsDir/combine_tx_for_ASV.pl -p $projpecan -s $projSilva -c $projabund $vopt";
-    print "\tcmd=$cmd\n" if $dryRun || $debug;
-    system($cmd) == 0
-      or die "system($cmd) failed with exit code: $?"
-      if !$dryRun;
-    push @taxonomies, "SILVA-PECAN";
+        print "\tcmd=$cmd\n" if $dryRun || $debug;
+        system($cmd) == 0
+          or die "system($cmd) failed with exit code: $?"
+          if !$dryRun;
+        push @taxonomies, "SILVA-PECAN";
 
-  } 
+    }
 }
 
 if ( $region eq 'ITS' ) {
@@ -556,32 +562,34 @@ if ( $region eq 'ITS' ) {
       if !$dryRun;
     push @taxonomies, "UNITE";
 
-} elsif ( $oral ) { # note: same logic as above: ITS prioritizes over oral
+} elsif ($oral) {    # note: same logic as above: ITS prioritizes over oral
 
-  print "---Creating count table with HOMD classifications\n";
-  print $logFH "---Creating count table with HOMD classifications\n";
-  $cmd =
-    "$scriptsDir/combine_tx_for_ASV.pl --homd-file $projHOMD -c $projabund";
-  print "\tcmd=$cmd\n" if $dryRun || $debug;
-  system($cmd) == 0
-    or die "system($cmd) failed with exit code: $?"
-    if !$dryRun;
-  push @taxonomies, "HOMD";
+    print "---Creating count table with HOMD classifications\n";
+    print $logFH "---Creating count table with HOMD classifications\n";
+    $cmd =
+      "$scriptsDir/combine_tx_for_ASV.pl --homd-file $projHOMD -c $projabund";
+    print "\tcmd=$cmd\n" if $dryRun || $debug;
+    system($cmd) == 0
+      or die "system($cmd) failed with exit code: $?"
+      if !$dryRun;
+    push @taxonomies, "HOMD";
 }
 
 my $final_merge = glob("*_taxa-merged.csv");
 unlink glob "*_taxa.csv";
 my $final_ASV_taxa = glob("*_asvs+taxa.csv");
 
-print "\nCreating report...\n";
-$cmd = "$pipelineDir/report/report16s.sh '$projDir' --runs @runs";
-execute_and_log( $cmd, $logFH, $dryRun );
+if ($report) {
+    print "\nCreating report...\n";
+    $cmd = "$pipelineDir/report/report16s.sh '$projDir' --runs @runs";
+    execute_and_log( $cmd, $logFH, $dryRun );
+}
+
 print $logFH "---Final files succesfully produced!\n";
 print $logFH
 "Final merged read count table: $final_merge\nFinal ASV table with taxa: $final_ASV_taxa\nFinal ASV count table: $projabund\nASV sequences: all_runs_dada2_ASV.fasta\n"
   ;    #Read survival stats: $finalStats\n";
 close $logFH;
-
 
 ####################################################################
 ##                               SUBS
