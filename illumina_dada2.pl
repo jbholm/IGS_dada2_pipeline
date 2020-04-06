@@ -2171,9 +2171,10 @@ sub run_R_script {
         );
 
         $cmd =
-"qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
+"qsub -cwd -b y -l mem_free=$dada2mem -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
         execute_and_log( $cmd, $logTee, $dryRun,
             "Running DADA2 with fastq files in $wd for $var region...\n" );
+
 
         while ( !-e $outR ) {
             check_error_log( $error_log, "R" );
