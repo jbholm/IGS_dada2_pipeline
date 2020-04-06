@@ -585,8 +585,8 @@ if ( !$skip ) {
         chomp;
         ## don't count header as sample; don't count any line if it doesn't
         if ( $. > 1 ) {
-            ## start with four tab-separated fields containing non-whitespace chars
-            if ( $_ =~ /^\S+(\t\S+){3}/ ) {
+            ## start with four tab-separated fields; the first three must contain non-whitespace chars
+            if ( $_ =~ /^(\S+\t){3}/ ) {
                 if (   $_ =~ "EXTNTC"
                     || $_ =~ "NTC.EXT"
                     || $_ =~ "NTCEXT"
