@@ -463,7 +463,34 @@ default is jravel-lab.
 =item B<--debug>, B<-d> {barcodes, demux, splitsamples, tagclean, dada2}
 
 Runs one or more sections of the pipeline. To run multiple sections, type 
-"--debug <section>" or "-d <section>" for each section.
+"--debug <section>" or "-d <section>" for each section. 
+
+Section inputs:
+
+Barcodes
+
+1) raw reads and indexes
+2) map
+
+Demux
+
+1) ./barcodes.fastq
+2) map
+
+Splitsamples
+
+1) ./fwdSplit/seqs.fastq
+2) ./revSplit/seqs.fastq
+
+Tagclean
+
+1) ./fwdSplit/split_by_sample_out/<sample_id>_*.fastq
+2) ./revSplit/split_by_sample_out/<sample_id>_*.fastq
+
+DADA2 (the sample_id is delimited by the first underscore character)
+
+1) ./<sample_id>_*R1_tc.fastq
+2) ./<sample_id>_*R2_tc.fastq
 
 =item B<--verbose>
 
