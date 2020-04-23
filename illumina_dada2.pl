@@ -150,6 +150,33 @@ to run multiple consecutive parts of the pipeline, provided that the input to
 the earliest requested step is present. Any non-consecutive steps will be 
 ignored.
 
+Section inputs:
+
+Barcodes
+
+1) raw reads and indexes
+2) map
+
+Demux
+
+1) ./barcodes.fastq
+2) map
+
+Splitsamples
+
+1) ./fwdSplit/seqs.fastq
+2) ./revSplit/seqs.fastq
+
+Tagclean
+
+1) ./fwdSplit/split_by_sample_out/<sample_id>_*.fastq
+2) ./revSplit/split_by_sample_out/<sample_id>_*.fastq
+
+DADA2 (the sample_id is delimited by the first underscore character)
+
+1) ./<sample_id>_*R1_tc.fastq
+2) ./<sample_id>_*R2_tc.fastq
+
 =item B<--verbose>
 
 Prints each command to STDOUT.
@@ -344,22 +371,23 @@ foreach (@paths) {
     }
 }
 
-# Find the input files, and find their putative locations if the index files
-# were to be decompressed to our working directory.
-# In one-step runs, $index1Input and $index2Input are the SAME files
-# pointed to by $readsForInput and $readsRevInput
-my $index1Input;
-my $index2Input;
-my $readsForInput;
-my $readsRevInput;
-( $readsForInput, $readsRevInput, $index1Input, $index2Input ) =
-    $inDir ? find_raw_files( $inDir, $oneStep )
-  : $oneStep ? ( $r1file, $r2file, $r1file, $r2file )
-  :            ( $r1file, $r2file, $i1file, $i2file );
-my %localNames;
-@localNames{ ( "readsFor", "readsRev", "index1", "index2" ) } =
-  convert_to_local_if_gz( $wd, $readsForInput, $readsRevInput,
-    $index1Input, $index2Input );
+if (   !@dbg
+    || grep( /^barcodes$/, @dbg )
+    || grep( /^demux$/,    @dbg ) )
+{
+    # Find the input files, and find their putative locations if the index files
+    # were to be decompressed to our working directory.
+    # In one-step runs, $index1Input and $index2Input are the SAME files
+    # pointed to by $readsForInput and $readsRevInput
+    my ( $readsForInput, $readsRevInput, $index1Input, $index2Input ) =
+        $inDir ? find_raw_files( $inDir, $oneStep )
+      : $oneStep ? ( $r1file, $r2file, $r1file, $r2file )
+      :            ( $r1file, $r2file, $i1file, $i2file );
+    my %localNames;
+    @localNames{ ( "readsFor", "readsRev", "index1", "index2" ) } =
+      convert_to_local_if_gz( $wd, $readsForInput, $readsRevInput,
+        $index1Input, $index2Input );
+}
 
 if (
     # Check if there are at least two directories in $wd
@@ -522,151 +550,164 @@ if (   !@dbg
     my $cmd = "print_qiime_config.py > $qiime";
     execute_and_log( $cmd, $logTee, $dryRun,
         "QIIME CONFIGURATION DETAILS:\nsee $qiime\n" );
-} else {
-    print $logTee "NOT USING QIIME\n";
-}
 
-if ( !$noSkip ) {
-    $skip = skippable( [$map], [ $localMap, $mapLog ],
-        $checksums{"map"}, $checksums{"meta"}, "map validation", ["map"] );
-}
+    if ( !$noSkip ) {
+        $skip = skippable( [$map], [ $localMap, $mapLog ],
+            $checksums{"map"}, $checksums{"meta"}, "map validation", ["map"] );
+    }
 
-if ( !$skip ) {
-    ###### BEGIN VALIDATION OF MAPPING FILE ###########
-    ################################################
-    print $logTee "MAPPING FILE: $map\n";
+    if ( !$skip ) {
+        ###### BEGIN VALIDATION OF MAPPING FILE ###########
+        ################################################
+        print $logTee "MAPPING FILE: $map\n";
 
-    my $cmd = "validate_mapping_file.py -m $map -s -o $error_log";
-    execute_and_log( $cmd, $logTee, $dryRun, "Validating map from $map\n" );
-    my $mappingError = glob("$error_log/*.log");
-    if ($mappingError) {
-        open MAPERROR, "<$mappingError"
-          or die "Cannot open $mappingError for " . "reading: $OS_ERROR";
-        $_ = <MAPERROR>;    # gets first line
+        my $cmd = "validate_mapping_file.py -m $map -s -o $error_log";
+        execute_and_log( $cmd, $logTee, $dryRun, "Validating map from $map\n" );
+        my $mappingError = glob("$error_log/*.log");
+        if ($mappingError) {
+            open MAPERROR, "<$mappingError"
+              or die "Cannot open $mappingError for " . "reading: $OS_ERROR";
+            $_ = <MAPERROR>;    # gets first line
 
-        chomp;
-        if ( $_ =~ /No errors or warnings found in mapping file./ ) {
-            print $logTee "---Map passed validation.\n";
+            chomp;
+            if ( $_ =~ /No errors or warnings found in mapping file./ ) {
+                print $logTee "---Map passed validation.\n";
 
-        } else {
-            while (<MAPERROR>) {
-                if ( $_ =~ m/^Errors -----------------------------$/ ) {
-                    my $nextLine = <MAPERROR>;
-                    if (
-                        $nextLine =~ m/^Warnings ---------------------------$/ )
-                    {
-                        print $logTee "---Warnings during map validation. See "
-                          . "$mappingError for details.\n";
-                    } else {
-                        close MAPERROR;
-                        die "***Error in mapping file. See $mappingError for "
-                          . "details. Exiting.\n";
+            } else {
+                while (<MAPERROR>) {
+                    if ( $_ =~ m/^Errors -----------------------------$/ ) {
+                        my $nextLine = <MAPERROR>;
+                        if ( $nextLine =~
+                            m/^Warnings ---------------------------$/ )
+                        {
+                            print $logTee
+                              "---Warnings during map validation. See "
+                              . "$mappingError for details.\n";
+                        } else {
+                            close MAPERROR;
+                            die
+                              "***Error in mapping file. See $mappingError for "
+                              . "details. Exiting.\n";
+                        }
                     }
                 }
+                print $logTee "---Map passed validation.\n";
             }
-            print $logTee "---Map passed validation.\n";
-        }
-        close MAPERROR;
-    } else {
-        die
+            close MAPERROR;
+        } else {
+            die
 "validate_mapping_file.py terminated but did not signal success. Normally a success message is printed in its error file.";
-    }
+        }
 
-    ###### BEGIN EVALUATION OF SAMPLES VIA MAPPING FILE ###########
-    ###############################################################
-    open MAP, "<$map" or die "Cannot open $map for reading: $OS_ERROR";
-    my $extctrl     = 0;
-    my $pcrpos      = 0;
-    my $pcrneg      = 0;
-    my $projSamples = 0;
-    my $linecount   = 0;
-    my $null        = 0;
-    while (<MAP>) {
-        chomp;
-        ## don't count header as sample; don't count any line if it doesn't
-        if ( $. > 1 ) {
-            ## start with four tab-separated fields; the first three must contain non-whitespace chars
-            if ( $_ =~ /^(\S+\t){3}/ ) {
-                if (   $_ =~ "EXTNTC"
-                    || $_ =~ "NTC.EXT"
-                    || $_ =~ "NTCEXT"
-                    || $_ =~ "EXT.NTC"
-                    || $_ =~ "NTC"
-                    || $_ =~ "EXTNEG" )
-                {
-                    $extctrl++;
-                } elsif ( $_ =~ "PCRPOS"
-                    || $_ =~ "PCR.pos"
-                    || $_ =~ "pCR.pos"
-                    || $_ =~ "POSCTRL"
-                    || $_ =~ "POS.CTRL"
-                    || $_ =~ "POSCON"
-                    || $_ =~ "posctr" )
-                {
-                    $pcrpos++;
-                } elsif ( $_ =~ "PCRNTC"
-                    || $_ =~ "PCR.NEG"
-                    || $_ =~ "PCR.NTC"
-                    || $_ =~ "PCRNEG"
-                    || $_ =~ "PCRNEGCTRL"
-                    || $_ =~ "ntcctr" )
-                {
-                    $pcrneg++;
-                } elsif ( $_ =~ /NULL/ ) {
-                    $null++;
-                } else {
-                    $projSamples++;
-                }
-            } elsif ( $_ =~ /\S/ ) {
+        ###### BEGIN EVALUATION OF SAMPLES VIA MAPPING FILE ###########
+        ###############################################################
+        open MAP, "<$map" or die "Cannot open $map for reading: $OS_ERROR";
+        my $extctrl     = 0;
+        my $pcrpos      = 0;
+        my $pcrneg      = 0;
+        my $projSamples = 0;
+        my $linecount   = 0;
+        my $null        = 0;
+        while (<MAP>) {
+            chomp;
+            ## don't count header as sample; don't count any line if it doesn't
+            if ( $. > 1 ) {
+                ## start with four tab-separated fields; the first three must contain non-whitespace chars
+                if ( $_ =~ /^(\S+\t){3}/ ) {
+                    if (   $_ =~ "EXTNTC"
+                        || $_ =~ "NTC.EXT"
+                        || $_ =~ "NTCEXT"
+                        || $_ =~ "EXT.NTC"
+                        || $_ =~ "NTC"
+                        || $_ =~ "EXTNEG" )
+                    {
+                        $extctrl++;
+                    } elsif ( $_ =~ "PCRPOS"
+                        || $_ =~ "PCR.pos"
+                        || $_ =~ "pCR.pos"
+                        || $_ =~ "POSCTRL"
+                        || $_ =~ "POS.CTRL"
+                        || $_ =~ "POSCON"
+                        || $_ =~ "posctr" )
+                    {
+                        $pcrpos++;
+                    } elsif ( $_ =~ "PCRNTC"
+                        || $_ =~ "PCR.NEG"
+                        || $_ =~ "PCR.NTC"
+                        || $_ =~ "PCRNEG"
+                        || $_ =~ "PCRNEGCTRL"
+                        || $_ =~ "ntcctr" )
+                    {
+                        $pcrneg++;
+                    } elsif ( $_ =~ /NULL/ ) {
+                        $null++;
+                    } else {
+                        $projSamples++;
+                    }
+                } elsif ( $_ =~ /\S/ ) {
 
-                # QIIME's validate_mapping_file seems to already check this:
-                die
+                    # QIIME's validate_mapping_file seems to already check this:
+                    die
 "In mapping file the line $. does not have four tab-separated fields.";
+                }
             }
         }
-    }
-    my $nSamples = $extctrl + $pcrpos + $pcrneg + $null + $projSamples;
-    close MAP;
+        my $nSamples = $extctrl + $pcrpos + $pcrneg + $null + $projSamples;
+        close MAP;
 
-    print $logTee "NO. SAMPLES: $nSamples\nNO. NULLS: $null\n"
-      . "NO. EXTRACTION NEGATIVE CONTROLS: $extctrl\n"
-      . "NO. PCR POSITIVE CONTROLS: $pcrpos\nNO. PCR NEGATIVE CONTROLS: $pcrneg\n";
+        print $logTee "NO. SAMPLES: $nSamples\nNO. NULLS: $null\n"
+          . "NO. EXTRACTION NEGATIVE CONTROLS: $extctrl\n"
+          . "NO. PCR POSITIVE CONTROLS: $pcrpos\nNO. PCR NEGATIVE CONTROLS: $pcrneg\n";
 
-    if ( !@dbg ) {
-        cacheChecksums( [$map], "map", ["map"] );
-        cacheChecksums(
-            [
-                $mappingError,
-                "$error_log/"
-                  . File::Basename::basename( $map, ".txt" )
-                  . "_corrected.txt"
-            ],
-            "meta"
-        );
+        if ( !@dbg ) {
+            cacheChecksums( [$map], "map", ["map"] );
+            cacheChecksums(
+                [
+                    $mappingError,
+                    "$error_log/"
+                      . File::Basename::basename( $map, ".txt" )
+                      . "_corrected.txt"
+                ],
+                "meta"
+            );
+        }
+    } else {
+
+     # It is possible the first run had a map error, but the user failed to fix.
+     # skippable would return true, but the log file would still inform us of
+     # the error.
+        my $mappingError = glob("$error_log/*.log");
+
+        open MAPERROR, "<", $mappingError
+          or die "Cannot open $mappingError for " . "reading: $OS_ERROR";
+        $_ = <MAPERROR>;
+        close MAPERROR;
+        chomp;
+        if ( !$_ =~ /No errors or warnings found in mapping file./ ) {
+            die "***Unresolved error in mapping file. See $mappingError for "
+              . "details. Exiting.\n";
+        }
+        print $logTee "Mapping file has been validated already. Moving on.\n";
     }
+
 } else {
-
-    # It is possible the first run had a map error, but the user failed to fix.
-    # skippable would return true, but the log file would still inform us of
-    # the error.
-    my $mappingError = glob("$error_log/*.log");
-
-    open MAPERROR, "<", $mappingError
-      or die "Cannot open $mappingError for " . "reading: $OS_ERROR";
-    $_ = <MAPERROR>;
-    close MAPERROR;
-    chomp;
-    if ( !$_ =~ /No errors or warnings found in mapping file./ ) {
-        die "***Unresolved error in mapping file. See $mappingError for "
-          . "details. Exiting.\n";
-    }
-    print $logTee "Mapping file has been validated already. Moving on.\n";
+    print $logTee "NOT USING QIIME\n";
 }
 
 ###### BEGIN BARCODES ##########
 #######################################
 
 if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
+
+    my ( $readsForInput, $readsRevInput, $index1Input, $index2Input ) =
+        $inDir ? find_raw_files( $inDir, $oneStep )
+      : $oneStep ? ( $r1file, $r2file, $r1file, $r2file )
+      :            ( $r1file, $r2file, $i1file, $i2file );
+    my %localNames;
+    @localNames{ ( "readsFor", "readsRev", "index1", "index2" ) } =
+      convert_to_local_if_gz( $wd, $readsForInput, $readsRevInput,
+        $index1Input, $index2Input );
+
     my $barcodes = "$wd/barcodes.fastq";
     my $nSamples = count_samples($map);
 
@@ -1081,6 +1122,11 @@ if ( !@dbg || grep( /^splitsamples$/, @dbg ) ) {
 
     # Remove temporarily decompressed files
     if ($oneStep) {
+        my ( $readsForInput, $readsRevInput, $index1Input, $index2Input ) =
+            $inDir ? find_raw_files( $inDir, $oneStep, $logFH )
+          : $oneStep ? ( $r1file, $r2file, $r1file, $r2file )
+          :            ( $r1file, $r2file, $i1file, $i2file );
+
         my @cmds = ();
         push( @cmds, "rm -rf $readsForInput" );
         push( @cmds, "rm -rf $readsRevInput" );
@@ -1343,7 +1389,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 my $basename =
                   File::Basename::basename( $file, ("_R2_tc.fastq") );
                 if ( count_lines($file) !=
-                    count_lines("$fwdSampleDir/$basename.fastq") )
+                    count_lines("$revSampleDir/$basename.fastq") )
                 {
                     $equalLns = 0;
                 }
@@ -1945,18 +1991,26 @@ sub find_raw_files {
             $index1Input = $readsForInput = $r1s[0];
             $index2Input = $readsRevInput = $r2s[0];
         } else {
-            print $log "Couldn't find input files in $wd.\n";
-            print $log "Files found:\n";
+            if ( defined $log ) {
+                print $log "Couldn't find input files in $wd.\n";
+                print $log "Files found:\n";
 
-            my $printme = join "\n", @r1s;
-            print $log "$printme\n" if $printme;
-            $printme = join "\n", @r2s;
-            print $log "$printme\n" if $printme;
+                my $printme = join "\n", @r1s;
+                print $log "$printme\n" if $printme;
+                $printme = join "\n", @r2s;
+                print $log "$printme\n" if $printme;
 
-            die
+                die
 "Could not find a complete and exclusive set of raw files. Since --1step given, input directory must"
-              . " have exactly one R1 and R2 file. See pipeline log for a list of the files"
-              . " found.";
+                  . " have exactly one R1 and R2 file. See pipeline log for a list of the files"
+                  . " found.";
+            } else {
+                die "Could not find a complete and exclusive set of raw files."
+                  . " Since --1step given, input directory must have exactly one"
+                  . " R1 and R2 file. Files found:\n"
+                  . join( "\n", @r1s )
+                  . join( "\n", @r2s );
+            }
         }
     } else {
         my @i1s = glob("$wd/*I1.fastq $wd/*I1.fastq.gz");
@@ -2174,7 +2228,6 @@ sub run_R_script {
 "qsub -cwd -b y -l mem_free=$dada2mem -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
         execute_and_log( $cmd, $logTee, $dryRun,
             "Running DADA2 with fastq files in $wd for $var region...\n" );
-
 
         while ( !-e $outR ) {
             check_error_log( $error_log, "R" );
