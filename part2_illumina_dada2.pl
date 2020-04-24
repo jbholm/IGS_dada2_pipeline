@@ -663,7 +663,7 @@ st <- st[,order(colSums(st), decreasing=TRUE)]
 # Remove chimeras
 seqtab <- removeBimeraDenovo(st, method="consensus", multithread=TRUE)
 # Assign taxonomy
-silva <- assignTaxonomy(seqtab, "$pipelineDir/taxonomy/silva_nr_v128_train_set.fa.gz", multithread=TRUE)
+silva <- assignTaxonomy(seqtab, "$pipelineDir/taxonomy/silva_nr_v138_train_set.fa.gz", multithread=TRUE)
 # Write to disk
 saveRDS(seqtab, "all_runs_dada2_abundance_table.rds") # CHANGE ME to where you want sequence table saved
 write.csv(seqtab, "all_runs_dada2_abundance_table.csv", quote=FALSE)
@@ -804,7 +804,7 @@ st <- st[,order(colSums(st), decreasing=TRUE)]
 seqtab <- removeBimeraDenovo(st, method="consensus", multithread=TRUE)# THIS is the source of ASV names and sequences
 # Assign taxonomy (requires colnames of seqtab to be ASV sequences)
 unite <- assignTaxonomy(seqtab, "/home/jholm/bin/sh_general_release_dynamic_01.12.2017.fasta", multithread=TRUE)
-silva <- assignTaxonomy(seqtab, "$pipelineDir/taxonomy/silva_nr_v128_train_set.fa.gz", multithread=TRUE)
+silva <- assignTaxonomy(seqtab, "$pipelineDir/taxonomy/silva_nr_v138_train_set.fa.gz", multithread=TRUE)
 
 # Name ASVs (Due to the constraints of assignTaxonomy, this step must occur after it)
 
