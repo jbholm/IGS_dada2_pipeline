@@ -185,6 +185,7 @@ Prints each command to STDOUT.
 
 =cut
 
+use 5.010;    # for //
 use strict;
 use warnings;
 my $scriptsDir;
@@ -211,6 +212,9 @@ require File::Copy;
 require List::Util;
 use JSON;
 require IO::Tee;
+use File::Path qw( remove_tree );
+use File::Copy::Recursive qw(dircopy );
+use Data::Dumper;
 
 $OUTPUT_AUTOFLUSH = 1;
 
@@ -218,9 +222,11 @@ $OUTPUT_AUTOFLUSH = 1;
 ##                             OPTIONS
 ####################################################################
 
+my %global_config;
 my @dbg;
-my $oneStep  = 0;
-my $dada2mem = "1G";
+my $oneStep       = 0;
+my $dada2mem      = "1G";
+my $tbshtBarcodes = 0;
 GetOptions(
     "raw-path|i=s"           => \my $inDir,
     "r1=s"                   => \my $r1file,
@@ -246,8 +252,9 @@ GetOptions(
     "dada2-minQ=s"           => \my $minQ,
     "dada2-mem:s"            => \$dada2mem,
     "1Step!"                 => \$oneStep,
-    "working-dir|wd=s"       => \my $wd,
+    "working-dir|wd=s"       => \$global_config{wd},
     "qsub-project|qp=s"      => \my $qproj,
+    "troubleshoot_barcodes!" => \$tbshtBarcodes,
   )
 ##add option for final resting place of important data
 
@@ -295,9 +302,11 @@ if ( !$var ) {
       . " or -v ITS)\n\n";
     exit 1;
 }
-if ( !$wd ) {
+if ( !$global_config{wd} ) {
     die "\n***Please choose a working directory (-wd).";
 }
+
+if ($tbshtBarcodes) { @dbg = (); }
 
 if (@dbg) {
     my $q  = grep( /^validate$/,     @dbg );
@@ -323,7 +332,7 @@ if ( $f && !$r ) {
 # Refine and validate all variables that refer to the filesystem
 my (@paths) = (
     {
-        path => \$wd,
+        path => \$global_config{wd},
         name => "Working directory"
     },
     {
@@ -385,14 +394,19 @@ if (   !@dbg
       :            ( $r1file, $r2file, $i1file, $i2file );
     my %localNames;
     @localNames{ ( "readsFor", "readsRev", "index1", "index2" ) } =
-      convert_to_local_if_gz( $wd, $readsForInput, $readsRevInput,
-        $index1Input, $index2Input );
+      convert_to_local_if_gz(
+        $global_config{wd}, $readsForInput, $readsRevInput,
+        $index1Input,       $index2Input
+      );
 }
 
 if (
-    # Check if there are at least two directories in $wd
-    scalar( File::Spec->splitdir( ( File::Spec->splitpath("$wd/") )[1] ) ) -
-    2 < 2
+    # Check if there are at least two directories in $global_config{wd}
+    scalar(
+        File::Spec->splitdir(
+            ( File::Spec->splitpath("$global_config{wd}/") )[1]
+        )
+    ) - 2 < 2
   )
 {
     die "Working directory (-wd) must have the pattern */PROJECT/RUN";
@@ -403,12 +417,12 @@ if (
 ###################################################################
 
 # Initialize log file
-my $run     = File::Basename::basename($wd);
-my $pd      = ( File::Basename::fileparse($wd) )[1];
+my $run     = File::Basename::basename( $global_config{wd} );
+my $pd      = ( File::Basename::fileparse( $global_config{wd} ) )[1];
 my $project = File::Basename::basename($pd);
 
 my $time = strftime( "%Y-%m-%d %H:%M:%S", localtime(time) );
-my $log  = "$wd/$project" . "_" . $run . "_16S_pipeline_log.txt";
+my $log  = "$global_config{wd}/$project" . "_" . $run . "_16S_pipeline_log.txt";
 open my $logFH, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
 my $logTee = new IO::Tee( \*STDOUT, $logFH );
 
@@ -433,20 +447,14 @@ print "Logging to: $log\n";
 print $logTee "PIPELINE VERSION: " . Version::version() . "\n";
 print $logTee "$time\n";
 
-my $error_log  = "$wd/qsub_error_logs";
-my $stdout_log = "$wd/qsub_stdout_logs";
+my $error_log  = "$global_config{wd}/qsub_error_logs";
+my $stdout_log = "$global_config{wd}/qsub_stdout_logs";
 ## Instead of working directory, give option for provided directory (or current
 #  working directory)
 
 my $localMap =
   "$error_log/" . File::Basename::basename( $map, ".txt" ) . "_corrected.txt";
 my $mapLog = "$error_log/" . File::Basename::basename( $map, ".txt" ) . ".log";
-
-my $fwdProjDir = "$wd/fwdSplit";
-my $revProjDir = "$wd/revSplit";
-
-my $fwdSampleDir = "$fwdProjDir/split_by_sample_out";
-my $revSampleDir = "$revProjDir/split_by_sample_out";
 
 my @split;
 
@@ -520,10 +528,11 @@ if ( !-e $stdout_log ) {
     print "$stdout_log did not exist -> making $stdout_log\n";
 }
 
-my $checksumFile = "$wd/.checkpoints.json";
+my $checksumFile = "$global_config{wd}/.checkpoints.json";
 my %checksums    = read_checkpoints($checksumFile);
 
-my $qiime = "$wd/$project" . "_" . $run . "_" . "qiime_config.txt";
+my $qiime =
+  "$global_config{wd}/$project" . "_" . $run . "_" . "qiime_config.txt";
 
 if (@dbg) {
     print $logTee "DBG FLAGS: ";
@@ -697,7 +706,111 @@ if (   !@dbg
 ###### BEGIN BARCODES ##########
 #######################################
 
-if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
+my $newSamNo;
+if ($tbshtBarcodes) {
+
+    # make three other directories
+    my %dirs_params = (
+        "$global_config{wd}_rc_fwd"     => "--rev_comp_bc1",
+        "$global_config{wd}_rc_rev"     => "--rev_comp_bc2",
+        "$global_config{wd}_rc_fwd_rev" => "--rev_comp_bc1 --rev_comp_bc2",
+        $global_config{wd}              => ""
+    );
+    print Dumper( \%dirs_params );
+
+    my $success = 0;
+    print $logTee
+      "Attempting all permutations of reverse-complemented indexes." . "\n";
+    for my $dir ( keys %dirs_params ) {
+        print $logTee "$dir\n";
+        print $logTee "$dirs_params{$dir}\n";
+        unless ( -e $dir or mkdir $dir ) {
+            die "Unable to create $dir\n";
+        }
+        print $logTee $dir;
+        barcodes( oriParams => $dirs_params{$dir}, wd => $dir );
+        print $logTee $dir;
+
+        $success = demux( $dir, 0 );
+        if ($success) {
+            if ( !$dir eq $global_config{wd} ) {
+
+             # cleanup after ourselves, so the pipeline can continue like normal
+                dircopy( $dir, $global_config{wd} );
+            }
+            foreach ( keys %dirs_params ) {
+                if ( !$_ eq $global_config{wd} ) {
+                    remove_tree($_) or warn $!;
+                }
+            }
+            print $logTee "Demux succeeded when extract_barcodes.py called with"
+              . " $dirs_params{$dir}\n";
+            last;
+        } else {
+            print $logTee "Demux failed when extract_barcodes.py called with "
+              . "$dirs_params{$dir}\n";
+        }
+    }
+    if ( !$success ) {
+        print $logTee "Attempting all permutations of reverse-complemented "
+          . "switched indexes.\n";
+
+        for my $dir ( keys %dirs_params ) {
+            print $logTee "$dir\n";
+            print $logTee "$dirs_params{$dir}\n";
+            unless ( -e $dir or mkdir $dir ) {
+                die "Unable to create $dir\n";
+            }
+            print $logTee $dir;
+            barcodes(
+                oriParams => $dirs_params{$dir},
+                wd        => $dir,
+                switch    => 1
+            );
+            print $logTee $dir;
+
+            $success = demux( $dir, 0 );
+            if ($success) {
+                if ( !$dir eq $global_config{wd} ) {
+
+             # cleanup after ourselves, so the pipeline can continue like normal
+                    dircopy( $dir, $global_config{wd} );
+                }
+                foreach ( keys %dirs_params ) {
+                    if ( !$_ eq $global_config{wd} ) {
+                        remove_tree($_) or warn $!;
+                    }
+                }
+                print $logTee
+                  "Demux succeeded when extract_barcodes.py called with"
+                  . " $dirs_params{$dir} and switched indexes.\n";
+                last;
+            } else {
+                print $logTee
+                  "Demux failed when extract_barcodes.py called with "
+                  . "$dirs_params{$dir} and switched indexes.\n";
+            }
+        }
+    }
+
+} else {
+    if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
+        barcodes( oriParams => "", wd => $global_config{wd} );
+    }
+    if ( !@dbg || grep( /^demux$/, @dbg ) ) {
+        demux( $global_config{wd}, 1 );
+    }
+
+    # Then continue with code below the two subroutines
+}
+
+sub barcodes {
+    my %arg       = @_;
+    my $oriParams = delete $arg{oriParams} // '';
+    my $switch    = delete $arg{switch} // 0;
+
+    # the default working directory is the global working directory
+    my $wd = delete $arg{wd} // $global_config{wd};
 
     my ( $readsForInput, $readsRevInput, $index1Input, $index2Input ) =
         $inDir ? find_raw_files( $inDir, $oneStep )
@@ -707,6 +820,11 @@ if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
     @localNames{ ( "readsFor", "readsRev", "index1", "index2" ) } =
       convert_to_local_if_gz( $wd, $readsForInput, $readsRevInput,
         $index1Input, $index2Input );
+    if ($switch) {
+        my $oldi1 < -$localNames{index1};
+        $localNames{index1} = $localNames{index2};
+        $localNames{index2} = $oldi1;
+    }
 
     my $barcodes = "$wd/barcodes.fastq";
     my $nSamples = count_samples($map);
@@ -795,7 +913,7 @@ if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
         }
 
         my $cmd =
-"extract_barcodes.py -f $localNames{\"index1\"} -r $localNames{\"index2\"} -c barcode_paired_end --bc1_len $bcLen --bc2_len $bcLen $mapOpt -o $wd";
+"extract_barcodes.py -f $localNames{\"index1\"} -r $localNames{\"index2\"} -c barcode_paired_end --bc1_len $bcLen --bc2_len $bcLen $mapOpt -o $wd $oriParams";
 
         execute_and_log( $cmd, $logTee, $dryRun,
             "Waiting for barcode extraction to complete...\n" );
@@ -850,13 +968,22 @@ if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
 
 ###### BEGIN SPLIT LIBRARIES ##########
 #######################################
-my $newSamNo;
-if ( !@dbg || grep( /^demux$/, @dbg ) ) {
+
+sub demux {
+    print $logTee @_;
+    my $wd          = shift;
+    my $die_on_fail = shift;
+    print $logTee "$wd\n";
+    print $logTee "$die_on_fail\n";
+
     my $barcodes = "$wd/barcodes.fastq";
     my $nSamples = count_samples($map);
     my $step2;
     my $step3;
-    my $split_log = "$fwdProjDir/split_library_log.txt";
+
+    my $fwdProjDir = "$wd/fwdSplit";
+    my $revProjDir = "$wd/revSplit";
+    my $split_log  = "$fwdProjDir/split_library_log.txt";
 
     my @cmds;
     my $rForSeqsFq = "$fwdProjDir/seqs.fastq";
@@ -938,10 +1065,14 @@ if ( !@dbg || grep( /^demux$/, @dbg ) ) {
               "---Number of samples after split_libraries_fastq.py: "
               . "$newSamNo\n";
         } elsif ( scalar @split == $nSamples ) {
-            print $logTee
-              "---No samples were successfully demultiplexed. Is the "
-              . "mapping file correct? Exiting.\n";
-            die;
+            if ($die_on_fail) {
+                print $logTee
+                  "---No samples were successfully demultiplexed. Is the "
+                  . "mapping file correct? Exiting.\n";
+                die;
+            } else {
+                return 0;
+            }
         } elsif ( scalar @split == 0 ) {
             print $logTee "---Reads from all samples were demultiplexed.\n";
         }
@@ -991,9 +1122,16 @@ if ( !@dbg || grep( /^demux$/, @dbg ) ) {
         die "Finished demultiplexing libaries. Terminated "
           . "because -d splitsamples was not specified.";
     }
+    return 1;
 }
 
+my $fwdProjDir = "$global_config{wd}/fwdSplit";
+my $revProjDir = "$global_config{wd}/revSplit";
+
 if ( !@dbg || grep( /^splitsamples$/, @dbg ) ) {
+
+    my $fwdSampleDir = "$fwdProjDir/split_by_sample_out";
+    my $revSampleDir = "$revProjDir/split_by_sample_out";
 
     ###### BEGIN SPLIT BY SAMPLE ##########
     #######################################
@@ -1131,7 +1269,7 @@ if ( !@dbg || grep( /^splitsamples$/, @dbg ) ) {
         push( @cmds, "rm -rf $readsForInput" );
         push( @cmds, "rm -rf $readsRevInput" );
         execute_and_log( @cmds, 0, $dryRun,
-            "---Removing decompressed raw files from $wd\n" );
+            "---Removing decompressed raw files from $global_config{wd}\n" );
     }
 
     if ( @dbg && !grep( /^tagclean$/, @dbg ) ) {
@@ -1147,7 +1285,11 @@ if ( !@dbg || grep( /^splitsamples$/, @dbg ) ) {
 
 my $start = time;
 if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
-    my $do       = 1;
+    my $do = 1;
+
+    my $fwdSampleDir = "$fwdProjDir/split_by_sample_out";
+    my $revSampleDir = "$revProjDir/split_by_sample_out";
+
     my @inputsF  = glob("$fwdSampleDir/*.fastq");
     my @inputsR  = glob("$revSampleDir/*.fastq");
     my @outPatts = ( "_R1_tc", "_R2_tc" );
@@ -1157,8 +1299,8 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
     }
     my $newSamNo = scalar @inputsF;
 
-    my @fwdTcFiles = glob("$wd/*R1_tc.fastq");
-    my @revTcFiles = glob("$wd/*R2_tc.fastq");
+    my @fwdTcFiles = glob("$global_config{wd}/*R1_tc.fastq");
+    my @revTcFiles = glob("$global_config{wd}/*R2_tc.fastq");
 
     # my @forFilenames = glob("$fwdSampleDir/*.fastq");
     # my @revFilenames = glob("$revSampleDir/*.fastq");
@@ -1190,7 +1332,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
-                        my $tc = "$wd/$Prefix" . "_R1_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_R1_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2 -trim_within 50";
                         push @cmds, $cmd;
@@ -1206,7 +1348,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
-                        my $tc = "$wd/$Prefix" . "_R2_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_R2_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2 -trim_within 50";
                         push @cmds, $cmd;
@@ -1224,7 +1366,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
-                        my $tc = "$wd/$Prefix" . "_R1_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_R1_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
                         push @cmds, $cmd;
@@ -1240,7 +1382,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
-                        my $tc = "$wd/$Prefix" . "_R2_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_R2_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
                         push @cmds, $cmd;
@@ -1258,7 +1400,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
-                        my $tc = "$wd/$Prefix" . "_R1_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_R1_tc";
 
                         $cmd =
 "qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
@@ -1274,7 +1416,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
-                        my $tc = "$wd/$Prefix" . "_R2_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_R2_tc";
 
                         $cmd =
 "qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2";
@@ -1292,7 +1434,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
-                        my $tc = "$wd/$Prefix" . "_R1_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_R1_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
                         push @cmds, $cmd;
@@ -1309,7 +1451,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
-                        my $tc = "$wd/$Prefix" . "_R2_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_R2_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
                         push @cmds, $cmd;
@@ -1326,7 +1468,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
-                        my $tc = "$wd/$Prefix" . "_R1_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_R1_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 CTGCCCTTTGTACACACCGC -mm5 2";
                         push @cmds, $cmd;
@@ -1342,7 +1484,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
-                        my $tc = "$wd/$Prefix" . "_R2_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_R2_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 TTTCGCTGCGTTCTTCATCG -mm5 2";
                         push @cmds, $cmd;
@@ -1354,11 +1496,11 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
         execute_and_log( @cmds, $logTee, $dryRun,
             "Removing $var primers from all sequences.\n" );
 
-        my @fwdFiles = glob("$wd/*R1_tc.fastq");
+        my @fwdFiles = glob("$global_config{wd}/*R1_tc.fastq");
         my $nFiles   = @fwdFiles;
         my $equalLns = 0;
         while ( $nFiles != $newSamNo || !$equalLns ) {
-            @fwdFiles = glob("$wd/*R1_tc.fastq");
+            @fwdFiles = glob("$global_config{wd}/*R1_tc.fastq");
             $nFiles   = @fwdFiles;
 
 # Ensure that each tagcleaned file has the same number of lines as its input file
@@ -1374,13 +1516,14 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
             }
             check_error_log( $error_log, "perl" );
         }
-        print $logTee "---All tagcleaned R1 samples accounted for in $wd\n";
+        print $logTee
+          "---All tagcleaned R1 samples accounted for in $global_config{wd}\n";
 
         $equalLns = 0;
-        my @revFiles = glob("$wd/*R2_tc.fastq");
+        my @revFiles = glob("$global_config{wd}/*R2_tc.fastq");
         $nFiles = @revFiles;
         while ( $nFiles != $newSamNo || !$equalLns ) {
-            @revFiles = glob("$wd/*R2_tc.fastq");
+            @revFiles = glob("$global_config{wd}/*R2_tc.fastq");
             $nFiles   = @revFiles;
 
 # Ensure that each tagcleaned file has the same number of lines as its input file
@@ -1397,7 +1540,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
             check_error_log( $error_log, "perl" );
         }
         print $logTee
-          "---All tagcleaned R4 (R2) samples accounted for in $wd\n";
+"---All tagcleaned R4 (R2) samples accounted for in $global_config{wd}\n";
 
         if ( !@dbg ) {
             cacheChecksums( [ @fwdFiles, @revFiles ], "tagcleaned" );
@@ -1422,11 +1565,13 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
 ###### BEGIN DADA2 ##########
 #############################
 if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
-    my $projrt    = "$wd/$project" . "_" . $run . "_dada2_part1_rTmp.R";
-    my $projrtout = "$wd/$project" . "_" . $run . "_dada2_part1_rTmp.Rout";
+    my $projrt =
+      "$global_config{wd}/$project" . "_" . $run . "_dada2_part1_rTmp.R";
+    my $projrtout =
+      "$global_config{wd}/$project" . "_" . $run . "_dada2_part1_rTmp.Rout";
 
     my @outputs = ( "$projrt", "$projrtout" );
-    my @inputs  = glob("$wd/*R[1|2]_tc.fastq");
+    my @inputs  = glob("$global_config{wd}/*R[1|2]_tc.fastq");
 
     if ( !$noSkip ) {
         $skip = skippable(
@@ -1602,10 +1747,10 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
         }
 
         # Rename DADA2 R files
-        my $rt   = "$wd/dada2_part1_rTmp.R";
+        my $rt   = "$global_config{wd}/dada2_part1_rTmp.R";
         my @cmds = ();
         push @cmds, "mv $rt $projrt";
-        my $rtout = "$wd/dada2_part1_rTmp.Rout";
+        my $rtout = "$global_config{wd}/dada2_part1_rTmp.Rout";
         push @cmds, "mv $rtout $projrtout";
         eval {
             execute_and_log( @cmds, 0, $dryRun, "Renaming DADA2 R files.\n" );
@@ -1674,7 +1819,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
             # "dada2 completed successfully" is a key phrase that causes
             # an appropriate message printed to STDOUT
             print $logTee "dada2 completed successfully!\nAbundance table for "
-              . "$project run $run located at $wd/dada2_abundance_table.rds\n";
+              . "$project run $run located at $global_config{wd}/dada2_abundance_table.rds\n";
             print $logTee
               "See $outputs[0] for dada2 table of reads surviving by "
               . "step\n\n";
@@ -1769,15 +1914,15 @@ sub skippable {
     delete $checksumsOut{$_}
       for grep { not defined $checksumsOut{$_} } keys %checksumsOut;
 
-    my $prevSkip = $skip;    # file-level my-variable
+    my $prevSkip = $skip;                # file-level my-variable
     my $step     = shift;
     my $inNames  = shift;
     my $outNames = shift;
-    my $wd       = $wd;      # This is a file-level my-variable
+    my $wd       = $global_config{wd};   # This hash is a file-level my-variable
 
     if ( scalar @$outputsR == 0 ) {
         return 0;
-    }                        # no output files found by caller
+    }                                    # no output files found by caller
     if ( List::Util::none { defined $_ } @$outputsR ) {
         return 0;
     }
@@ -1802,10 +1947,12 @@ sub skippable {
     # When previously stored, the checksums should have been named consistently,
     # or named after the files themselves.
     if ( !defined $inNames ) {
-        $inNames = [ map { File::Spec->abs2rel( $_, $wd ) } @$inputsR ];
+        $inNames =
+          [ map { File::Spec->abs2rel( $_, $wd ) } @$inputsR ];
     }
     if ( !defined $outNames ) {
-        $outNames = [ map { File::Spec->abs2rel( $_, $wd ) } @$outputsR ];
+        $outNames =
+          [ map { File::Spec->abs2rel( $_, $wd ) } @$outputsR ];
     }
 
     if ( !setIdent( $inNames, [ keys %checksumsIn ] ) ) {
@@ -1894,10 +2041,11 @@ sub cacheChecksums {
     my $files = shift;
     my $step  = shift;
     my $names = shift;
-    my $wd    = $wd;     # This is a file-level $my variable
+    my $wd    = $global_config{wd};    # This is a file-level $my variable
 
     if ( !defined $names ) {
-        $names = [ map { File::Spec->abs2rel( $_, $wd ) } @$files ];
+        $names =
+          [ map { File::Spec->abs2rel( $_, $wd ) } @$files ];
     }
     if ( defined $checksumFile ) {
 
@@ -2207,6 +2355,7 @@ sub dada2 {
 sub run_R_script {
     my $Rscript = shift;
     my $logFH   = shift;
+    my $wd      = $global_config{wd};
     chdir $wd;
 
     my $outFile = "dada2_part1_rTmp.R";
