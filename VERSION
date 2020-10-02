@@ -1,4 +1,10 @@
+<<<<<<< HEAD-troubleshoot_barcodes_fix+1
 2.11.1-troubleshoot_barcodes_fix+1
+||||||| merged common ancestors
+2.10.0
+=======
+2.11.1
+>>>>>>> master
 We use semantic versioning:
 First number: Major version. Incremented for a commit on master that requires a change in how the pipeline is operated.
 Second number: Minor version. Incremented for a commit on master that adds a new feature (usually a new command-line option).
