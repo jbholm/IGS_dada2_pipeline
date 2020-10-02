@@ -127,12 +127,20 @@ project and run names will be parsed. The last directory on PATH should be named
 after the run, and the second-to-last directory on PATH should be named after
 the project.
 
-=item B<--bclen>=LENGTH
+=item B<--bclen> LENGTH
 
 The length of forward and reverse barcodes. This many bases is removed from the
 index 1 and index 2 of each read, concatenated, and used to demultiplex the
 reads according to the provided map. (In our current pipeline, the indexes ARE
 exactly this length.)
+
+=item B<--troubleshoot_barcodes>
+
+Try all four permutations of reverse-complementing and switching the 
+concatenation order of the indexes. Whichever of the four permutations yields a
+successful demux is used. Note: Performing these transformations on the indexes 
+may coincidentally yield a barcode that seems to be correct, even though the 
+overall demux is incorrect. 
 
 =item B<-h>, B<--help>
 

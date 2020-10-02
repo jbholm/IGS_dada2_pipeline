@@ -87,6 +87,18 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         try_assign MAP "$1" "$2"
         shift 2
         ;;
+    --bclen)
+        if [[ "$2" =~ ^- || ! -n "$2" ]]; then
+            stop "--bclen missing its value. Unable to continue."
+        else 
+            BCLENGTH="--bclen $2"
+            shift 2
+        fi
+        ;;
+    --troubleshoot_barcodes)
+        TROUBLESHOOT_BARCODES=$1
+        shift 1
+        ;;
     -v|--var-reg)
         try_assign VAR "$1" "$2"
         shift 2
@@ -328,7 +340,7 @@ export LD_LIBRARY_PATH=/usr/local/packages/python-2.7.14/lib:/usr/local/packages
 log="$SD/${PROJECT}_${RUN}_16S_pipeline_log.txt"
 
 # Remove extra spaces caused by joining empty arguments with a whitespace
-OPTSARR=("$DADA2" "$DADA2MEM" "$DBG" "$VERBOSE" "$DRY_RUN" "$ONESTEP" "$PARAMS")
+OPTSARR=("$PARAMS" "$BCLENGTH" "$TROUBLESHOOT_BARCODES" "$ONESTEP" "$DADA2" "$DADA2MEM" "$DBG" "$VERBOSE" "$DRY_RUN")
 OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 
@@ -450,6 +462,21 @@ available)
 Indicate an existing directory in which to place the project directory.
 "scratch" (default) evaluates to "/local/scratch/" and "groupshare" evaluates to
 "/local/groupshare/ravel".
+
+=item B<--bclen> LENGTH
+
+The length of forward and reverse barcodes. This many bases is removed from the
+index 1 and index 2 of each read, concatenated, and used to demultiplex the
+reads according to the provided map. (In our current pipeline, the indexes ARE
+exactly this length.)
+
+=item B<--troubleshoot_barcodes>
+
+Try all four permutations of reverse-complementing and switching the 
+concatenation order of the indexes. Whichever of the four permutations yields a
+successful demux is used. Note: Performing these transformations on the indexes 
+may coincidentally yield a barcode that seems to be correct, even though the 
+overall demux is incorrect. 
 
 =item B<-h>, B<--help>
 
