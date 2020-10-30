@@ -146,15 +146,51 @@ GetOptions(
 
   or pod2usage( verbose => 0, exitstatus => 1 );
 
+### REASONS FOR STOPPING IMMEDIATELY
+
 if ($help) {
     pod2usage( verbose => 2, exitstatus => 0 );
     exit 1;
 }
+if ( !$project ) {
+    die "Please provide a project name\n\n";
+}
 
+# PRINT TO LOG ASAP
 my $log = "$project" . "_part2_16S_pipeline_log.txt";
 
 open my $logFH, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
 my $logTee = new IO::Tee( \*STDOUT, $logFH );
+
+
+if ( !$region ) {
+    print $logTee "Please provide a variable region (-v): V3V4, V4, or ITS\n";
+    pod2usage( verbose => 2, exitstatus => 0 );
+    exit 1;
+}
+if ( List::Util::none { $_ eq $region } ( 'V3V4', 'V4', 'ITS' ) ) {
+    print $logTee "Illegal --variable-region (-v). V3V4, V4, and ITS are accepted.";
+    exit 1;
+}
+
+if ( !$inRuns ) {
+    print $logTee "Please provide (a) run ID(s)\n\n";
+    pod2usage( verbose => 2, exitstatus => 0 );
+    exit 1;
+}
+
+####################################################################
+##                               MAIN
+####################################################################
+
+$ENV{'LD_LIBRARY_PATH'} =
+  $ENV{'LD_LIBRARY_PATH'} . ":/usr/local/packages/gcc/lib64";
+my $R = "/usr/local/packages/r-3.4.0/bin/R";
+
+my $projDir = Cwd::cwd;
+
+##split the list of runs to an array
+my @runs = split( ",", $inRuns );
 
 print $logTee "PIPELINE VERSION: " . Version::version() . "\n";
 print $logTee "This file logs the progress of "
@@ -164,14 +200,7 @@ print $logTee "This file logs the progress of "
 if ($notVaginal) {
     $vaginal = 0;
 }
-if ( !$region ) {
-    print $logTee "Please provide a variable region (-v), V3V4 or V4\n";
-    pod2usage( verbose => 2, exitstatus => 0 );
-    exit 1;
-}
-if ( List::Util::none { $_ eq $region } ( 'V3V4', 'V4', 'ITS' ) ) {
-    die "Illegal --variable-region (-v). V3V4, V4, and ITS are accepted.";
-}
+
 my $models;
 
 my @taxonomies;
@@ -194,37 +223,6 @@ if ( $region eq 'V3V4' && !$oral ) {
         print $logTee "Using UNITE taxonomy only\n";
     }
 }
-
-if ( $region eq 'V3V4' && !$models ) {
-    print $logTee "Please provide a valid variable region\n\n";
-    pod2usage( verbose => 2, exitstatus => 0 );
-    exit 1;
-}
-
-if ( !$project ) {
-    print $logTee "Please provide a project name\n\n";
-    pod2usage( verbose => 2, exitstatus => 0 );
-    exit 1;
-}
-
-if ( !$inRuns ) {
-    print $logTee "Please provide (a) run ID(s)\n\n";
-    pod2usage( verbose => 2, exitstatus => 0 );
-    exit 1;
-}
-
-####################################################################
-##                               MAIN
-####################################################################
-
-$ENV{'LD_LIBRARY_PATH'} =
-  $ENV{'LD_LIBRARY_PATH'} . ":/usr/local/packages/gcc/lib64";
-my $R = "/usr/local/packages/r-3.4.0/bin/R";
-
-my $projDir = Cwd::cwd;
-
-##split the list of runs to an array
-my @runs = split( ",", $inRuns );
 
 my $abundance = "all_runs_dada2_abundance_table.csv";
 my $projabund = $project . "_" . $abundance;
@@ -517,7 +515,22 @@ sub dada2_combine_and_classify {
     my ($inRuns) = shift;
 
     my $Rscript = qq~
-
+options(
+    show.error.locations = TRUE,
+    show.error.messages = TRUE,
+    keep.source = TRUE,
+    warn = 1,
+    error = function() {
+      # cat(attr(last.dump,"error.message"))
+      sink(file = stderr())
+      dump.frames("dump", TRUE)
+      cat('\nTraceback:', file = stderr())
+      cat('\n', file = stderr())
+      traceback(2) # Print full traceback of function calls with all parameters. The 2 passed to traceback omits the outermost two function calls.
+      if (!interactive()) quit(status = 1)
+    },
+    stringsAsFactors = FALSE
+    )
 library("dada2")
 packageVersion("dada2")
 path<-getwd()
@@ -587,7 +600,22 @@ sub dada2_combine_and_classifyHOMD {
     my ($inRuns) = shift;
 
     my $Rscript = qq~
-
+options(
+    show.error.locations = TRUE,
+    show.error.messages = TRUE,
+    keep.source = TRUE,
+    warn = 1,
+    error = function() {
+      # cat(attr(last.dump,"error.message"))
+      sink(file = stderr())
+      dump.frames("dump", TRUE)
+      cat('\nTraceback:', file = stderr())
+      cat('\n', file = stderr())
+      traceback(2) # Print full traceback of function calls with all parameters. The 2 passed to traceback omits the outermost two function calls.
+      if (!interactive()) quit(status = 1)
+    },
+    stringsAsFactors = FALSE
+    )
 library("dada2")
 packageVersion("dada2")
 path<-getwd()
@@ -657,7 +685,22 @@ sub dada2_combine_and_classifyITS {
     my ($inRuns) = shift;
 
     my $Rscript = qq~
-
+options(
+    show.error.locations = TRUE,
+    show.error.messages = TRUE,
+    keep.source = TRUE,
+    warn = 1,
+    error = function() {
+      # cat(attr(last.dump,"error.message"))
+      sink(file = stderr())
+      dump.frames("dump", TRUE)
+      cat('\nTraceback:', file = stderr())
+      cat('\n', file = stderr())
+      traceback(2) # Print full traceback of function calls with all parameters. The 2 passed to traceback omits the outermost two function calls.
+      if (!interactive()) quit(status = 1)
+    },
+    stringsAsFactors = FALSE
+    )
 library("dada2")
 packageVersion("dada2")
 path<-getwd()

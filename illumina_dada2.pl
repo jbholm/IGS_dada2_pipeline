@@ -2287,7 +2287,22 @@ sub dada2 {
     my $minQ     = shift;
 
     my $Rscript = qq~
-
+options(
+    show.error.locations = TRUE,
+    show.error.messages = TRUE,
+    keep.source = TRUE,
+    warn = 1,
+    error = function() {
+      # cat(attr(last.dump,"error.message"))
+      sink(file = stderr())
+      dump.frames("dump", TRUE)
+      cat('\nTraceback:', file = stderr())
+      cat('\n', file = stderr())
+      traceback(2) # Print full traceback of function calls with all parameters. The 2 passed to traceback omits the outermost two function calls.
+      if (!interactive()) quit(status = 1)
+    },
+    stringsAsFactors = FALSE
+    )
   library("dada2")
   packageVersion("dada2")
   cwd<-getwd()

@@ -152,6 +152,10 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         try_assign QP "$1" "$2"
         shift 2
         ;;
+    --email)
+        EMAIL="-m ea"
+        shift 1
+        ;;
     *) # preserve positional arguments even if they fall between other params
     # note that options and their operands will be separate elements of $PARAMS
       PARAMS="$PARAMS $1"
@@ -329,6 +333,10 @@ if [[ -n "$VERBOSE" ]]; then
     "All shell commands will be printed to: \n${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout"
 fi
 
+if [[ -n "$EMAIL" ]]; then
+    QSUB_ARGS="$QSUB_ARGS $EMAIL"
+fi
+
 # Acquire binaries
 use sge
 . /usr/local/packages/qiime-1.9.1/activate.sh
@@ -344,7 +352,7 @@ OPTSARR=("$PARAMS" "$BCLENGTH" "$TROUBLESHOOT_BARCODES" "$ONESTEP" "$DADA2" "$DA
 OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 
-ARGS=("-cwd" "-b y" "-l mem_free=4G" "-P" "$QP" "-q threaded.q" "-pe thread 4" "-V" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "$QSUB_ARGS" "${MY_DIR}/illumina_dada2.pl" "$INPUT" "-wd" "$SD" "-v" "$VAR" "-m" "$MAP" "$OPTS")
+ARGS=("-cwd" "-b y" "-l mem_free=4G" "-P" "$QP" "-q threaded.q" "-pe thread 4" "-V" "-N" "MSL_$PROJECT" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "$QSUB_ARGS" "${MY_DIR}/illumina_dada2.pl" "$INPUT" "-wd" "$SD" "-v" "$VAR" "-m" "$MAP" "$OPTS")
 CMD=()
 for ARG in "${ARGS[@]}"; do
     if [[ -n "$ARG" ]]; then
@@ -529,6 +537,11 @@ Runs the pipeline without executing any of the shell commands. May be useful
 combined with B<--verbose>. (Currently with B<--dry-run>, the pipeline may not 
 progress far due to checkpoints that halt the pipeline if any step seems to 
 fail.)
+
+=item B<--email>
+
+Notify by email when the job is finished. Does this by adding "-m ea" to the
+outermost qsub call. Compatible with --qsub.
 
 =item B<--qsub>="options"
 
