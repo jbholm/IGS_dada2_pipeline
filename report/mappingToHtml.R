@@ -1,5 +1,20 @@
 #!/usr/bin/env Rscript
-
+options(
+    show.error.locations = TRUE,
+    show.error.messages = TRUE,
+    keep.source = TRUE,
+    warn = 1,
+    error = function() {
+      # cat(attr(last.dump,"error.message"))
+      sink(file = stderr())
+      dump.frames("dump", TRUE)
+      cat('\nTraceback:', file = stderr())
+      cat('\n', file = stderr())
+      traceback(2) # Print full traceback of function calls with all parameters. The 2 passed to traceback omits the outermost two function calls.
+      if (!interactive()) quit(status = 1)
+    },
+    stringsAsFactors = FALSE
+    )
 invisible({
 initial.options <- commandArgs(trailingOnly = FALSE)
 wd <- dirname(sub("--file=", "", initial.options[grep("--file=", initial.options)]))
@@ -30,7 +45,7 @@ if(is.null(opt$map)) {
     stop("Mapping file must be provided using -m or --map")
 }
 
-mapping <- read.delim(opt$map, row.names=NULL, header=FALSE, comment.char="#", na.strings="")
+mapping <- read.delim(opt$map, row.names=NULL, header=T, comment.char="", na.strings="")
 
 colnames(mapping) = c("ID", "Barcode 1", "Barcode 2", "Description")
 

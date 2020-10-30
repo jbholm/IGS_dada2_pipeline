@@ -315,7 +315,8 @@ def joinMaps(
         for map in files[1 : len(files)]:
             with open(map, "r") as inF:
                 for i, line in enumerate(inF):
-                    if i != 0 and re.search(r"^\S+(\t\S+){3}", line) is not None:
+                    if i != 0 and re.search(r"^\S+", line) is not None:
+                        # lenient: as long as line has non-whitespace chars, print
                         outF.write(line)
 
     return dest
