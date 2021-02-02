@@ -483,7 +483,7 @@ print $logTee "---Final files succesfully produced!\n";
 print $logTee
 "Final merged read count table: $final_merge\nFinal ASV table with taxa: $final_ASV_taxa\nFinal ASV count table: $projabund\nASV sequences: all_runs_dada2_ASV.fasta\n"
   ;    #Read survival stats: $finalStats\n";
-close $logTee;
+$logTee->close;
 
 ####################################################################
 ##                               SUBS
