@@ -741,65 +741,67 @@ if ($tbshtBarcodes) {
 
         $success = demux( $dir, 0 );
         if ($success) {
-            if ( !$dir eq $global_config{wd} ) {
+            # if ( !$dir eq $global_config{wd} ) {
 
-             # cleanup after ourselves, so the pipeline can continue like normal
-                dircopy( $dir, $global_config{wd} );
-            }
-            foreach ( keys %dirs_params ) {
-                if ( !$_ eq $global_config{wd} ) {
-                    remove_tree($_) or warn $!;
-                }
-            }
-            print $logTee "Demux succeeded when extract_barcodes.py called with"
+            #  # cleanup after ourselves, so the pipeline can continue like normal
+            #     dircopy( $dir, $global_config{wd} );
+            # }
+            # foreach ( keys %dirs_params ) {
+            #     if ( !$_ eq $global_config{wd} ) {
+            #         remove_tree($_) or warn $!;
+            #     }
+            # }
+            print $logTee "Demux may have succeeded when extract_barcodes.py called with"
               . " $dirs_params{$dir}\n";
-            last;
+            # last;
         } else {
             print $logTee "Demux failed when extract_barcodes.py called with "
               . "$dirs_params{$dir}\n";
         }
     }
-    if ( !$success ) {
-        print $logTee "Attempting all permutations of reverse-complemented "
-          . "switched indexes.\n";
 
-        for my $dir ( keys %dirs_params ) {
-            print $logTee "$dir\n";
-            print $logTee "$dirs_params{$dir}\n";
-            unless ( -e $dir or mkdir $dir ) {
-                die "Unable to create $dir\n";
-            }
-            print $logTee $dir;
-            barcodes(
-                oriParams => $dirs_params{$dir},
-                wd        => $dir,
-                switch    => 1
-            );
-            print $logTee $dir;
+    print $logTee "Attempting all permutations of reverse-complemented "
+        . "switched indexes.\n";
 
-            $success = demux( $dir, 0 );
-            if ($success) {
-                if ( !$dir eq $global_config{wd} ) {
+    for my $key ( keys %dirs_params ) {
+        my $dir = "${key}_switched";
+        print $logTee "$dir\n";
+        print $logTee "$dirs_params{$key}\n";
+        unless ( -e $dir or mkdir $dir ) {
+            die "Unable to create $dir\n";
+        }
+        print $logTee $dir;
+        barcodes(
+            oriParams => $dirs_params{$key},
+            wd        => $dir,
+            switch    => 1
+        );
+        print $logTee $dir;
 
-             # cleanup after ourselves, so the pipeline can continue like normal
-                    dircopy( $dir, $global_config{wd} );
-                }
-                foreach ( keys %dirs_params ) {
-                    if ( !$_ eq $global_config{wd} ) {
-                        remove_tree($_) or warn $!;
-                    }
-                }
-                print $logTee
-                  "Demux succeeded when extract_barcodes.py called with"
-                  . " $dirs_params{$dir} and switched indexes.\n";
-                last;
-            } else {
-                print $logTee
-                  "Demux failed when extract_barcodes.py called with "
-                  . "$dirs_params{$dir} and switched indexes.\n";
-            }
+        $success = demux( $dir, 0 );
+        if ($success) {
+            # if ( !$dir eq $global_config{wd} ) {
+
+            # # cleanup after ourselves, so the pipeline can continue like normal
+            #     dircopy( $dir, $global_config{wd} );
+            # }
+            # foreach ( keys %dirs_params ) {
+            #     if ( !$_ eq $global_config{wd} ) {
+            #         remove_tree($_) or warn $!;
+            #     }
+            # }
+            print $logTee
+                "Demux may have succeeded when extract_barcodes.py called with"
+                . " $dirs_params{$key} and switched indexes.\n";
+            # last;
+        } else {
+            print $logTee
+                "Demux failed when extract_barcodes.py called with "
+                . "$dirs_params{$key} and switched indexes.\n";
         }
     }
+    
+    die "Finished troubleshooting barcodes. Please inspect the split library logs in each trial directory to determine which demux was correct. Correct files can be moved back to this run directory, and the pipeline can be continued using '--debug splitsamples --debug tagclean --debug dada2'.";
 
 } else {
     if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
@@ -824,15 +826,17 @@ sub barcodes {
         $inDir ? find_raw_files( $inDir, $oneStep )
       : $oneStep ? ( $r1file, $r2file, $r1file, $r2file )
       :            ( $r1file, $r2file, $i1file, $i2file );
+    
+    if ($switch) { # Consider the i1's and i2's switched
+        my $oldi1 = $index1Input;
+        $index1Input = $index2Input;
+        $index2Input = $oldi1;
+    }
+
     my %localNames;
     @localNames{ ( "readsFor", "readsRev", "index1", "index2" ) } =
       convert_to_local_if_gz( $wd, $readsForInput, $readsRevInput,
         $index1Input, $index2Input );
-    if ($switch) {
-        my $oldi1 < -$localNames{index1};
-        $localNames{index1} = $localNames{index2};
-        $localNames{index2} = $oldi1;
-    }
 
     my $barcodes = "$wd/barcodes.fastq";
     my $nSamples = count_samples($map);
@@ -981,8 +985,7 @@ sub demux {
     print $logTee @_;
     my $wd          = shift;
     my $die_on_fail = shift;
-    print $logTee "$wd\n";
-    print $logTee "$die_on_fail\n";
+    print $logTee "Demuxing in: $wd\n";
 
     my $barcodes = "$wd/barcodes.fastq";
     my $nSamples = count_samples($map);
