@@ -62,6 +62,7 @@ taxonomies <-
     UNITE = "sh_general_release_dynamic_01.12.2017.fasta"
   )
 
+  message("About to read in sequences")
 fasta <- args$input[[1]]
 seqs <- dada2::getSequences(fasta)
 dummy <- lapply(args$tax, function(taxonomy) {
@@ -94,6 +95,7 @@ dummy <- lapply(args$tax, function(taxonomy) {
     )
   }
 
+  message("About to assign taxonomy")
   tryCatch({
     assignments <- dada2::assignTaxonomy(seqs,
                                 db,
@@ -108,6 +110,7 @@ dummy <- lapply(args$tax, function(taxonomy) {
   #   # remove any taxon level hints (k__, p__, c__, o__, g__, s__)
   #   return(gsub('^[a-zA-Z]__', '', taxon, perl = TRUE))
   # })
+  rownames(assignments$tax) <- names(seqs)
   write.csv(assignments$tax,
             paste(taxonomy, "classification.csv", sep = "."),
             quote = FALSE)

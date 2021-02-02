@@ -17,7 +17,7 @@ options(
 )
 .libPaths("/home/jolim/share/R/x86_64-pc-linux-gnu-library/3.6")
 require("argparse")
-
+library("Biostrings")
 
 initial.options <- commandArgs(trailingOnly = FALSE)
 pipelineDir <- dirname(dirname(sub("--file=", "", initial.options[grep("--file=", initial.options)])))
@@ -34,43 +34,52 @@ args <- parser$parse_args()
 if (is.null(args$seq)) {
   stop("Please provide --seq. Execute dada2_part2.R --help for help.")
 }
+if(any(!dir.exists(args$runs))) {
+  stop(do.call(base::paste, args = list(c(
+    "Directories do not exist:",
+    args$runs[!dir.exists(args$runs)]
+  ), sep = " ")))
+}
+
 require("dada2")
 library(tidyr)
-path <- getwd()
 
 runs <- args$runs %>% setNames(lapply(args$runs, basename))
 ## INPUT
 ## list all of the files matching the pattern 
 counts_and_stats <- (function(runs) {
-  tables<-sapply(runs, function(run) {
-    subdir <- file.path(path, run)
-    list.files(subdir, pattern="dada2_abundance_table.rds", full.names=TRUE)[[1]]
+  tables<-lapply(runs, function(run) {
+    readRDS(list.files(runs, pattern = "dada2_abundance_table.rds", full.names = TRUE)[[1]])
   })
-  stats<-sapply(runs, function(run) {
-    subdir <- file.path(path, run)
-    list.files(subdir, pattern="dada2_part1_stats.txt", full.names=TRUE)[[1]]
+  stats <- lapply(runs, function(run) {
+    read.csv(list.files(run, pattern = "dada2_part1_stats.txt", full.names = TRUE)[[1]], sep = "", stringsAsFactors = FALSE)
   })
+  old_stats_sample_names <- do.call(c, lapply(stats, rownames))
+  old_count_table_sample_names <- do.call(c, lapply(tables, rownames))
+  
+  new_sample_names <- make.names(old_stats_sample_names, unique = T)
+  stats <- do.call(rbind, stats) %>% `row.names<-`(new_sample_names)
 
-
-  ## get the run names using splitstring on the tables where - exists
-  runstats <- runs <- vector("list", length(tables)) %>% setNames(names(runs))
-  for (run in names(runs)) {
-    runs[[run]] <- readRDS(tables[run])
-    runstats[[run]] <- read.delim(stats[run])
+  # Combine count tables
+  unqs <- unique(c(sapply(tables, colnames), recursive=TRUE))
+  n<-sum(unlist(lapply(X=tables, FUN = nrow)))
+  st <- matrix(0L, nrow = n, ncol = length(unqs))
+  rownames(st) <- old_count_table_sample_names
+    colnames(st) <- unqs
+  for (run_count_table in tables) {
+    st[rownames(run_count_table), colnames(run_count_table)] <- run_count_table
   }
-
-  stats <- do.call(rbind, lapply(stats, function(f) {
-    read.csv(f, sep="", stringsAsFactors=FALSE)
+  
+  # Make count table sample names unique (and matching up with stat sample names)
+    stats_i <- 1
+  rownames(st) <- unlist(lapply(seq_along(old_count_table_sample_names), function(count_table_i) {
+    while (old_count_table_sample_names[count_table_i] != old_stats_sample_names[stats_i]) {
+      stats_i <<- stats_i + 1
+    }
+    return(new_sample_names[stats_i])
   }))
 
-  unqs <- unique(c(sapply(runs, colnames), recursive=TRUE))
-  n<-sum(unlist(lapply(X=runs, FUN = nrow)))
-  st <- matrix(0L, nrow=n, ncol=length(unqs))
-  rownames(st) <- c(sapply(runs, rownames), recursive=TRUE)
-  colnames(st) <- unqs
-  for(sti in runs) {
-    st[rownames(sti), colnames(sti)] <- sti
-  }
+  # sort ASVs by total frequency
   st <- st[, order(colSums(st), decreasing = TRUE)]
   return(list(counts = st, stats = stats))
 })(runs)
@@ -85,25 +94,17 @@ write.csv(seqtab, "all_runs_dada2_abundance_table.csv", quote=FALSE)
 outputs <- c("all_runs_dada2_abundance_table.rds", "all_runs_dada2_abundance_table.csv")
 # Create a reference FASTA containing all the ASVs from colnames(seqtab)
 # (each sequence's FASTA header is itself)
-fc = file("all_runs_dada2_ASV.fasta")
-fltp = character()
-for( i in 1:ncol(seqtab))
-{
-  fltp <- append(fltp, paste0(">", colnames(seqtab)[i]))
-  fltp <- append(fltp, colnames(seqtab)[i])
-}
-writeLines(fltp, fc)
-rm(fltp)
-close(fc)
-outputs <- append(outputs, "all_runs_dada2_ASV.fasta")
+fasta <- "all_runs_dada2_ASV.fasta"
+writeXStringSet(DNAStringSet(colnames(seqtab)), fasta, format = "fasta")
+outputs <- append(outputs, fasta)
 
 nonchimerics <- rowSums(seqtab)[rownames(counts_and_stats$stats)] %>%
   replace_na(0) %>%
   setNames(rownames(counts_and_stats$stats))
-project_stats <- cbind(counts_and_stats$stats, nonchimeric = nonchimerics)
+project_stats <- cbind(Sample = rownames(counts_and_stats$stats), counts_and_stats$stats, Nonchimeric = nonchimerics)
 write.table(project_stats, "DADA2_stats.txt",
   quote = FALSE, append = FALSE,
-  sep = "\t", row.names = TRUE, col.names = TRUE
+  sep = "\t", row.names = F, col.names = TRUE
 )
 outputs <- append(outputs, "DADA2_stats.txt")
 

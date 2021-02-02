@@ -10,7 +10,7 @@ parser = argparse.ArgumentParser(
     epilog="""""")
 parser.add_argument('--project', '-p', required=True,
                     help='The project name (the prefix for the abundance tables)')
-parser.add_argument('--twocol', nargs="*", metavar = "*.txt", help='Any two-column classification files (usu. *MC_order7_results.txt)')
+parser.add_argument('--twocol', nargs="*", metavar = "*.txt", help='Currently broken. Do not use.')
 parser.add_argument('--classif', '-c', nargs='*', metavar = "*.csv", help='Any non-PECAN classification CSVs containing one header line, ASVs in the first column and taxonomic assignments in the remaining columns. Do NOT omit the project prefix from these filenames, if present.')
 parser.add_argument('fasta', metavar="*.fasta", help='A FASTA file')
 parser.add_argument('--no-match-seqs', action='store_true')
@@ -42,12 +42,17 @@ if not args.no_match_seqs:
     csFASTA = ""
     file = open(fasta, "r")
     ln = 1
+    current_seq = ""
     for line in file:
-        if (ln % 2 == 1):
+        if ln == 1:
+            ln += 1
+            continue
+        if (not line.startswith(">")):
             line = line.strip()
-            line = line[1:len(line)]
-            csFASTA += "," + line  # Join all even lines by a comma
-        ln += 1
+            current_seq += line
+        else:
+            csFASTA += "," + current_seq  # Join all sequences by a comma
+            current_seq = ""
     file.close()
     # Remove a comma at the beginning of the line
     csFASTA = csFASTA[1:len(csFASTA)]
@@ -93,7 +98,7 @@ if not args.no_match_seqs:
     for csTwoCol in csTwoCols:
         for asvClassif, asvCSV in zip(csTwoCol.split(","), csFASTA.split(",")):
             if (asvClassif.strip() != asvCSV.strip()):
-                msg = asvClassif + " in " + ",".join(twoCols) + " is in the same position as " + asvCSV + " in " + csv + "!"
+                msg = asvClassif + " in " + ",".join(twoCols) + " is in the same position as " + asvCSV + " in " + fasta + "!"
                 print >> sys.stderr, msg
                 twoColsIdent = False
 
@@ -101,14 +106,16 @@ if not args.no_match_seqs:
     for csClassif in csClassifs:
         for asvClassif, asvCSV in zip(csClassif.split(","), csFASTA.split(",")):
             if (asvClassif.strip() != asvCSV.strip()):
-                msg = asvClassif + " in " + ",".join(classifs) + " is in the same position as " + asvCSV + " in " + csv + "!"
+                msg = asvClassif + " in " + ",".join(classifs) + " is in the same position as " + asvCSV + " in " + fasta + "!"
                 print >> sys.stderr, msg
                 classifsIdent = False
+                quit()
     csvIdent = True
     for asvCSV, asvFasta in zip(csCSV.split(","), csFASTA.split(",")):
         if (asvCSV.strip() != asvFasta.strip()):
             msg = asvCSV + " in " + csv + " is in the same position as " + asvFasta + " in " + fasta + "!"
             print >> sys.stderr, msg
+            quit()
             csvIdent = False
     # Test that all files provided with command-line options match the provided fasta
     if any([not csvIdent, not classifsIdent, not twoColsIdent]):
@@ -181,13 +188,14 @@ baks.append(fasta + ".bak")
 try:
     with open(fasta + ".bak", "r") as inFh:
         with open(fasta, "w") as outFh:
-            ln = 1
+            seq = 0
             for line in inFh:
-                if (ln % 2 == 1):  # odd-number lines contain fasta headers
+                if line.startswith(">"):  # odd-number lines contain fasta headers
                     # We know the FASTA has ASVs in the same order as the CSV
-                    line = ">" + asvIds[ln / 2] + "\n"
+                    line = ">" + asvIds[seq] + "\n"
+                    seq += 1
                 outFh.write(line)
-                ln += 1
+                
 except Exception as error:
     exc_type, exc_obj, exc_tb = sys.exc_info()
     # Restore everything to the way it was
@@ -218,24 +226,29 @@ for classif in classifs:
         print str(exc_tb.tb_lineno) + ": " + str(error)
         sys.exit(1)
 
-for twoCol in twoCols:
-    shutil.move(twoCol, twoCol + ".bak")
-    baks.append(twoCol + ".bak")
-    try:
-        with open(twoCol + ".bak", "r") as inFh:
-            with open(twoCol, "w") as outFh:
-                ln = 0
-                for line in inFh:
+# for some reason this trashes the second column. Haven't needed to process condensed
+# classification tables, so haven't fixed this.
+# for twoCol in twoCols:
+#     shutil.move(twoCol, twoCol + ".bak")
+#     baks.append(twoCol + ".bak")
+#     try:
+#         with open(twoCol + ".bak", "r") as inFh:
+#             with open(twoCol, "w") as outFh:
+#                 ln = 0
+#                 for line in inFh:
                 
-                    fields = line.split()
-                    fields[0] = asvIds[ln]
-                    outFh.write("\t".join(fields) + "\n")
-                    ln += 1
-    except Exception as error:
-        exc_type, exc_obj, exc_tb = sys.exc_info()
-        # Restore everything to the way it was
-        revertBaks(baks)
-        print str(exc_tb.tb_lineno) + ": " + str(error)
-        sys.exit(1)
+#                     fields = line.split()
+#                     print(fields)
+#                     fields[0] = asvIds[ln]
+#                     print("\t".join(fields))
+#                     sys.exit()
+#                     outFh.write("\t".join(fields) + "\n")
+#                     ln += 1
+#     except Exception as error:
+#         exc_type, exc_obj, exc_tb = sys.exc_info()
+#         # Restore everything to the way it was
+#         revertBaks(baks)
+#         print str(exc_tb.tb_lineno) + ": " + str(error)
+#         sys.exit(1)
 
 removeBaks(baks)

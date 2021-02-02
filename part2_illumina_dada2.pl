@@ -27,7 +27,7 @@
 
       From RHEL5:
       screen
-      qlogin -P jravel-lab -l mem_free=500M -q interactive.q
+      qlogin -P jravel-lab -l mem_free=16G -q interactive.q
       export LD_LIBRARY_PATH=/usr/local/packages/gcc/lib64
       source /usr/local/packages/usepackage/share/usepackage/use.bsh
       use python-2.7
@@ -124,6 +124,7 @@ use Pod::Usage;
 use English qw( -no_match_vars );
 use Getopt::Long qw(:config no_ignore_case no_auto_abbrev pass_through);
 require Cwd;
+use Cwd qw(abs_path getcwd);
 use File::Temp qw/ tempfile /;
 require POSIX;
 require IO::Tee;
@@ -180,6 +181,27 @@ my $projDir = Cwd::cwd;
 
 ##split the list of runs to an array
 my @runs = split( ",", $inRuns );
+
+# Refine and validate all variables that refer to the filesystem
+foreach (@runs) {
+    if ( $_ ) {    # If the variable is a non-empty string...
+        my $copy = $_;
+        $copy =~ s/\/$//;      # remove any trailing slash
+        my $relPath = $copy;
+        $copy = abs_path($relPath);    # get abs path
+            # At the same time, abs_path returns undef if the path doesn't exist
+            # so we can verify the existence of each file and directory
+        if ( !defined $copy or ! -d $copy ) {
+            print
+            die $_
+              . " not found.\n"
+              . "Current working directory: "
+              . getcwd() . "\n";
+        }
+        $_ =
+          $copy;    # external variable referenced by path has now been edited.
+    }
+}
 
 # PRINT TO LOG ASAP
 my $log = "$project" . "_part2_16S_pipeline_log.txt";
@@ -307,8 +329,9 @@ my @classifs = ();
 my $projabund;
 
 # the un-annotated abundance table signals dada2 already completed
-my $cmd = "rm -f *-dada2_abundance_table.rds";
-execute_and_log( $cmd, *STDOUT, $dryRun, "" );
+# my $cmd = "rm -f *-dada2_abundance_table.rds";
+# execute_and_log( $cmd, *STDOUT, $dryRun, "" );
+my $cmd;
 
 ##loop over array to copy the file to the main current working directory
 ## using the array string to also add a name
@@ -336,6 +359,12 @@ if ( List::Util::any { !-e $_ } ( $abundRds, $abund, $fasta, $stats ) ) {
 } else {
     print $logTee "Chimeras already removed. Skipping...\n";
 }
+
+# Give ASV's unique and easy-to-look-up IDs
+$cmd =
+"python2 $scriptsDir/rename_asvs.py $fasta -p $project";
+execute_and_log( $cmd, $logTee, $dryRun,
+    "---Renaming ASVs in FASTA, abundance tables, and classification key(s)." );
 
 my $species_file;
 my @full_classif_csvs;
@@ -374,14 +403,6 @@ if ( scalar @dada2_taxonomy_list > 0 ) {
     push( @full_classif_csvs, @output );
 
 }
-
-# Give ASV's unique and easy-to-look-up IDs
-# Figure out what to do when DADA2_combine_and_classify_ITS is run (both silva
-# and unite classification csvs are created)
-$cmd =
-"python2 $scriptsDir/rename_asvs.py $fasta -p $project -c @full_classif_csvs --twocol @two_col_classifs";
-execute_and_log( $cmd, $logTee, $dryRun,
-    "---Renaming ASVs in FASTA, abundance tables, and classification key(s)." );
 
 my $pecanFile = "MC_order7_results.txt";
 if ( $taxonomy_flags{PECAN} ) {

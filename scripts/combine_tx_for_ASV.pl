@@ -54,15 +54,7 @@ BEGIN {
 }
 use strict;
 use warnings;
-my $scriptsDir;
-my $pipelineDir;
 
-BEGIN {
-    use File::Spec::Functions;
-    use File::Basename;
-
-    $scriptsDir = dirname(__FILE__);
-}
 use Pod::Usage;
 use English qw( -no_match_vars );
 use Getopt::Long qw(:config no_ignore_case no_auto_abbrev pass_through);
