@@ -337,6 +337,8 @@ foreach (@paths) {
 }
 
 
+my $R = "/usr/local/packages/r-3.6.0/bin/R";
+
 # Find the input files, and find their putative locations if the index files
 # were to be decompressed to our working directory.
 # In one-step runs, $index1Input and $index2Input are the SAME files

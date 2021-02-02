@@ -10,86 +10,110 @@ parser = argparse.ArgumentParser(
     epilog="""""")
 parser.add_argument('--project', '-p', required=True,
                     help='The project name (the prefix for the abundance tables)')
-parser.add_argument('--pecan', nargs="?", const="", default="",
-                    help='A pecan classification file (usu. *MC_order7_results.txt)')
-parser.add_argument('--classif', '-c', nargs='*', help='Any non-PECAN classification CSVs containing one header line, ASVs in the first column and taxonomic assignments in the remaining columns. Do NOT omit the project prefix from these filenames, if present.')
-parser.add_argument(
-    '--labeledCsv', help='The *_abundance_table_<taxonomy>_w_taxa.csv file.')
-# Get rid of --labeledCsv asap; in the next versionof part2, renaming asvs will happen before
-# the count tables are labeled with taxa.
+parser.add_argument('--twocol', nargs="*", metavar = "*.txt", help='Any two-column classification files (usu. *MC_order7_results.txt)')
+parser.add_argument('--classif', '-c', nargs='*', metavar = "*.csv", help='Any non-PECAN classification CSVs containing one header line, ASVs in the first column and taxonomic assignments in the remaining columns. Do NOT omit the project prefix from these filenames, if present.')
+parser.add_argument('fasta', metavar="*.fasta", help='A FASTA file')
+parser.add_argument('--no-match-seqs', action='store_true')
 args = parser.parse_args()
 
 csv = args.project + "_all_runs_dada2_abundance_table.csv"
-fasta = "all_runs_dada2_ASV.fasta"
+if args.fasta:
+    fasta = args.fasta
 #taxaCsv = args.labeledCsv
-if args.classif is None:
-    args.classif = []
 classifs = []
-for file in args.classif:
-    classifs.append(file)
+if args.classif:
+    for file in args.classif:
+        classifs.append(file)
+twoCols = []
+if args.twocol:
+    for file in args.twocol:
+        twoCols.append(file)
 
 # There are three files containing headers/rownames that reference sequences
 # in a FASTA. Are the sequences, headers, and rownames in the same order?
 
-file = open(csv, "r")
-csCSV = file.readline().strip()  # comma-separated string of asvs from the CSV
-csCSV = csCSV[1:len(csCSV)]  # Remove a comma at the beginning of the line
-file.close()
+if not args.no_match_seqs:
 
-csFASTA = ""
-file = open(fasta, "r")
-ln = 1
-for line in file:
-    if (ln % 2 == 1):
-        line = line.strip()
-        line = line[1:len(line)]
-        csFASTA += "," + line  # Join all even lines by a comma
-    ln += 1
-file.close()
-# Remove a comma at the beginning of the line
-csFASTA = csFASTA[1:len(csFASTA)]
+    file = open(csv, "r")
+    csCSV = file.readline().strip()  # comma-separated string of asvs from the CSV
+    csCSV = csCSV[1:len(csCSV)]  # Remove a comma at the beginning of the line
+    file.close()
 
-# csTaxaCSV = ""
-# with open(taxaCsv, "r") as file:
-#     csTaxaCSV += file.readline().strip() # comma-separated string of asvs from the CSV
+    csFASTA = ""
+    file = open(fasta, "r")
+    ln = 1
+    for line in file:
+        if (ln % 2 == 1):
+            line = line.strip()
+            line = line[1:len(line)]
+            csFASTA += "," + line  # Join all even lines by a comma
+        ln += 1
+    file.close()
+    # Remove a comma at the beginning of the line
+    csFASTA = csFASTA[1:len(csFASTA)]
 
-# csTaxaCSV = csTaxaCSV[1:(len(csTaxaCSV))]
-# Remove leading comma
+    # csTaxaCSV = ""
+    # with open(taxaCsv, "r") as file:
+    #     csTaxaCSV += file.readline().strip() # comma-separated string of asvs from the CSV
 
-csClassifs = []
-for classif in classifs:
-    csClassif = ""
-    with open(classif, "r") as file:
-        ln = 1
-        for line in file:
-            if ln != 1:
-                csClassif += "," + line.strip().split(",")[0]
-            ln += 1
-    csClassif = csClassif[1:len(csClassif)]
-    csClassifs.append(csClassif)
+    # csTaxaCSV = csTaxaCSV[1:(len(csTaxaCSV))]
+    # Remove leading comma
+
+    csClassifs = []
+    for classif in classifs:
+        csClassif = ""
+        with open(classif, "r") as file:
+            ln = 1
+            for line in file:
+                if ln != 1:
+                    csClassif += "," + line.strip().split(",")[0]
+                ln += 1
+        csClassif = csClassif[1:len(csClassif)]
+        csClassifs.append(csClassif)
+
+    csTwoCols = []
+    for twoCol in twoCols:
+        csTwoCol = ""
+        with open(twoCol, "r") as file:
+            for line in file:
+                csTwoCol += line.split()[0] + ","
+
+            csTwoCol = csTwoCol[0:(len(csTwoCol) - 1)]
+        csTwoCols.append(csTwoCol)
+        
+        # for asvPecan, asvCSV in zip(csPecan.split(","), csCSV.split(",")):
+        #     if asvPecan != asvCSV:
+        #         pecanIdent = False
+        #         print(asvPecan + " in " + args.pecan + " is in the same position as " + asvCSV + " in " + csv + "!")
 
 
-pecanIdent = True
-if args.pecan != "":
-    with open(args.pecan, "r") as file:
-        csPecan = ""
-        for line in file:
-            csPecan += line.split()[0] + ","
+    # Test if all the classification files have ordered ASVs identical to the
+    # abundance table
+    twoColsIdent = True
+    for csTwoCol in csTwoCols:
+        for asvClassif, asvCSV in zip(csTwoCol.split(","), csFASTA.split(",")):
+            if (asvClassif.strip() != asvCSV.strip()):
+                msg = asvClassif + " in " + ",".join(twoCols) + " is in the same position as " + asvCSV + " in " + csv + "!"
+                print >> sys.stderr, msg
+                twoColsIdent = False
 
-        csPecan = csPecan[0:(len(csPecan) - 1)]
-    if csPecan != csCSV:
-        pecanIdent = False
-
-# Test if all the classification files have ordered ASVs identical to the
-# abundance table
-classifsIdent = True
-for csClassif in csClassifs:
-    if csClassif != csCSV:
-        classifsIdent = False
-# Test that the abundance tables and reference FASTA have identical ordered ASVs
-if any([csCSV != csFASTA, not classifsIdent, not pecanIdent]):
-    print >> sys.stderr, "ASVs in the DADA2 unclassified ASV abundance table and the ASV fasta are not in the same order (or might not even be identical sets of ASVs).\nModify scripts/rename_asvs.py to handle this scenario.\n\n"
-    sys.exit(1)
+    classifsIdent = True
+    for csClassif in csClassifs:
+        for asvClassif, asvCSV in zip(csClassif.split(","), csFASTA.split(",")):
+            if (asvClassif.strip() != asvCSV.strip()):
+                msg = asvClassif + " in " + ",".join(classifs) + " is in the same position as " + asvCSV + " in " + csv + "!"
+                print >> sys.stderr, msg
+                classifsIdent = False
+    csvIdent = True
+    for asvCSV, asvFasta in zip(csCSV.split(","), csFASTA.split(",")):
+        if (asvCSV.strip() != asvFasta.strip()):
+            msg = asvCSV + " in " + csv + " is in the same position as " + asvFasta + " in " + fasta + "!"
+            print >> sys.stderr, msg
+            csvIdent = False
+    # Test that all files provided with command-line options match the provided fasta
+    if any([not csvIdent, not classifsIdent, not twoColsIdent]):
+        print >> sys.stderr, "ASVs in the DADA2 unclassified ASV abundance table and the ASV fasta are not in the same order (or might not even be identical sets of ASVs).\nModify scripts/rename_asvs.py to handle this scenario.\n\n"
+        # sys.exit(1)
 
 # Create a backup of the file so we can change just the first line
 shutil.move(csv, csv + ".bak")
@@ -194,17 +218,18 @@ for classif in classifs:
         print str(exc_tb.tb_lineno) + ": " + str(error)
         sys.exit(1)
 
-if args.pecan != "":
-    shutil.move(args.pecan, args.pecan + ".bak")
-    baks.append(args.pecan + ".bak")
+for twoCol in twoCols:
+    shutil.move(twoCol, twoCol + ".bak")
+    baks.append(twoCol + ".bak")
     try:
-        with open(args.pecan + ".bak", "r") as inFH:
-            with open(args.pecan, "w") as outFH:
+        with open(twoCol + ".bak", "r") as inFh:
+            with open(twoCol, "w") as outFh:
                 ln = 0
-                for line in inFH:
+                for line in inFh:
+                
                     fields = line.split()
                     fields[0] = asvIds[ln]
-                    outFH.write("\t".join(fields) + "\n")
+                    outFh.write("\t".join(fields) + "\n")
                     ln += 1
     except Exception as error:
         exc_type, exc_obj, exc_tb = sys.exc_info()

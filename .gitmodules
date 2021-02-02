@@ -1,0 +1,3 @@
+[submodule "ext/SPINGO"]
+	path = ext/SPINGO
+	url = https://github.com/GuyAllard/SPINGO.git
