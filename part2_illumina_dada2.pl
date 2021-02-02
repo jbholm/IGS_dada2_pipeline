@@ -87,6 +87,9 @@
   SILVA-derived taxonomic assignments, including two that are renamed to 
   BVAB_TM7.
 
+=item B<--noreport>
+  Flag to skip creating HTML report.
+
 =item B<-h|--help>
   Print help message and exit successfully.
 
@@ -123,6 +126,7 @@ use Getopt::Long qw(:config no_ignore_case no_auto_abbrev pass_through);
 require Cwd;
 use File::Temp qw/ tempfile /;
 require POSIX;
+require IO::Tee;
 
 #use Email::MIME;
 #use Email::Sender::Simple qw(sendmail);
@@ -137,6 +141,7 @@ $OUTPUT_AUTOFLUSH = 1;
 
 my $csts   = 1;
 my $pacbio = 0;
+my $report = 1;
 
 # this is the way it is only to preserve the interface of --notVaginal. In the future, please change to --no-vaginal
 my $vaginal    = 1;
@@ -156,28 +161,33 @@ GetOptions(
     "tax|t=s"             => \@strategies,
     "oral"                => \my $oral,
     "csts!"               => \$csts,
-    "pacbio!"             => \$pacbio
+    "pacbio!"             => \$pacbio,
+    "report!"             => \$report
   )
 
   or pod2usage( verbose => 0, exitstatus => 1 );
 
+### REASONS FOR STOPPING IMMEDIATELY
 if ($help) {
     pod2usage( verbose => 2, exitstatus => 0 );
     exit 1;
 }
-
+if ( !$project ) {
+    die "Please provide a project name\n\n";
+}
 
 my $projDir = Cwd::cwd;
 
 ##split the list of runs to an array
 my @runs = split( ",", $inRuns );
 
+# PRINT TO LOG ASAP
 my $log = "$project" . "_part2_16S_pipeline_log.txt";
 open my $logFH, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
-
 print $logFH "This file logs the progress of "
   . scalar(@runs)
   . " runs for $project 16S amplicon sequences through the illumina_dada2.pl pipeline.\n";
+
 my $logTee = new IO::Tee( \*STDOUT, $logFH );
 print $logTee "PIPELINE VERSION: " . Version::version() . "\n";
 my $time = POSIX::strftime( "%Y-%m-%d %H:%M:%S", localtime(time) );
@@ -283,14 +293,8 @@ my $pecan;
     }
 }
 
-if ( !$project ) {
-    print "Please provide a project name\n\n";
-    pod2usage( verbose => 2, exitstatus => 0 );
-    exit 1;
-}
-
 if ( !$inRuns ) {
-    print "Please provide (a) run ID(s)\n\n";
+    print $logTee "Please provide (a) run ID(s)\n\n";
     pod2usage( verbose => 2, exitstatus => 0 );
     exit 1;
 }
@@ -304,10 +308,7 @@ my $projabund;
 
 # the un-annotated abundance table signals dada2 already completed
 my $cmd = "rm -f *-dada2_abundance_table.rds";
-print "\tcmd=$cmd\n" if $dryRun || $debug;
-system($cmd) == 0
-  or die "system($cmd) failed with exit code: $?"
-  if !$dryRun;
+execute_and_log( $cmd, *STDOUT, $dryRun, "" );
 
 ##loop over array to copy the file to the main current working directory
 ## using the array string to also add a name

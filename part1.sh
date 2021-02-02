@@ -87,6 +87,18 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         try_assign MAP "$1" "$2"
         shift 2
         ;;
+    --bclen)
+        if [[ "$2" =~ ^- || ! -n "$2" ]]; then
+            stop "--bclen missing its value. Unable to continue."
+        else 
+            BCLENGTH="--bclen $2"
+            shift 2
+        fi
+        ;;
+    --troubleshoot_barcodes)
+        TROUBLESHOOT_BARCODES=$1
+        shift 1
+        ;;
     -v|--var-reg)
         try_assign VAR "$1" "$2"
         shift 2
@@ -139,6 +151,10 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
     -qp|--qsub-project)
         try_assign QP "$1" "$2"
         shift 2
+        ;;
+    --email)
+        EMAIL="-m ea"
+        shift 1
         ;;
     *) # preserve positional arguments even if they fall between other params
     # note that options and their operands will be separate elements of $PARAMS
@@ -317,6 +333,10 @@ if [[ -n "$VERBOSE" ]]; then
     "All shell commands will be printed to: \n${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout"
 fi
 
+if [[ -n "$EMAIL" ]]; then
+    QSUB_ARGS="$QSUB_ARGS $EMAIL"
+fi
+
 # Acquire binaries
 use sge
 . /usr/local/packages/qiime-1.9.1/activate.sh
@@ -328,11 +348,11 @@ export LD_LIBRARY_PATH=/usr/local/packages/python-2.7.14/lib:/usr/local/packages
 log="$SD/${PROJECT}_${RUN}_16S_pipeline_log.txt"
 
 # Remove extra spaces caused by joining empty arguments with a whitespace
-OPTSARR=("$DADA2" "$DADA2MEM" "$DBG" "$VERBOSE" "$DRY_RUN" "$ONESTEP" "$PARAMS")
+OPTSARR=("$PARAMS" "$BCLENGTH" "$TROUBLESHOOT_BARCODES" "$ONESTEP" "$DADA2" "$DADA2MEM" "$DBG" "$VERBOSE" "$DRY_RUN")
 OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 
-ARGS=("-cwd" "-b y" "-l mem_free=4G" "-P" "$QP" "-q threaded.q" "-pe thread 4" "-V" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "$QSUB_ARGS" "${MY_DIR}/illumina_dada2.pl" "$INPUT" "-wd" "$SD" "-v" "$VAR" "-m" "$MAP" "$OPTS")
+ARGS=("-cwd" "-b y" "-l mem_free=4G" "-P" "$QP" "-q threaded.q" "-pe thread 4" "-V" "-N" "MSL_$PROJECT" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "$QSUB_ARGS" "${MY_DIR}/illumina_dada2.pl" "$INPUT" "-wd" "$SD" "-v" "$VAR" "-m" "$MAP" "$OPTS")
 CMD=()
 for ARG in "${ARGS[@]}"; do
     if [[ -n "$ARG" ]]; then
@@ -451,6 +471,21 @@ Indicate an existing directory in which to place the project directory.
 "scratch" (default) evaluates to "/local/scratch/" and "groupshare" evaluates to
 "/local/groupshare/ravel".
 
+=item B<--bclen> LENGTH
+
+The length of forward and reverse barcodes. This many bases is removed from the
+index 1 and index 2 of each read, concatenated, and used to demultiplex the
+reads according to the provided map. (In our current pipeline, the indexes ARE
+exactly this length.)
+
+=item B<--troubleshoot_barcodes>
+
+Try all four permutations of reverse-complementing and switching the 
+concatenation order of the indexes. Whichever of the four permutations yields a
+successful demux is used. Note: Performing these transformations on the indexes 
+may coincidentally yield a barcode that seems to be correct, even though the 
+overall demux is incorrect. 
+
 =item B<-h>, B<--help>
 
 Print help message and exit successfully.
@@ -463,7 +498,34 @@ default is jravel-lab.
 =item B<--debug>, B<-d> {barcodes, demux, splitsamples, tagclean, dada2}
 
 Runs one or more sections of the pipeline. To run multiple sections, type 
-"--debug <section>" or "-d <section>" for each section.
+"--debug <section>" or "-d <section>" for each section. 
+
+Section inputs:
+
+Barcodes
+
+1) raw reads and indexes
+2) map
+
+Demux
+
+1) ./barcodes.fastq
+2) map
+
+Splitsamples
+
+1) ./fwdSplit/seqs.fastq
+2) ./revSplit/seqs.fastq
+
+Tagclean
+
+1) ./fwdSplit/split_by_sample_out/<sample_id>_*.fastq
+2) ./revSplit/split_by_sample_out/<sample_id>_*.fastq
+
+DADA2 (the sample_id is delimited by the first underscore character)
+
+1) ./<sample_id>_*R1_tc.fastq
+2) ./<sample_id>_*R2_tc.fastq
 
 =item B<--verbose>
 
@@ -475,6 +537,11 @@ Runs the pipeline without executing any of the shell commands. May be useful
 combined with B<--verbose>. (Currently with B<--dry-run>, the pipeline may not 
 progress far due to checkpoints that halt the pipeline if any step seems to 
 fail.)
+
+=item B<--email>
+
+Notify by email when the job is finished. Does this by adding "-m ea" to the
+outermost qsub call. Compatible with --qsub.
 
 =item B<--qsub>="options"
 
