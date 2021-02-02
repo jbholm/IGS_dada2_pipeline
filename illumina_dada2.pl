@@ -2308,6 +2308,7 @@ options(
     },
     stringsAsFactors = FALSE
     )
+    .libPaths("/home/jolim/share/R/x86_64-pc-linux-gnu-library/3.6")
   library("dada2")
   packageVersion("dada2")
   cwd<-getwd()

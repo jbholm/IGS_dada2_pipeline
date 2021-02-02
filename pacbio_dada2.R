@@ -21,6 +21,7 @@ packageVersion("dada2") # 1.12.1  cwd<-getwd()
 require("argparse")
 require("autothresholdr")
 require("ShortRead")
+library(tidyr)
 
 parser <- ArgumentParser(description = "Assign taxa")
 parser$add_argument(
@@ -61,7 +62,11 @@ trim_primers <- function(ins, outs) {
   }
   
   cat("Trimming primers from: \n")
-  cat(paste(names(ins), "\n"))
+  if (! is.null(names(ins))) {
+    cat(paste(names(ins), "\n"))
+  } else {
+    cat(paste(ins, "\n"))
+  }
 
   # Remove primers. Discard reads without primers. Write these counts somewhere?
   prims <-
@@ -83,19 +88,23 @@ trim_and_filter <- function(ins, outs) {
     return()
   }
   cat("Quality-trimming and filtering: \n")
-  cat(paste(names(ins), "\n"))
+  if (! is.null(names(ins))) {
+    cat(paste(names(ins), "\n"))
+  } else {
+    cat(paste(ins, "\n"))
+  }
 
   targets <- if (length(ins) > 5) {
     sample(x = 1:length(ins), size = 5, replace = FALSE)
   } else {
     seq_along(ins)
   }
-  postscript("01_tagcleaned_reads_quality.eps")
-  dada2::plotQualityProfile(ins[targets])
+  png("01_tagcleaned_reads_quality.png", width = 1020, height = 600)
+  print(suppressMessages(dada2::plotQualityProfile(ins[targets])))
   dev.off()
 
-  postscript("02_tagcleaned_reads_quality_aggregate.eps")
-  dada2::plotQualityProfile(ins, aggregate = TRUE)
+  png("02_tagcleaned_reads_quality_aggregate.png", width = 1020, height = 600)
+  print(dada2::plotQualityProfile(ins, aggregate = TRUE))
   dev.off()
 
   quality_trimmed <- paste0(outs, ".qtrim.fastq.gz")
@@ -109,7 +118,7 @@ trim_and_filter <- function(ins, outs) {
     maxEE = Inf,
     rm.phix = FALSE, # DADA2 PacBio tutorials did not remove PhiX
     compress = TRUE,
-    multithread = F,
+    multithread = T,
     verbose = TRUE
   )
 
@@ -178,7 +187,7 @@ trim_and_filter <- function(ins, outs) {
     maxLen = max_length,
     rm.phix = FALSE,
     compress = TRUE,
-    multithread = F,
+    multithread = T,
     verbose = TRUE
   )
   file.remove(quality_trimmed)
@@ -238,7 +247,10 @@ names(tcs) <- names(fastqs)
 samples <- cbind(samples, primer_trimmed = tcs)
 targets <- ! tcs %in% list.files(tagcleanedpath, full.names=T)
  # don't process repeats
- primer_trim_output <- trim_primers(ins = samples$CCS[targets], outs = samples$primer_trimmed[targets])
+ primer_trim_output <- trim_primers(
+   ins = samples$CCS[targets] %>% setNames(rownames(samples)[targets]), 
+   outs = samples$primer_trimmed[targets]
+ )
 
 filtpath <- file.path("filtered")
 tryCatch(dir.create(filtpath, showWarnings = TRUE),
@@ -252,7 +264,10 @@ names(filtereds_files) <- names(tcs)
 samples <- cbind(samples, filtered = filtereds_files)
 targets <- !filtereds_files %in% list.files(filtpath, full.names = T)
 
-trim_and_filter_output <- trim_and_filter(ins = samples$primer_trimmed[targets], outs = samples$filtered[targets])
+trim_and_filter_output <- trim_and_filter(
+  ins = samples$primer_trimmed[targets] %>% setNames(rownames(samples)[targets]), 
+  outs = samples$filtered[targets]
+)
 
 seq_tab_output <- "dada2_abundance_table.rds"
 seq_tab <- denoise(filtereds_files)
@@ -265,6 +280,7 @@ stats <- collectStats(
   filtered_files = filtereds_files,
   denoised_table = seq_tab
 )
+colnames(stats) = c("Input", "Adapter-trimmed", "Filtered", "Denoised")
 write.table(stats, "dada2_part1_stats.txt", quote = FALSE, append = FALSE, sep = , row.names = TRUE, col.names = TRUE)
 
 remove_chimeras <- function(args) {
