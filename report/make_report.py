@@ -179,9 +179,12 @@ def main(pw, args):
     )
     f.close()
 
-    mytemplate = opts["lookup"].get_template("data.js")
+    cpAssets(
+        [os.path.join(scriptDir, subdir) for subdir in ("js", "css")], reportFilesDir
+    )
 
-    with open(pw.script("js/data.js"), "w") as f:
+    mytemplate = opts["lookup"].get_template("data.js")
+    with open(pw.res("js/data.js"), "w") as f:
         f.write(
             mytemplate.render(
                 asvtablesjs=asvTables["js"],
@@ -192,15 +195,6 @@ def main(pw, args):
                 plotly=args.plotly,
             )
         )
-
-    #        files = os.listdir(srcAbs)
-    #        for f in files:
-    #            shutil.move(os.path.join(srcAbs, f), os.path)
-    cpAssets(
-        [os.path.join(scriptDir, subdir) for subdir in ("js", "css")], reportFilesDir
-    )
-
-    # minifyCss(pw.pd)
 
     print("Report created at " + os.path.join(reportDir, "Report.html"))
 
