@@ -127,6 +127,21 @@ project and run names will be parsed. The last directory on PATH should be named
 after the run, and the second-to-last directory on PATH should be named after
 the project.
 
+=item B<--bclen> LENGTH
+
+The length of forward and reverse barcodes. This many bases is removed from the
+index 1 and index 2 of each read, concatenated, and used to demultiplex the
+reads according to the provided map. (In our current pipeline, the indexes ARE
+exactly this length.)
+
+=item B<--troubleshoot_barcodes>
+
+Try all four permutations of reverse-complementing and switching the 
+concatenation order of the indexes. Whichever of the four permutations yields a
+successful demux is used. Note: Performing these transformations on the indexes 
+may coincidentally yield a barcode that seems to be correct, even though the 
+overall demux is incorrect. 
+
 =item B<-h>, B<--help>
 
 Print help message and exit successfully.
@@ -143,6 +158,33 @@ to run multiple consecutive parts of the pipeline, provided that the input to
 the earliest requested step is present. Any non-consecutive steps will be 
 ignored.
 
+Section inputs:
+
+Barcodes
+
+1) raw reads and indexes
+2) map
+
+Demux
+
+1) ./barcodes.fastq
+2) map
+
+Splitsamples
+
+1) ./fwdSplit/seqs.fastq
+2) ./revSplit/seqs.fastq
+
+Tagclean
+
+1) ./fwdSplit/split_by_sample_out/<sample_id>_*.fastq
+2) ./revSplit/split_by_sample_out/<sample_id>_*.fastq
+
+DADA2 (the sample_id is delimited by the first underscore character)
+
+1) ./<sample_id>_*R1_tc.fastq
+2) ./<sample_id>_*R2_tc.fastq
+
 =item B<--verbose>
 
 Prints each command to STDOUT.
@@ -151,6 +193,7 @@ Prints each command to STDOUT.
 
 =cut
 
+use 5.010;    # for //
 use strict;
 use warnings;
 my $scriptsDir;
@@ -177,6 +220,9 @@ require File::Copy;
 require List::Util;
 use JSON;
 require IO::Tee;
+use File::Path qw( remove_tree );
+use File::Copy::Recursive qw(dircopy );
+use Data::Dumper;
 
 $OUTPUT_AUTOFLUSH = 1;
 
@@ -184,9 +230,11 @@ $OUTPUT_AUTOFLUSH = 1;
 ##                             OPTIONS
 ####################################################################
 
+my %global_config;
 my @dbg;
-my $oneStep = 0;
-my $dada2mem = "1G";
+my $oneStep       = 0;
+my $dada2mem      = "1G";
+my $tbshtBarcodes = 0;
 GetOptions(
     "raw-path|i=s"           => \my $inDir,
     "r1=s"                   => \my $r1file,
@@ -200,6 +248,7 @@ GetOptions(
     "verbose!"               => \my $verbose,
     "dry-run!"               => \my $dryRun,
     "noskip!"                => \my $noSkip,
+    "bclen=i"                => \my $bcLen,
     "dada2-truncLen-f|for=i" => \my $f,
     "dada2-truncLen-r|rev=i" => \my $r,
     "dada2-maxN=s"           => \my $maxN,
@@ -211,8 +260,9 @@ GetOptions(
     "dada2-minQ=s"           => \my $minQ,
     "dada2-mem:s"            => \$dada2mem,
     "1Step!"                 => \$oneStep,
-    "working-dir|wd=s"       => \my $wd,
+    "working-dir|wd=s"       => \$global_config{wd},
     "qsub-project|qp=s"      => \my $qproj,
+    "troubleshoot_barcodes!" => \$tbshtBarcodes,
   )
 ##add option for final resting place of important data
 
@@ -260,9 +310,11 @@ if ( !$var ) {
       . " or -v ITS)\n\n";
     exit 1;
 }
-if ( !$wd ) {
+if ( !$global_config{wd} ) {
     die "\n***Please choose a working directory (-wd).";
 }
+
+if ($tbshtBarcodes) { @dbg = (); }
 
 if (@dbg) {
     my $q  = grep( /^validate$/,     @dbg );
@@ -279,7 +331,6 @@ if (@dbg) {
     $noSkip = 1;
 }
 
-
 if ( $f && !$r ) {
     print "***\nPlease provide truncation lengths for forward and reverse "
       . "reads\n";
@@ -289,7 +340,7 @@ if ( $f && !$r ) {
 # Refine and validate all variables that refer to the filesystem
 my (@paths) = (
     {
-        path => \$wd,
+        path => \$global_config{wd},
         name => "Working directory"
     },
     {
@@ -318,11 +369,11 @@ my (@paths) = (
     }
 );
 foreach (@paths) {
-    if ( ${$$_{path}} ) {    # If the variable is a non-empty string...
-        my $copy = ${$$_{path}};
-        $copy =~ s/\/$//;    # remove any trailing slash
+    if ( ${ $$_{path} } ) {    # If the variable is a non-empty string...
+        my $copy = ${ $$_{path} };
+        $copy =~ s/\/$//;      # remove any trailing slash
         my $relPath = $copy;
-        $copy = abs_path( $relPath );    # get abs path
+        $copy = abs_path($relPath);    # get abs path
             # At the same time, abs_path returns undef if the path doesn't exist
             # so we can verify the existence of each file and directory
         if ( !defined $copy ) {
@@ -332,34 +383,40 @@ foreach (@paths) {
               . "Current working directory: "
               . getcwd() . "\n";
         }
-        ${$$_{path}} = $copy; # external variable referenced by path has now been edited.
+        ${ $$_{path} } =
+          $copy;    # external variable referenced by path has now been edited.
     }
 }
 
 
-my $R = "/usr/local/packages/r-3.6.0/bin/R";
 
-# Find the input files, and find their putative locations if the index files
-# were to be decompressed to our working directory.
-# In one-step runs, $index1Input and $index2Input are the SAME files
-# pointed to by $readsForInput and $readsRevInput
-my $index1Input;
-my $index2Input;
-my $readsForInput;
-my $readsRevInput;
-( $readsForInput, $readsRevInput, $index1Input, $index2Input ) =
-    $inDir ? find_raw_files( $inDir, $oneStep )
-  : $oneStep ? ( $r1file, $r2file, $r1file, $r2file )
-  :            ( $r1file, $r2file, $i1file, $i2file );
-my %localNames;
-@localNames{ ( "readsFor", "readsRev", "index1", "index2" ) } =
-  convert_to_local_if_gz( $wd, $readsForInput, $readsRevInput,
-    $index1Input, $index2Input );
+if (   !@dbg
+    || grep( /^barcodes$/, @dbg )
+    || grep( /^demux$/,    @dbg ) )
+{
+    # Find the input files, and find their putative locations if the index files
+    # were to be decompressed to our working directory.
+    # In one-step runs, $index1Input and $index2Input are the SAME files
+    # pointed to by $readsForInput and $readsRevInput
+    my ( $readsForInput, $readsRevInput, $index1Input, $index2Input ) =
+        $inDir ? find_raw_files( $inDir, $oneStep )
+      : $oneStep ? ( $r1file, $r2file, $r1file, $r2file )
+      :            ( $r1file, $r2file, $i1file, $i2file );
+    my %localNames;
+    @localNames{ ( "readsFor", "readsRev", "index1", "index2" ) } =
+      convert_to_local_if_gz(
+        $global_config{wd}, $readsForInput, $readsRevInput,
+        $index1Input,       $index2Input
+      );
+}
 
 if (
-    # Check if there are at least two directories in $wd
-    scalar( File::Spec->splitdir( ( File::Spec->splitpath("$wd/") )[1] ) ) -
-    2 < 2
+    # Check if there are at least two directories in $global_config{wd}
+    scalar(
+        File::Spec->splitdir(
+            ( File::Spec->splitpath("$global_config{wd}/") )[1]
+        )
+    ) - 2 < 2
   )
 {
     die "Working directory (-wd) must have the pattern */PROJECT/RUN";
@@ -370,12 +427,12 @@ if (
 ###################################################################
 
 # Initialize log file
-my $run     = File::Basename::basename($wd);
-my $pd      = ( File::Basename::fileparse($wd) )[1];
+my $run     = File::Basename::basename( $global_config{wd} );
+my $pd      = ( File::Basename::fileparse( $global_config{wd} ) )[1];
 my $project = File::Basename::basename($pd);
 
 my $time = strftime( "%Y-%m-%d %H:%M:%S", localtime(time) );
-my $log  = "$wd/$project" . "_" . $run . "_16S_pipeline_log.txt";
+my $log  = "$global_config{wd}/$project" . "_" . $run . "_16S_pipeline_log.txt";
 open my $logFH, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
 my $logTee = new IO::Tee( \*STDOUT, $logFH );
 
@@ -400,19 +457,14 @@ print "Logging to: $log\n";
 print $logTee "PIPELINE VERSION: " . Version::version() . "\n";
 print $logTee "$time\n";
 
-my $error_log  = "$wd/qsub_error_logs";
-my $stdout_log = "$wd/qsub_stdout_logs";
+my $error_log  = "$global_config{wd}/qsub_error_logs";
+my $stdout_log = "$global_config{wd}/qsub_stdout_logs";
 ## Instead of working directory, give option for provided directory (or current
 #  working directory)
 
-my $localMap = "$error_log/" . File::Basename::basename( $map, ".txt" ) . "_corrected.txt";
-my $mapLog   = "$error_log/" . File::Basename::basename( $map, ".txt" ) . ".log";
-
-my $fwdProjDir = "$wd/fwdSplit";
-my $revProjDir = "$wd/revSplit";
-
-my $fwdSampleDir = "$fwdProjDir/split_by_sample_out";
-my $revSampleDir = "$revProjDir/split_by_sample_out";
+my $localMap =
+  "$error_log/" . File::Basename::basename( $map, ".txt" ) . "_corrected.txt";
+my $mapLog = "$error_log/" . File::Basename::basename( $map, ".txt" ) . ".log";
 
 my @split;
 
@@ -455,7 +507,7 @@ if ( !$qproj ) {
     $qproj = "jravel-lab";
 }
 
-my $R = "/usr/local/packages/r-3.4.0/bin/R";
+my $R = "/usr/local/packages/r-3.6.0/bin/R";
 
 if ( !-e $error_log ) {
     mkdir $error_log;
@@ -467,9 +519,12 @@ if ( !-e $error_log ) {
     if (@oldLogs) {
         my @cmds;
         foreach my $log (@oldLogs) {
-            my @dontDelete = ( "$error_log/illumina_dada2.pl.stderr", $localMap, $mapLog );
-            if ( List::Util::none { $_ eq $log }
-                @dontDelete )
+            my @dontDelete =
+              ( "$error_log/illumina_dada2.pl.stderr", $localMap, $mapLog );
+            if (
+                List::Util::none { $_ eq $log }
+                @dontDelete
+              )
             {
                 push @cmds, "rm $log";
             }
@@ -483,10 +538,11 @@ if ( !-e $stdout_log ) {
     print "$stdout_log did not exist -> making $stdout_log\n";
 }
 
-my $checksumFile = "$wd/.checkpoints.json";
+my $checksumFile = "$global_config{wd}/.checkpoints.json";
 my %checksums    = read_checkpoints($checksumFile);
 
-my $qiime = "$wd/$project" . "_" . $run . "_" . "qiime_config.txt";
+my $qiime =
+  "$global_config{wd}/$project" . "_" . $run . "_" . "qiime_config.txt";
 
 if (@dbg) {
     print $logTee "DBG FLAGS: ";
@@ -511,137 +567,279 @@ if (   !@dbg
     ###### BEGIN CHECK OF QIIME CONFIGURATION ###########
     #####################################################
     my $cmd = "print_qiime_config.py > $qiime";
-    execute_and_log( $cmd, $logTee, $dryRun, "QIIME CONFIGURATION DETAILS:\nsee $qiime\n" );
-} else {
-    print $logTee "NOT USING QIIME\n";
-}
+    execute_and_log( $cmd, $logTee, $dryRun,
+        "QIIME CONFIGURATION DETAILS:\nsee $qiime\n" );
 
-if ( !$noSkip ) {
-    $skip = skippable( [$map], [ $localMap, $mapLog ],
-        $checksums{"map"}, $checksums{"meta"}, "map validation", ["map"] );
-}
+    if ( !$noSkip ) {
+        $skip = skippable( [$map], [ $localMap, $mapLog ],
+            $checksums{"map"}, $checksums{"meta"}, "map validation", ["map"] );
+    }
 
-if ( !$skip ) {
-    ###### BEGIN VALIDATION OF MAPPING FILE ###########
-    ################################################
-    print $logTee "MAPPING FILE: $map\n";
+    if ( !$skip ) {
+        ###### BEGIN VALIDATION OF MAPPING FILE ###########
+        ################################################
+        print $logTee "MAPPING FILE: $map\n";
 
-    my $cmd = "validate_mapping_file.py -m $map -s -o $error_log";
-    execute_and_log( $cmd, $logTee, $dryRun, "Validating map from $map\n" );
-    my $mappingError = glob("$error_log/*.log");
-    if ($mappingError) {
-        open MAPERROR, "<$mappingError"
+        my $cmd = "validate_mapping_file.py -m $map -s -o $error_log";
+        execute_and_log( $cmd, $logTee, $dryRun, "Validating map from $map\n" );
+        my $mappingError = glob("$error_log/*.log");
+        if ($mappingError) {
+            open MAPERROR, "<$mappingError"
+              or die "Cannot open $mappingError for " . "reading: $OS_ERROR";
+            $_ = <MAPERROR>;    # gets first line
+
+            chomp;
+            if ( $_ =~ /No errors or warnings found in mapping file./ ) {
+                print $logTee "---Map passed validation.\n";
+
+            } else {
+                while (<MAPERROR>) {
+                    if ( $_ =~ m/^Errors -----------------------------$/ ) {
+                        my $nextLine = <MAPERROR>;
+                        if ( $nextLine =~
+                            m/^Warnings ---------------------------$/ )
+                        {
+                            print $logTee
+                              "---Warnings during map validation. See "
+                              . "$mappingError for details.\n";
+                        } else {
+                            close MAPERROR;
+                            die
+                              "***Error in mapping file. See $mappingError for "
+                              . "details. Exiting.\n";
+                        }
+                    }
+                }
+                print $logTee "---Map passed validation.\n";
+            }
+            close MAPERROR;
+        } else {
+            die
+"validate_mapping_file.py terminated but did not signal success. Normally a success message is printed in its error file.";
+        }
+
+        ###### BEGIN EVALUATION OF SAMPLES VIA MAPPING FILE ###########
+        ###############################################################
+        open MAP, "<$map" or die "Cannot open $map for reading: $OS_ERROR";
+        my $extctrl     = 0;
+        my $pcrpos      = 0;
+        my $pcrneg      = 0;
+        my $projSamples = 0;
+        my $linecount   = 0;
+        my $null        = 0;
+        while (<MAP>) {
+            chomp;
+            ## don't count header as sample; don't count any line if it doesn't
+            if ( $. > 1 ) {
+                ## start with four tab-separated fields; the first three must contain non-whitespace chars
+                if ( $_ =~ /^(\S+\t){3}/ ) {
+                    if (   $_ =~ "EXTNTC"
+                        || $_ =~ "NTC.EXT"
+                        || $_ =~ "NTCEXT"
+                        || $_ =~ "EXT.NTC"
+                        || $_ =~ "NTC"
+                        || $_ =~ "EXTNEG" )
+                    {
+                        $extctrl++;
+                    } elsif ( $_ =~ "PCRPOS"
+                        || $_ =~ "PCR.pos"
+                        || $_ =~ "pCR.pos"
+                        || $_ =~ "POSCTRL"
+                        || $_ =~ "POS.CTRL"
+                        || $_ =~ "POSCON"
+                        || $_ =~ "posctr" )
+                    {
+                        $pcrpos++;
+                    } elsif ( $_ =~ "PCRNTC"
+                        || $_ =~ "PCR.NEG"
+                        || $_ =~ "PCR.NTC"
+                        || $_ =~ "PCRNEG"
+                        || $_ =~ "PCRNEGCTRL"
+                        || $_ =~ "ntcctr" )
+                    {
+                        $pcrneg++;
+                    } elsif ( $_ =~ /NULL/ ) {
+                        $null++;
+                    } else {
+                        $projSamples++;
+                    }
+                } elsif ( $_ =~ /\S/ ) {
+
+                    # QIIME's validate_mapping_file seems to already check this:
+                    die
+"In mapping file the line $. does not have four tab-separated fields.";
+                }
+            }
+        }
+        my $nSamples = $extctrl + $pcrpos + $pcrneg + $null + $projSamples;
+        close MAP;
+
+        print $logTee "NO. SAMPLES: $nSamples\nNO. NULLS: $null\n"
+          . "NO. EXTRACTION NEGATIVE CONTROLS: $extctrl\n"
+          . "NO. PCR POSITIVE CONTROLS: $pcrpos\nNO. PCR NEGATIVE CONTROLS: $pcrneg\n";
+
+        if ( !@dbg ) {
+            cacheChecksums( [$map], "map", ["map"] );
+            cacheChecksums(
+                [
+                    $mappingError,
+                    "$error_log/"
+                      . File::Basename::basename( $map, ".txt" )
+                      . "_corrected.txt"
+                ],
+                "meta"
+            );
+        }
+    } else {
+
+     # It is possible the first run had a map error, but the user failed to fix.
+     # skippable would return true, but the log file would still inform us of
+     # the error.
+        my $mappingError = glob("$error_log/*.log");
+
+        open MAPERROR, "<", $mappingError
           or die "Cannot open $mappingError for " . "reading: $OS_ERROR";
         $_ = <MAPERROR>;
         close MAPERROR;
         chomp;
-        if ( $_ =~ /No errors or warnings found in mapping file./ ) {
-            print $logTee "---Map passed validation.\n";
-
-        } else {
-            die "***Error in mapping file. See $mappingError for "
+        if ( !$_ =~ /No errors or warnings found in mapping file./ ) {
+            die "***Unresolved error in mapping file. See $mappingError for "
               . "details. Exiting.\n";
         }
-    } else {
-        die
-"validate_mapping_file.py terminated but did not signal success. Normally a success message is printed in its error file.";
+        print $logTee "Mapping file has been validated already. Moving on.\n";
     }
 
-    ###### BEGIN EVALUATION OF SAMPLES VIA MAPPING FILE ###########
-    ###############################################################
-    open MAP, "<$map" or die "Cannot open $map for reading: $OS_ERROR";
-    my $extctrl     = 0;
-    my $pcrpos      = 0;
-    my $pcrneg      = 0;
-    my $projSamples = 0;
-    my $linecount   = 0;
-    my $null        = 0;
-    while (<MAP>) {
-        chomp;
-        ## don't count header as sample; don't count any line if it doesn't
-        if ( $. > 1 ) {
-            ## start with four tab-separated fields containing non-whitespace chars
-            if ( $_ =~ /^\S+(\t\S+){3}/ ) {
-                if (   $_ =~ "EXTNTC"
-                    || $_ =~ "NTC.EXT"
-                    || $_ =~ "NTCEXT"
-                    || $_ =~ "EXT.NTC"
-                    || $_ =~ "NTC"
-                    || $_ =~ "EXTNEG" )
-                {
-                    $extctrl++;
-                } elsif ( $_ =~ "PCRPOS"
-                    || $_ =~ "PCR.pos"
-                    || $_ =~ "pCR.pos"
-                    || $_ =~ "POSCTRL"
-                    || $_ =~ "POS.CTRL"
-                    || $_ =~ "POSCON"
-                    || $_ =~ "posctr" )
-                {
-                    $pcrpos++;
-                } elsif ( $_ =~ "PCRNTC"
-                    || $_ =~ "PCR.NEG"
-                    || $_ =~ "PCR.NTC"
-                    || $_ =~ "PCRNEG"
-                    || $_ =~ "PCRNEGCTRL"
-                    || $_ =~ "ntcctr" )
-                {
-                    $pcrneg++;
-                } elsif ( $_ =~ /NULL/ ) {
-                    $null++;
-                } else {
-                    $projSamples++;
-                }
-            } elsif ( $_ =~ /\S/ ) {
-
-                # QIIME's validate_mapping_file seems to already check this:
-                die
-"In mapping file the line $. does not have four tab-separated fields.";
-            }
-        }
-    }
-    my $nSamples = $extctrl + $pcrpos + $pcrneg + $null + $projSamples;
-    close MAP;
-
-    print $logTee "NO. SAMPLES: $nSamples\nNO. NULLS: $null\n"
-      . "NO. EXTRACTION NEGATIVE CONTROLS: $extctrl\n"
-      . "NO. PCR POSITIVE CONTROLS: $pcrpos\nNO. PCR NEGATIVE CONTROLS: $pcrneg\n";
-
-    if ( !@dbg ) {
-        cacheChecksums( [$map], "map", ["map"] );
-        cacheChecksums(
-            [
-                $mappingError,
-                "$error_log/"
-                  . File::Basename::basename( $map, ".txt" )
-                  . "_corrected.txt"
-            ],
-            "meta"
-        );
-    }
 } else {
-
-    # It is possible the first run had a map error, but the user failed to fix.
-    # skippable would return true, but the log file would still inform us of
-    # the error.
-    my $mappingError = glob("$error_log/*.log");
-
-    open MAPERROR, "<", $mappingError
-      or die "Cannot open $mappingError for " . "reading: $OS_ERROR";
-    $_ = <MAPERROR>;
-    close MAPERROR;
-    chomp;
-    if ( !$_ =~ /No errors or warnings found in mapping file./ ) {
-        die "***Unresolved error in mapping file. See $mappingError for "
-          . "details. Exiting.\n";
-    }
-    print $logTee "Mapping file has been validated already. Moving on.\n";
+    print $logTee "NOT USING QIIME\n";
 }
 
 ###### BEGIN BARCODES ##########
 #######################################
 
-if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
+my $newSamNo;
+if ($tbshtBarcodes) {
+
+    # make three other directories
+    my %dirs_params = (
+        "$global_config{wd}_rc_fwd"     => "--rev_comp_bc1",
+        "$global_config{wd}_rc_rev"     => "--rev_comp_bc2",
+        "$global_config{wd}_rc_fwd_rev" => "--rev_comp_bc1 --rev_comp_bc2",
+        $global_config{wd}              => ""
+    );
+    print Dumper( \%dirs_params );
+
+    my $success = 0;
+    print $logTee
+      "Attempting all permutations of reverse-complemented indexes." . "\n";
+    for my $dir ( keys %dirs_params ) {
+        print $logTee "$dir\n";
+        print $logTee "$dirs_params{$dir}\n";
+        unless ( -e $dir or mkdir $dir ) {
+            die "Unable to create $dir\n";
+        }
+        print $logTee $dir;
+        barcodes( oriParams => $dirs_params{$dir}, wd => $dir );
+        print $logTee $dir;
+
+        $success = demux( $dir, 0 );
+        if ($success) {
+            # if ( !$dir eq $global_config{wd} ) {
+
+            #  # cleanup after ourselves, so the pipeline can continue like normal
+            #     dircopy( $dir, $global_config{wd} );
+            # }
+            # foreach ( keys %dirs_params ) {
+            #     if ( !$_ eq $global_config{wd} ) {
+            #         remove_tree($_) or warn $!;
+            #     }
+            # }
+            print $logTee "Demux may have succeeded when extract_barcodes.py called with"
+              . " $dirs_params{$dir}\n";
+            # last;
+        } else {
+            print $logTee "Demux failed when extract_barcodes.py called with "
+              . "$dirs_params{$dir}\n";
+        }
+    }
+
+    print $logTee "Attempting all permutations of reverse-complemented "
+        . "switched indexes.\n";
+
+    for my $key ( keys %dirs_params ) {
+        my $dir = "${key}_switched";
+        print $logTee "$dir\n";
+        print $logTee "$dirs_params{$key}\n";
+        unless ( -e $dir or mkdir $dir ) {
+            die "Unable to create $dir\n";
+        }
+        print $logTee $dir;
+        barcodes(
+            oriParams => $dirs_params{$key},
+            wd        => $dir,
+            switch    => 1
+        );
+        print $logTee $dir;
+
+        $success = demux( $dir, 0 );
+        if ($success) {
+            # if ( !$dir eq $global_config{wd} ) {
+
+            # # cleanup after ourselves, so the pipeline can continue like normal
+            #     dircopy( $dir, $global_config{wd} );
+            # }
+            # foreach ( keys %dirs_params ) {
+            #     if ( !$_ eq $global_config{wd} ) {
+            #         remove_tree($_) or warn $!;
+            #     }
+            # }
+            print $logTee
+                "Demux may have succeeded when extract_barcodes.py called with"
+                . " $dirs_params{$key} and switched indexes.\n";
+            # last;
+        } else {
+            print $logTee
+                "Demux failed when extract_barcodes.py called with "
+                . "$dirs_params{$key} and switched indexes.\n";
+        }
+    }
+    
+    die "Finished troubleshooting barcodes. Please inspect the split library logs in each trial directory to determine which demux was correct. Correct files can be moved back to this run directory, and the pipeline can be continued using '--debug splitsamples --debug tagclean --debug dada2'.";
+
+} else {
+    if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
+        barcodes( oriParams => "", wd => $global_config{wd} );
+    }
+    if ( !@dbg || grep( /^demux$/, @dbg ) ) {
+        demux( $global_config{wd}, 1 );
+    }
+
+    # Then continue with code below the two subroutines
+}
+
+sub barcodes {
+    my %arg       = @_;
+    my $oriParams = delete $arg{oriParams} // '';
+    my $switch    = delete $arg{switch} // 0;
+
+    # the default working directory is the global working directory
+    my $wd = delete $arg{wd} // $global_config{wd};
+
+    my ( $readsForInput, $readsRevInput, $index1Input, $index2Input ) =
+        $inDir ? find_raw_files( $inDir, $oneStep )
+      : $oneStep ? ( $r1file, $r2file, $r1file, $r2file )
+      :            ( $r1file, $r2file, $i1file, $i2file );
+    
+    if ($switch) { # Consider the i1's and i2's switched
+        my $oldi1 = $index1Input;
+        $index1Input = $index2Input;
+        $index2Input = $oldi1;
+    }
+
+    my %localNames;
+    @localNames{ ( "readsFor", "readsRev", "index1", "index2" ) } =
+      convert_to_local_if_gz( $wd, $readsForInput, $readsRevInput,
+        $index1Input, $index2Input );
+
     my $barcodes = "$wd/barcodes.fastq";
     my $nSamples = count_samples($map);
 
@@ -721,17 +919,15 @@ if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
               "Warning: raw index files have differing numbers of lines.\n";
         }
 
-        my $mapOpt = "";
-        my $bcLen  = 8;    # 2-step pcr
-        if ($oneStep) {
+        # Was in original code, but maybe unnecessary?
+        my $mapOpt = $oneStep ? "-m $map" : "";
 
-            # Was in original code, but maybe unnecessary?
-            $mapOpt = "-m $map";
-
-            $bcLen = 12;    # 1-step pcr
+        if ( !$bcLen ) {
+            $bcLen = $oneStep ? 12 : 8;    # 2-step pcr
         }
+
         my $cmd =
-"extract_barcodes.py -f $localNames{\"index1\"} -r $localNames{\"index2\"} -c barcode_paired_end --bc1_len $bcLen --bc2_len $bcLen $mapOpt -o $wd";
+"extract_barcodes.py -f $localNames{\"index1\"} -r $localNames{\"index2\"} -c barcode_paired_end --bc1_len $bcLen --bc2_len $bcLen $mapOpt -o $wd $oriParams";
 
         execute_and_log( $cmd, $logTee, $dryRun,
             "Waiting for barcode extraction to complete...\n" );
@@ -786,13 +982,21 @@ if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
 
 ###### BEGIN SPLIT LIBRARIES ##########
 #######################################
-my $newSamNo;
-if ( !@dbg || grep( /^demux$/, @dbg ) ) {
+
+sub demux {
+    print $logTee @_;
+    my $wd          = shift;
+    my $die_on_fail = shift;
+    print $logTee "Demuxing in: $wd\n";
+
     my $barcodes = "$wd/barcodes.fastq";
     my $nSamples = count_samples($map);
     my $step2;
     my $step3;
-    my $split_log = "$fwdProjDir/split_library_log.txt";
+
+    my $fwdProjDir = "$wd/fwdSplit";
+    my $revProjDir = "$wd/revSplit";
+    my $split_log  = "$fwdProjDir/split_library_log.txt";
 
     my @cmds;
     my $rForSeqsFq = "$fwdProjDir/seqs.fastq";
@@ -831,13 +1035,8 @@ if ( !@dbg || grep( /^demux$/, @dbg ) ) {
         my $start = time;
         my $step2 = "split_libraries_fastq.py";
 
-        ## including the stitch script before so that demultiplex happens by barcode NOT order
-        my $barcodeType;
-        if ($oneStep) {
-            $barcodeType = "24";
-        } else {
-            $barcodeType = "16";
-        }
+   # qiime's split_libraries_fastq accepts some keywords too, such as "golay_12"
+        my $barcodeType = 2 * $bcLen;
 
         @cmds = ();
         push @cmds,
@@ -879,10 +1078,14 @@ if ( !@dbg || grep( /^demux$/, @dbg ) ) {
               "---Number of samples after split_libraries_fastq.py: "
               . "$newSamNo\n";
         } elsif ( scalar @split == $nSamples ) {
-            print $logTee
-              "---No samples were successfully demultiplexed. Is the "
-              . "mapping file correct? Exiting.\n";
-            die;
+            if ($die_on_fail) {
+                print $logTee
+                  "---No samples were successfully demultiplexed. Is the "
+                  . "mapping file correct? Exiting.\n";
+                die;
+            } else {
+                return 0;
+            }
         } elsif ( scalar @split == 0 ) {
             print $logTee "---Reads from all samples were demultiplexed.\n";
         }
@@ -893,8 +1096,8 @@ if ( !@dbg || grep( /^demux$/, @dbg ) ) {
         my $cmd =
 "qsub -cwd -b y -l mem_free=300M -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log fastqc --limits $pipelineDir/ext/fastqc/limits.txt --outdir $fwdProjDir $fwdProjDir/seqs.fastq";
         print "\tcmd=$cmd\n" if $verbose;
-        system($cmd) == 0 
-          or die "system($cmd) failed with exit code: $?" 
+        system($cmd) == 0
+          or die "system($cmd) failed with exit code: $?"
           if !$dryRun;
         $cmd =
 "qsub -cwd -b y -l mem_free=300M -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log fastqc --limits $pipelineDir/ext/fastqc/limits.txt --outdir $revProjDir $revProjDir/seqs.fastq";
@@ -902,7 +1105,7 @@ if ( !@dbg || grep( /^demux$/, @dbg ) ) {
         system($cmd) == 0
           or die "system($cmd) failed with exit code: $?"
           if !$dryRun;
-        
+
         # Remove temporarily decompressed files
         if ($oneStep) {
             print;
@@ -924,7 +1127,7 @@ if ( !@dbg || grep( /^demux$/, @dbg ) ) {
           . ". Moving on.\n";
         my @split = readSplitLog( $split_log, 0 );
 
-        # Still need number of demuxed samples for later, even though we didn't actually demux this time
+# Still need number of demuxed samples for later, even though we didn't actually demux this time
         $newSamNo = $nSamples - scalar @split;
     }
 
@@ -932,9 +1135,16 @@ if ( !@dbg || grep( /^demux$/, @dbg ) ) {
         die "Finished demultiplexing libaries. Terminated "
           . "because -d splitsamples was not specified.";
     }
+    return 1;
 }
 
+my $fwdProjDir = "$global_config{wd}/fwdSplit";
+my $revProjDir = "$global_config{wd}/revSplit";
+
 if ( !@dbg || grep( /^splitsamples$/, @dbg ) ) {
+
+    my $fwdSampleDir = "$fwdProjDir/split_by_sample_out";
+    my $revSampleDir = "$revProjDir/split_by_sample_out";
 
     ###### BEGIN SPLIT BY SAMPLE ##########
     #######################################
@@ -954,8 +1164,7 @@ if ( !@dbg || grep( /^splitsamples$/, @dbg ) ) {
         );
     }
 
-    if ( !$skip )
-    {
+    if ( !$skip ) {
         my $step3 = "split_sequence_file_on_sample_ids.py";
         my @cmds  = ();
         while ( !( -e $rForSeqsFq ) || !( -e $rRevSeqsFq ) ) { sleep 1; }
@@ -979,24 +1188,26 @@ if ( !@dbg || grep( /^splitsamples$/, @dbg ) ) {
         my $fwdLines = $.;
         close $FWD;
 
-        # if we know how many new files there are supposed to be, wait for them all to appear
+# if we know how many new files there are supposed to be, wait for them all to appear
         if ( defined $newSamNo ) {
+
             # Count the number of files in the directory
             while ( $n_fq != $newSamNo ) {
                 $n_fq      = 0;
                 @fwdOutput = glob("$fwdSampleDir/*.fastq");
-                $n_fq = scalar @fwdOutput;
+                $n_fq      = scalar @fwdOutput;
                 check_error_log( $error_log, $step3 );
             }
         }
         print "---All samples ($n_fq) accounted for in $fwdSampleDir\n";
 
-        # Now check that all the reads are still contained in the sample-specific FASTQ's
+# Now check that all the reads are still contained in the sample-specific FASTQ's
         while ( $nLines != $fwdLines ) {
             $nLines    = 0;
             @fwdOutput = glob("$fwdSampleDir/*.fastq");
             if (@fwdOutput) {
                 foreach my $file (@fwdOutput) {
+
                     # Also keep a running total of lines in the
                     # split_by_sample_out files
                     open SAMPLE, "<$file";
@@ -1008,7 +1219,8 @@ if ( !@dbg || grep( /^splitsamples$/, @dbg ) ) {
             check_error_log( $error_log, $step3 );
         }
 
-        print "---All reads (@{[$nLines / 4]}) accounted for in $fwdSampleDir\n";
+        print
+          "---All reads (@{[$nLines / 4]}) accounted for in $fwdSampleDir\n";
 
         $n_fq   = 0;
         $nLines = 0;
@@ -1019,23 +1231,24 @@ if ( !@dbg || grep( /^splitsamples$/, @dbg ) ) {
         my $revLines = $.;
         close $REV;
 
-        # if we know how many new files there are supposed to be, wait for them all to appear
+# if we know how many new files there are supposed to be, wait for them all to appear
         if ( defined $newSamNo ) {
             $n_fq++;    # Count the number of files in the directory
             while ( $n_fq != $newSamNo ) {
                 $n_fq      = 0;
                 @revOutput = glob("$revSampleDir/*.fastq");
-                $n_fq = scalar @revOutput;
+                $n_fq      = scalar @revOutput;
                 check_error_log( $error_log, $step3 );
             }
         }
 
-        # Now check that all the reads are still contained in the sample-specific FASTQ's
+# Now check that all the reads are still contained in the sample-specific FASTQ's
         while ( $nLines != $revLines ) {
             $nLines    = 0;
             @revOutput = glob("$revSampleDir/*.fastq");
             if (@revOutput) {
                 foreach my $file (@revOutput) {
+
                     # Also keep a running total of lines in the
                     # split_by_sample_out files
                     open SAMPLE, "<$file";
@@ -1060,16 +1273,21 @@ if ( !@dbg || grep( /^splitsamples$/, @dbg ) ) {
 
     # Remove temporarily decompressed files
     if ($oneStep) {
+        my ( $readsForInput, $readsRevInput, $index1Input, $index2Input ) =
+            $inDir ? find_raw_files( $inDir, $oneStep, $logFH )
+          : $oneStep ? ( $r1file, $r2file, $r1file, $r2file )
+          :            ( $r1file, $r2file, $i1file, $i2file );
+
         my @cmds = ();
         push( @cmds, "rm -rf $readsForInput" );
         push( @cmds, "rm -rf $readsRevInput" );
         execute_and_log( @cmds, 0, $dryRun,
-            "---Removing decompressed raw files from $wd\n" );
+            "---Removing decompressed raw files from $global_config{wd}\n" );
     }
 
     if ( @dbg && !grep( /^tagclean$/, @dbg ) ) {
         print $logTee
-"Finished splitting library to sample-specific FASTQs. Terminated "
+          "Finished splitting library to sample-specific FASTQs. Terminated "
           . "because --debug tagclean was not specified.\n";
         exit 0;
     }
@@ -1080,7 +1298,11 @@ if ( !@dbg || grep( /^splitsamples$/, @dbg ) ) {
 
 my $start = time;
 if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
-    my $do       = 1;
+    my $do = 1;
+
+    my $fwdSampleDir = "$fwdProjDir/split_by_sample_out";
+    my $revSampleDir = "$revProjDir/split_by_sample_out";
+
     my @inputsF  = glob("$fwdSampleDir/*.fastq");
     my @inputsR  = glob("$revSampleDir/*.fastq");
     my @outPatts = ( "_R1_tc", "_R2_tc" );
@@ -1089,9 +1311,9 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
         die "Unequal numbers of forward and reverse sample-specific FASTQ's.\n";
     }
     my $newSamNo = scalar @inputsF;
-    
-    my @fwdTcFiles = glob("$wd/*R1_tc.fastq");
-    my @revTcFiles = glob("$wd/*R2_tc.fastq");
+
+    my @fwdTcFiles = glob("$global_config{wd}/*R1_tc.fastq");
+    my @revTcFiles = glob("$global_config{wd}/*R2_tc.fastq");
 
     # my @forFilenames = glob("$fwdSampleDir/*.fastq");
     # my @revFilenames = glob("$revSampleDir/*.fastq");
@@ -1112,8 +1334,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
 
     my @cmds;
     my $cmd;
-    if ( !$skip )
-    {
+    if ( !$skip ) {
         if ($oneStep) {
             if ( $var eq "V3V4" ) {
                 my $filename;
@@ -1124,7 +1345,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
-                        my $tc = "$wd/$Prefix" . "_R1_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_R1_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2 -trim_within 50";
                         push @cmds, $cmd;
@@ -1140,7 +1361,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
-                        my $tc = "$wd/$Prefix" . "_R2_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_R2_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2 -trim_within 50";
                         push @cmds, $cmd;
@@ -1158,7 +1379,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
-                        my $tc = "$wd/$Prefix" . "_R1_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_R1_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
                         push @cmds, $cmd;
@@ -1174,7 +1395,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
-                        my $tc = "$wd/$Prefix" . "_R2_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_R2_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
                         push @cmds, $cmd;
@@ -1192,7 +1413,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
-                        my $tc = "$wd/$Prefix" . "_R1_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_R1_tc";
 
                         $cmd =
 "qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
@@ -1208,7 +1429,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
-                        my $tc = "$wd/$Prefix" . "_R2_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_R2_tc";
 
                         $cmd =
 "qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2";
@@ -1226,7 +1447,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
-                        my $tc = "$wd/$Prefix" . "_R1_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_R1_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
                         push @cmds, $cmd;
@@ -1243,7 +1464,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
-                        my $tc = "$wd/$Prefix" . "_R2_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_R2_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
                         push @cmds, $cmd;
@@ -1260,7 +1481,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
-                        my $tc = "$wd/$Prefix" . "_R1_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_R1_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 CTGCCCTTTGTACACACCGC -mm5 2";
                         push @cmds, $cmd;
@@ -1276,7 +1497,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my @suffixes = ( ".fastq", ".fq" );
                         my $Prefix =
                           File::Basename::basename( $filename, @suffixes );
-                        my $tc = "$wd/$Prefix" . "_R2_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_R2_tc";
                         $cmd =
 "qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 TTTCGCTGCGTTCTTCATCG -mm5 2";
                         push @cmds, $cmd;
@@ -1288,11 +1509,11 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
         execute_and_log( @cmds, $logTee, $dryRun,
             "Removing $var primers from all sequences.\n" );
 
-        my @fwdFiles = glob("$wd/*R1_tc.fastq");
+        my @fwdFiles = glob("$global_config{wd}/*R1_tc.fastq");
         my $nFiles   = @fwdFiles;
         my $equalLns = 0;
         while ( $nFiles != $newSamNo || !$equalLns ) {
-            @fwdFiles = glob("$wd/*R1_tc.fastq");
+            @fwdFiles = glob("$global_config{wd}/*R1_tc.fastq");
             $nFiles   = @fwdFiles;
 
 # Ensure that each tagcleaned file has the same number of lines as its input file
@@ -1308,13 +1529,14 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
             }
             check_error_log( $error_log, "perl" );
         }
-        print $logTee "---All tagcleaned R1 samples accounted for in $wd\n";
+        print $logTee
+          "---All tagcleaned R1 samples accounted for in $global_config{wd}\n";
 
         $equalLns = 0;
-        my @revFiles = glob("$wd/*R2_tc.fastq");
+        my @revFiles = glob("$global_config{wd}/*R2_tc.fastq");
         $nFiles = @revFiles;
         while ( $nFiles != $newSamNo || !$equalLns ) {
-            @revFiles = glob("$wd/*R2_tc.fastq");
+            @revFiles = glob("$global_config{wd}/*R2_tc.fastq");
             $nFiles   = @revFiles;
 
 # Ensure that each tagcleaned file has the same number of lines as its input file
@@ -1323,7 +1545,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 my $basename =
                   File::Basename::basename( $file, ("_R2_tc.fastq") );
                 if ( count_lines($file) !=
-                    count_lines("$fwdSampleDir/$basename.fastq") )
+                    count_lines("$revSampleDir/$basename.fastq") )
                 {
                     $equalLns = 0;
                 }
@@ -1331,7 +1553,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
             check_error_log( $error_log, "perl" );
         }
         print $logTee
-          "---All tagcleaned R4 (R2) samples accounted for in $wd\n";
+"---All tagcleaned R4 (R2) samples accounted for in $global_config{wd}\n";
 
         if ( !@dbg ) {
             cacheChecksums( [ @fwdFiles, @revFiles ], "tagcleaned" );
@@ -1347,8 +1569,8 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
 
     if ( @dbg && !grep( /^dada2$/, @dbg ) ) {
         print $logTee
-"Finished removing primers. Terminated because --debug dada2 was not " .
-"specified.\n";
+          "Finished removing primers. Terminated because --debug dada2 was not "
+          . "specified.\n";
         exit 0;
     }
 }
@@ -1356,11 +1578,13 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
 ###### BEGIN DADA2 ##########
 #############################
 if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
-    my $projrt = "$wd/$project" . "_" . $run . "_dada2_part1_rTmp.R";
-    my $projrtout = "$wd/$project" . "_" . $run . "_dada2_part1_rTmp.Rout";
+    my $projrt =
+      "$global_config{wd}/$project" . "_" . $run . "_dada2_part1_rTmp.R";
+    my $projrtout =
+      "$global_config{wd}/$project" . "_" . $run . "_dada2_part1_rTmp.Rout";
 
     my @outputs = ( "$projrt", "$projrtout" );
-    my @inputs = glob("$wd/*R[1|2]_tc.fastq");
+    my @inputs  = glob("$global_config{wd}/*R[1|2]_tc.fastq");
 
     if ( !$noSkip ) {
         $skip = skippable(
@@ -1536,10 +1760,10 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
         }
 
         # Rename DADA2 R files
-        my $rt     = "$wd/dada2_part1_rTmp.R";
-        my @cmds   = ();
+        my $rt   = "$global_config{wd}/dada2_part1_rTmp.R";
+        my @cmds = ();
         push @cmds, "mv $rt $projrt";
-        my $rtout     = "$wd/dada2_part1_rTmp.Rout";
+        my $rtout = "$global_config{wd}/dada2_part1_rTmp.Rout";
         push @cmds, "mv $rtout $projrtout";
         eval {
             execute_and_log( @cmds, 0, $dryRun, "Renaming DADA2 R files.\n" );
@@ -1608,7 +1832,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
             # "dada2 completed successfully" is a key phrase that causes
             # an appropriate message printed to STDOUT
             print $logTee "dada2 completed successfully!\nAbundance table for "
-              . "$project run $run located at $wd/dada2_abundance_table.rds\n";
+              . "$project run $run located at $global_config{wd}/dada2_abundance_table.rds\n";
             print $logTee
               "See $outputs[0] for dada2 table of reads surviving by "
               . "step\n\n";
@@ -1622,7 +1846,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
               . "---Check $projrtout.\n";
             die;
         }
-        
+
     } else {
         print $logTee
 "DADA2 already processed the same tagcleaned files during a previous run. Doing nothing.\n";
@@ -1703,15 +1927,15 @@ sub skippable {
     delete $checksumsOut{$_}
       for grep { not defined $checksumsOut{$_} } keys %checksumsOut;
 
-    my $prevSkip = $skip;    # file-level my-variable
+    my $prevSkip = $skip;                # file-level my-variable
     my $step     = shift;
     my $inNames  = shift;
     my $outNames = shift;
-    my $wd       = $wd;      # This is a file-level my-variable
+    my $wd       = $global_config{wd};   # This hash is a file-level my-variable
 
     if ( scalar @$outputsR == 0 ) {
         return 0;
-    }                        # no output files found by caller
+    }                                    # no output files found by caller
     if ( List::Util::none { defined $_ } @$outputsR ) {
         return 0;
     }
@@ -1736,10 +1960,12 @@ sub skippable {
     # When previously stored, the checksums should have been named consistently,
     # or named after the files themselves.
     if ( !defined $inNames ) {
-        $inNames = [ map { File::Spec->abs2rel( $_, $wd ) } @$inputsR ];
+        $inNames =
+          [ map { File::Spec->abs2rel( $_, $wd ) } @$inputsR ];
     }
     if ( !defined $outNames ) {
-        $outNames = [ map { File::Spec->abs2rel( $_, $wd ) } @$outputsR ];
+        $outNames =
+          [ map { File::Spec->abs2rel( $_, $wd ) } @$outputsR ];
     }
 
     if ( !setIdent( $inNames, [ keys %checksumsIn ] ) ) {
@@ -1828,10 +2054,11 @@ sub cacheChecksums {
     my $files = shift;
     my $step  = shift;
     my $names = shift;
-    my $wd    = $wd;     # This is a file-level $my variable
+    my $wd    = $global_config{wd};    # This is a file-level $my variable
 
     if ( !defined $names ) {
-        $names = [ map { File::Spec->abs2rel( $_, $wd ) } @$files ];
+        $names =
+          [ map { File::Spec->abs2rel( $_, $wd ) } @$files ];
     }
     if ( defined $checksumFile ) {
 
@@ -1925,18 +2152,26 @@ sub find_raw_files {
             $index1Input = $readsForInput = $r1s[0];
             $index2Input = $readsRevInput = $r2s[0];
         } else {
-            print $log "Couldn't find input files in $wd.\n";
-            print $log "Files found:\n";
+            if ( defined $log ) {
+                print $log "Couldn't find input files in $wd.\n";
+                print $log "Files found:\n";
 
-            my $printme = join "\n", @r1s;
-            print $log "$printme\n" if $printme;
-            $printme = join "\n", @r2s;
-            print $log "$printme\n" if $printme;
+                my $printme = join "\n", @r1s;
+                print $log "$printme\n" if $printme;
+                $printme = join "\n", @r2s;
+                print $log "$printme\n" if $printme;
 
-            die
+                die
 "Could not find a complete and exclusive set of raw files. Since --1step given, input directory must"
-              . " have exactly one R1 and R2 file. See pipeline log for a list of the files"
-              . " found.";
+                  . " have exactly one R1 and R2 file. See pipeline log for a list of the files"
+                  . " found.";
+            } else {
+                die "Could not find a complete and exclusive set of raw files."
+                  . " Since --1step given, input directory must have exactly one"
+                  . " R1 and R2 file. Files found:\n"
+                  . join( "\n", @r1s )
+                  . join( "\n", @r2s );
+            }
         }
     } else {
         my @i1s = glob("$wd/*I1.fastq $wd/*I1.fastq.gz");
@@ -2057,7 +2292,22 @@ sub dada2 {
     my $minQ     = shift;
 
     my $Rscript = qq~
-
+options(
+    show.error.locations = TRUE,
+    show.error.messages = TRUE,
+    keep.source = TRUE,
+    warn = 1,
+    error = function() {
+      # cat(attr(last.dump,"error.message"))
+      sink(file = stderr())
+      dump.frames("dump", TRUE)
+      cat('\nTraceback:', file = stderr())
+      cat('\n', file = stderr())
+      traceback(2) # Print full traceback of function calls with all parameters. The 2 passed to traceback omits the outermost two function calls.
+      if (!interactive()) quit(status = 1)
+    },
+    stringsAsFactors = FALSE
+    )
   library("dada2")
   packageVersion("dada2")
   cwd<-getwd()
@@ -2133,6 +2383,7 @@ sub dada2 {
 sub run_R_script {
     my $Rscript = shift;
     my $logFH   = shift;
+    my $wd      = $global_config{wd};
     chdir $wd;
 
     my $outFile = "dada2_part1_rTmp.R";
@@ -2151,7 +2402,7 @@ sub run_R_script {
         );
 
         $cmd =
-"qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
+"qsub -cwd -b y -l mem_free=$dada2mem -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
         execute_and_log( $cmd, $logTee, $dryRun,
             "Running DADA2 with fastq files in $wd for $var region...\n" );
 
@@ -2261,16 +2512,16 @@ sub execute_and_log {
     my $dryRun    = pop @_;
     my $lexicalFH = pop @_;
 
-    if ( $lexicalFH ) { # print the human-friendly message once
-        print $lexicalFH "$cuteMsg\n";    # Print to whatever handle was provided
+    if ($lexicalFH) {    # print the human-friendly message once
+        print $lexicalFH "$cuteMsg\n";   # Print to whatever handle was provided
     } else {
-        print "$cuteMsg\n"; 
+        print "$cuteMsg\n";
     }
 
     # CAREFUL, $cmd holds a reference to a variable in the caller!
     foreach my $cmd (@_) {
-        if ( $lexicalFH && $verbose ) { # print each command
-            print $lexicalFH "\$ $cmd\n"; 
+        if ( $lexicalFH && $verbose ) {    # print each command
+            print $lexicalFH "\$ $cmd\n";
         } elsif ( !$lexicalFH && $verbose ) {
             print "\$ $cmd\n";
         }
