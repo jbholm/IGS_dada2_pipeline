@@ -62,6 +62,9 @@ Follow the desktop instructions above to find the desired version of the pipelin
 
 # License
 
-The contents of `taxonomy/` are derived from the Silva database, and reformatted for DADA2 by Benjamin Callahan. They are available under the Silva dual-licensing model for academic and commercial users: https://www.arb-silva.de/silva-license-information/  
+The contents of `taxonomy/silva/` are derived from the Silva database, and reformatted for DADA2 by Benjamin Callahan. They are available under the Silva dual-licensing model for academic and commercial users: https://www.arb-silva.de/silva-license-information/  
+  
+This repository's copy of the UNITE database at `taxonomy/sh_general_release_dynamic_01.12.2017.fasta` is available under [Attribution-ShareAlike (CC BY-SA)](https://creativecommons.org/licenses/by-sa/4.0/).
   
 All other files in this respository are available under [GPLv3](https://github.com/jbholm/IGS_dada2_pipeline/blob/master/LICENSE).
+

@@ -1,0 +1,14 @@
+{
+    "part1":{
+        "print_qiime_config.py": "/usr/local/packages/python-2.7.14/bin/print_qiime_config.py",
+        "validate_mapping_file.py": "/usr/local/packages/python-2.7.14/bin/validate_mapping_file.py",
+        "extract_barcodes.py": "/usr/local/packages/python-2.7.14/bin/extract_barcodes.py",
+        "split_libraries_fastq.py": "/usr/local/packages/python-2.7.14/bin/split_libraries_fastq.py",
+        "fastqc": "/usr/local/bin/fastqc",
+        "split_sequence_file_on_sample_ids.py": "/usr/local/packages/python-2.7.14/bin/split_sequence_file_on_sample_ids.py",
+        
+        "bbduk.sh": "/local/projects-t3/MSL/pipelines/packages/bbmap/bbduk.sh",
+        "R": "/usr/local/packages/r-3.4.0/bin/R"
+    },
+    "ref_16s_dir": "/local/projects-t3/MSL/pipelines/share/taxonomy"
+}

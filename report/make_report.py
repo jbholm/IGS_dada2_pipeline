@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/home/jolim/share/miniconda3/envs/msl_reports/bin/python3.7
 
 import subprocess
 import glob
@@ -321,8 +321,12 @@ def getMapHTML(pw):
 
 
 def getDada2Stats(pw):
+    oldCwd = os.getcwd()
+    os.chdir(pw.pd)
+
     statsFile = os.path.join(pw.proj("REPORT"), "DADA2_stats.txt")
-    oldStatsFile = pw.proj("stats_file_cmp.txt")
+    oldStatsFile = glob.glob('*DADA2_stats.txt')[0]
+    oldStatsFile = pw.proj(oldStatsFile)
 
     status = -1  # Status of whole operation
     while status != 0:
@@ -345,17 +349,31 @@ def getDada2Stats(pw):
                     pw.pd, "Please choose a stats file (combined part1-part2 DADA2 stats)\n")
 
         status = 0  # Good unless parsing errors encountered in loop
-        ans = "\n\t"
+        ans = """<thead>
+    <tr> 
+    """
         for i in range(len(lines)):
+            line = lines[i].rstrip()
+            fields = line.split()
+            if i == 0:
+                # The sample ID column is where the footer label "Total reads:" is placed
+                ans += "<th data-field=" + enquote(fields[0]) + """ data-footer-formatter="totReadsText">""" + fields[0].capitalize() + "</th>\n"
+
+                # The other columns show the sum of reads in the footer
+                # These footer formatter functions are inline javascript in MSL_REPORT.HTML
+                for fieldI in range(1, len(fields) - 1):
+                    ans += "<th data-field=" + enquote(fields[fieldI]) + """ data-footer-formatter="sum">""" + fields[fieldI].capitalize() + "</th>\n"
+                # The very last column, whatever it is, is the only one we care about sorting.
+                ans += "<th data-field=" + enquote(fields[len(fields) - 1]) + """ data-footer-formatter="sum" data-sortable="true">""" + fields[len(fields) - 1].capitalize() + "</th>\n"
+                ans += """</tr>
+                </thead>
+                <tbody>"""
             if i != 0 and status == 0:
-                line = lines[i].rstrip()
-                fields = line.split("\t")
+
                 if len(fields) == 1:
                     break
                 try:
-                    ans += "<tr>\n<td>" + fields[0] + "</td>\n<td>" + fields[1] + "</td>\n<td>" + fields[2] + "</td>\n<td>" + \
-                        fields[3] + "</td>\n<td>" + \
-                        fields[4] + "</td>\n</tr>\n"
+                    ans += "<tr>\n<td>" + "</td>\n<td>".join(fields) + "</td>\n</tr>\n"
                 except:
                     if args.interactive:
                         print(
@@ -368,7 +386,10 @@ def getDada2Stats(pw):
                         print("Parsing DADA2 stats file failed. Please validate.\n")
                         sys.exit(1)
 
-    ans += "\n"
+    ans += "\n</tbody>"
+
+    os.chdir(oldCwd)
+
     return ans
 
 
@@ -657,8 +678,8 @@ def getAsvTables(pw):
                 print("\n")
 
     else:
-        include = glob.glob(pw.proj('*asvs+taxa.csv'), recursive=True) + \
-            glob.glob(pw.proj('*taxa-merged.csv'), recursive=True)
+        include = glob.glob(pw.proj('*asvs+taxa*.csv'), recursive=True) + \
+            glob.glob(pw.proj('*taxa-merged*.csv'), recursive=True)
 
     for file in include:
         opts['asvDfs'][file] = readAsvTable(pw.proj(file))
@@ -716,7 +737,7 @@ def createAsvHeatmaps(pw):
     js = ""
     heatmapNbr = 1
     for file in opts['asvDfs'].keys():
-        fields = os.path.splitext(file)[0].split(sep="_")
+        fields = os.path.splitext(file)[0].split(sep=".")
 
         active = "active" if heatmapNbr == 1 else ""
         title = ""
@@ -740,6 +761,7 @@ def createAsvHeatmaps(pw):
         taxnmy = fields[len(fields)-2]
         if taxnmy == "PECAN-SILVA":
             taxnmy += "*"
+        taxnmy = taxnmy.capitalize()
 
         form = fields[len(fields)-1]
         if form in ("taxa", "taxa+asvs", "asvs+taxa"):
@@ -803,7 +825,7 @@ def createAsvHeatmaps(pw):
             taxonStr = taxon if (len(taxon) > 0) else ""
             if form != "taxa-merged":
                 taxonStr = "(" + taxonStr + ")"
-            tablecell = asv + taxonStr
+            tablecell = asv + " " + taxonStr
             if row[2][0] == "--":
                 omittedRowCounter += 1
             else:
@@ -1236,10 +1258,21 @@ if __name__ == '__main__':
     scriptDir = os.path.dirname(os.path.abspath(__file__))
 
     parser = argparse.ArgumentParser(
-        description='''A script that automatically populates fields in the HTML report template. ''',
+        description='''A script that automatically populates fields in the HTML report template. 
+Required project folder hierarchy:
+PROJECT
++-- RUNS
+    +-- *mapping*.txt
+    +-- fwdSplit
+        +-- seqs_fastqc.zip
+    +-- revSplit
+        +-- seqs_fastqc.zip
++-- *DADA2_stats.txt
++-- *.csv
+''',
         epilog="""""")
     parser.add_argument("wd", nargs=1, metavar="PROJECT_DIR",
-                        help="The project directory containing a map, stats_file_cmp.txt, any ASV tables in CSV format, and run folder(s) with FastQC reports.")
+                        help="The project directory")
     parser.add_argument("--verbose", action='store_true')
     parser.add_argument("--interactive", "-i", action='store_true')
     parser.add_argument("--runs", "-r", nargs='+',

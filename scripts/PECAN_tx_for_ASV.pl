@@ -2,11 +2,14 @@
 
 =head1 NAME
 
-  PECAN_tx_for_ASV.pl
+  combine_tx_for_ASV.pl
 
 =head1 DESCRIPTION
 
-  Combine the ASV count table resulting from dada2 analyses with PECAN classifications for each ASV.
+  From the SILVA, PECAN, and other additional files, combine the taxonomic annotations of these multiple files giving
+  preference to SILVA classifications, except when taxonomy = "g_Lactobacillus" or "Shuttleworthia", in which case
+  the taxonomy from the PECAN file is used. The -x flag allows for an additional 2-column table to be considered after 
+  SILVA and PECAN taxonomies are considered (BLAST output, for example). 
 
 =head1 SYNOPSIS
 
@@ -17,17 +20,16 @@
 
 =item B<--pecan-file, -p>
   A 2-column, PECAN taxonomy table 
-  Usually looks like:  MC_order7_results.txt
   (ASV in column 1)
 
-=item B<--count-table, -c>
-  The .csv file resulting from the dada2 pipeline. 
-  Usually looks like: (PROJECT)_all_runs_dada2_abundance_table.csv
+=item B<--silva-file, -s>
+  The default, multi-level SILVA output table
+  (ASV in column 1)
 
-=item B<--vaginal>
-  Use this flag if your dataset is from vaginal samples.
-  The flag will rename concatenated taxa to the single taxon known for the vaginal environment.
-  Example: Lactobacillus_crispatus_Lactobacillus_amylovorus ==> Lactobacillus_crispatus
+=item B<--homd-file>
+
+=item B<--other-file, -o>
+  Any other table with ASV in column 1 and preferred taxonomy in column 2.
 
 =item B<-h|--help>
   Print help message and exit successfully.
@@ -36,14 +38,21 @@
 
 
 =head1 EXAMPLE
-  <local for Johanna> 
-  cd ~/Documents/CONTRA
-  PECAN_tx_for_ASV.pl -p MC_order7_results.txt -c CONTRA_all_runs_dada2_abundance_table.csv --vaginal
+
 
 =cut
 
 use strict;
 use warnings;
+my $scriptsDir;
+my $pipelineDir;
+
+BEGIN {
+    use File::Spec::Functions;
+    use File::Basename;
+
+    $scriptsDir = dirname(__FILE__);
+}
 use Pod::Usage;
 use English qw( -no_match_vars );
 use Getopt::Long qw(:config no_ignore_case no_auto_abbrev pass_through);
@@ -57,14 +66,15 @@ $OUTPUT_AUTOFLUSH = 1;
 ##                             OPTIONS
 ####################################################################
 GetOptions(
-    "PECAN-taxonomy|p=s"  => \my $pecanFile,
-    "ASV-count-table|c=s" => \my $countTblFile,
-    "vaginal"             => \my $vaginal,
-    "quiet"               => \my $quiet,
-    "verbose|v"           => \my $verbose,
-    "debug"               => \my $debug,
-    "dry-run"             => \my $dryRun,
-    "help|h!"             => \my $help,
+    "PECAN-taxonomy|p=s"      => \my $pecanFile,
+    "taxonomy|t=s"            => \my $taxonomy,
+    "vaginal"                 => \my $vaginal,
+    "ASV-count-table|c=s"     => \my $countTblFile,
+    "quiet"                   => \my $quiet,
+    "verbose|v"               => \my $verbose,
+    "debug"                   => \my $debug,
+    "dry-run"                 => \my $dryRun,
+    "help|h!"                 => \my $help,
 ) or pod2usage( verbose => 0, exitstatus => 1 );
 
 if ($help) {
@@ -73,7 +83,12 @@ if ($help) {
 }
 
 if ( !$pecanFile ) {
-    print "Please provide input PECAN taxonomy\n";
+    print "Please provide input taxonomy\n";
+    pod2usage( verbose => 2, exitstatus => 0 );
+    exit 0;
+}
+if ( !$taxonomy ) {
+    print "Please provide name of the taxonomy\n";
     pod2usage( verbose => 2, exitstatus => 0 );
     exit 0;
 }
@@ -127,10 +142,10 @@ my @suffixes = (".csv");
 my $Prefix   = basename( $countTblFile, @suffixes );
 
 print "---Adding taxonomy to $countTblFile\n";
-my $cntWtx = "${Prefix}_PECAN_asvs+taxa.csv";
+my $cntWtx = "${Prefix}.${taxonomy}.asvs+taxa.csv.tmp";
 open ALL, ">$cntWtx", or die "Cannot open $cntWtx for writing: $OS_ERROR\n";
 
-my $cnttxon = "${Prefix}_PECAN_taxa.csv";
+my $cnttxon = "${Prefix}.${taxonomy}.taxa.csv.tmp";
 open TXON, ">$cnttxon", or die "Cannot open $cnttxon for writing: $OS_ERROR\n";
 
 my @list1 = get_file_data($countTblFile);
@@ -176,44 +191,20 @@ close TXON;
 close ALL;
 print "TOTAL ASVs: $i\n";
 
-@suffixes = (".csv");
+@suffixes = (".csv.tmp");
 $Prefix   = basename( $cnttxon, @suffixes );
-my $merged = $Prefix . "-merged.csv";
+my $merged = $Prefix . "-merged.csv.tmp";
 
-if ($debug) {
-    if ($vaginal) {
-        my $cmd =
-"/home/jholm/bin/vaginal_combine_tbl_cols.pl -i $cnttxon -o $merged --debug";
-        print "\tcmd=$cmd\n" if $dryRun || $debug;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
-    } else {
-        my $cmd =
-          "/home/jholm/bin/combine_tbl_cols.pl -i $cnttxon -o $merged --debug";
-        print "\tcmd=$cmd\n" if $dryRun || $debug;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
-    }
-}
+my $debugParam = $debug ? "--debug" : "";
+my $vParam = $vaginal ? "--vaginal" : "";
 
-if ( !$debug ) {
-    if ($vaginal) {
-        my $cmd =
-          "/home/jholm/bin/vaginal_combine_tbl_cols.pl -i $cnttxon -o $merged";
-        print "\tcmd=$cmd\n" if $dryRun || $debug;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
-    } else {
-        my $cmd = "/home/jholm/bin/combine_tbl_cols.pl -i $cnttxon -o $merged";
-        print "\tcmd=$cmd\n" if $dryRun || $debug;
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
-    }
-}
+my $cmd =
+"$scriptsDir/combine_tbl_cols.pl -i $cnttxon -o $merged $debugParam $vParam";
+print "\tcmd=$cmd\n" if $dryRun || $debug;
+system($cmd) == 0
+    or die "system($cmd) failed with exit code: $?"
+    if !$dryRun;
+
 
 ####################################################################
 ##                               SUBS

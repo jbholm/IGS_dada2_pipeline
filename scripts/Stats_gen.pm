@@ -34,8 +34,9 @@ sub combine_dada2_stats {
       catfile( @words, "${project_name}_dada2_part1_concatenated_stats.txt" );
     print "Part1 stats for all runs:\n$part1Joined\n\n";
     open( OUTFILE, '>', $part1Joined ) or die "Could not open file $!";
-    print OUTFILE "sample_id\tinput\tfiltered\tmerged\n";
-
+    
+    my $headerPrinted;
+    my $lineNo = 0;
 ########Go inside each run folders and concatenate the dada2+part1_stats file of each run to part1Joined
     foreach (@runs) {
         opendir( SUBDIR, "$path/$_" ) || die "Could not open file $!";
@@ -47,10 +48,12 @@ sub combine_dada2_stats {
                 my $file_name = "$_/" . "dada2_part1_stats.txt";
 
                 open( INFILE, '<', $file_name ) or die "Could not open file $!";
-                while ( my $read = <INFILE> ) {
-                    chomp $read;
-                    if ( $read !~ m/input/ ) {
-                        print OUTFILE "$read\n";
+                while ( my $line = <INFILE> ) {
+                    if ( $lineNo == 0 && ! $headerPrinted ) {
+                        print OUTFILE "$line";
+                            $headerPrinted = 1;
+                    } else {
+                        print OUTFILE "$line";
                     }
                 }
             }
@@ -77,10 +80,11 @@ sub combine_dada2_stats {
     my $outfile2 = "$path" . "/stats_file_cmp.txt";
     open( OUTFILE2, ">", $outfile2 ) or die "Could not open file $!";
 
-    print OUTFILE2 "sample_id\tinput\tfiltered\tmerged\tnonchimeric\n";
     while ( my $line = <INFILE3> ) {
-        chomp $line;
-        if ( !( $line eq "sample_id\tinput\tfiltered\tmerged" ) ) {
+        if ( $. == 1 ) {
+                print OUTFILE2 $line;
+        } else {
+            chomp $line;
             $line =~ s/\s/\t/g;
             my @info     = split( '\t', $line );
             my $sampleid = $info[0];
