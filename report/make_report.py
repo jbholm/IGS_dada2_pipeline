@@ -258,62 +258,62 @@ def getMappingFile(pw):
     opts["map"] = ""
     oldCwd = os.getcwd()
     os.chdir(pw.pd)
-    if args.interactive:
-        while len(opts["map"]) == 0:
+    # if args.interactive:
+    #     while len(opts["map"]) == 0:
 
-            candidates = glob.glob("**/*mapping*.txt", recursive=True)
-            questions = [
-                {
-                    "type": "list",
-                    "name": "useGlobbed",
-                    "message": "Choose a mapping file",
-                    "choices": candidates + ["Browse...", "Cancel"],
-                }
-            ]
-            choice = PyInquirer.prompt(questions, style=examples.custom_style_2)[
-                "useGlobbed"
-            ]
-            if choice == "Browse...":
-                # open file chooser
-                opts["map"] = askFile(pw.pd, "Please choose a mapping file")
-            elif choice == "Cancel":
-                sys.exit(0)
-            else:
-                opts["map"] = pw.proj(choice)
-    else:
-        # look recursively in the run directories we were given
-        glb = [
-            glob.glob(rundir + "/**/*mapping*.txt", recursive=True)
-            for rundir in args.runs
-        ]
-        maps = []
-        for obj in glb:
-            try:
-                maps.append(obj[0])
-            except IndexError:  # glob returns empty list if a map wasn't found
-                pass
+    #         candidates = glob.glob("**/*mapping*.txt", recursive=True)
+    #         questions = [
+    #             {
+    #                 "type": "list",
+    #                 "name": "useGlobbed",
+    #                 "message": "Choose a mapping file",
+    #                 "choices": candidates + ["Browse...", "Cancel"],
+    #             }
+    #         ]
+    #         choice = PyInquirer.prompt(questions, style=examples.custom_style_2)[
+    #             "useGlobbed"
+    #         ]
+    #         if choice == "Browse...":
+    #             # open file chooser
+    #             opts["map"] = askFile(pw.pd, "Please choose a mapping file")
+    #         elif choice == "Cancel":
+    #             sys.exit(0)
+    #         else:
+    #             opts["map"] = pw.proj(choice)
+    # else:
+    #     # look recursively in the run directories we were given
+    #     glb = [
+    #         glob.glob(rundir + "/**/*mapping*.txt", recursive=True)
+    #         for rundir in args.runs
+    #     ]
+    #     maps = []
+    #     for obj in glb:
+    #         try:
+    #             maps.append(obj[0])
+    #         except IndexError:  # glob returns empty list if a map wasn't found
+    #             pass
 
-        opts["map"] = pw.proj(joinMaps(maps)) if len(maps) > 0 else None
+    opts["map"] = "project_map.txt" if os.path.exists("project_map.txt") else None
     os.chdir(oldCwd)
     return ()
 
 
-def joinMaps(
-    files
-):  # concatenates files into a tab-delimited mapping file in the current directory
-    dest = "project_map.txt"
-    with open(dest, "w") as outF:
-        with open(files[0], "r") as inF:
-            for line in inF:
-                outF.write(line.strip() + "\n")
-        for map in files[1 : len(files)]:
-            with open(map, "r") as inF:
-                for i, line in enumerate(inF):
-                    if i != 0 and re.search(r"^\S+", line) is not None:
-                        # lenient: as long as line has non-whitespace chars, print
-                        outF.write(line)
+# def joinMaps(
+#     files
+# ):  # concatenates files into a tab-delimited mapping file in the current directory
+#     dest = 
+#     with open(dest, "w") as outF:
+#         with open(files[0], "r") as inF:
+#             for line in inF:
+#                 outF.write(line.strip() + "\n")
+#         for map in files[1 : len(files)]:
+#             with open(map, "r") as inF:
+#                 for i, line in enumerate(inF):
+#                     if i != 0 and re.search(r"^\S+", line) is not None:
+#                         # lenient: as long as line has non-whitespace chars, print
+#                         outF.write(line)
 
-    return dest
+#     return dest
 
 
 def endoublequote(s):
@@ -324,27 +324,26 @@ def getMapHTML(pw):
     status = -1
     while status != 0:
         getMappingFile(pw)
-        os.chdir(scriptDir)
 
         try:
-            cmd = "Rscript " + "mappingToHtml.R -m " + enquote(opts["map"])
+            cmd = "Rscript " + os.path.join(scriptDir, "mappingToHtml.R") + " -m " + enquote(opts["map"])
         except TypeError:
             return None  # if this project doesn't have a mapping file
         if not args.verbose:
             status = subprocess.call(
-                cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                cmd, shell=True, stdout=subprocess.DEVNULL, stderr=sys.stderr
             )
         else:
             status = subprocess.call(cmd, shell=True)
         if status != 0:
-            print("Unable to parse selected file as map.")
             if not args.interactive:
-                sys.exit(1)
+                sys.exit("Unable to parse selected file as map.")
             opts["map"] = ""  # allows user to choose another mapping file
 
     f = open("mapping.html.frag", "r")
     map_table = f.read()
     f.close()
+    Path("mapping.html.frag").unlink()
     return map_table
 
 

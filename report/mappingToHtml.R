@@ -16,25 +16,32 @@ options(
     stringsAsFactors = FALSE
     )
 invisible({
-initial.options <- commandArgs(trailingOnly = FALSE)
-wd <- dirname(sub("--file=", "", initial.options[grep("--file=", initial.options)]))
-fileConn <- file(file.path(wd, "config.txt"))
-lines <- readLines(fileConn)
-sapply(lines, function(line) {
-    fields = strsplit(line, ": ")[[1]]
-    if(fields[1] == "rlibpath") {
-        .libPaths(c(fields[2], .libPaths()))
-    }
-})
+    initial.options <- commandArgs(trailingOnly = FALSE)
+    wd <- dirname(sub("--file=", "", initial.options[grep("--file=", initial.options)]))
+    fileConn <- file(file.path(wd, "config.txt"))
+    lines <- readLines(fileConn)
+    sapply(lines, function(line) {
+        fields = strsplit(line, ": ")[[1]]
+        if(fields[1] == "rlibpath") {
+            .libPaths(c(fields[2], .libPaths()))
+        }
+    })
 
-lapply(initial.options, FUN = function(x) {
-    cat(x)
-    cat("\n")
-})
+    lapply(initial.options, FUN = function(x) {
+        cat(x)
+        cat("\n")
+    })
 
-require("optparse")
-require("kableExtra")
-require("stringi")
+    suppressMessages(
+        suppressWarnings(
+            {
+            require("optparse")
+            require("kableExtra")
+            require("stringi")
+            library("magrittr")
+            }
+        )
+    )
 })
 option_list = list(make_option(c("--map", "-m"), type="character", metavar = "MAPPING_FILE_PATH", help = "The mapping file, tab-delimited"),
                    make_option(c("--group_by", "-g"), type = "numeric", metavar = "COLUMN_INDEX", help = "Which column index to group by (optional)")
@@ -49,8 +56,7 @@ mapping <- read.delim(opt$map, row.names=NULL, header=T, comment.char="", na.str
 
 colnames(mapping) = c("ID", "Barcode 1", "Barcode 2", "Description")
 
-require(kableExtra)
-library("magrittr")
+
 
 fileConn<-file("mapping.html.frag")
 output <- mapping %>% kableExtra::kable() %>% kableExtra::kable_styling() %>% kableExtra::scroll_box(width = "100%", height = "100%")

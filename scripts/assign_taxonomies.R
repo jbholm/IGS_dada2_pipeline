@@ -97,10 +97,18 @@ dummy <- lapply(args$tax, function(taxonomy) {
 
   message("About to assign taxonomy")
   tryCatch({
-    assignments <- dada2::assignTaxonomy(seqs,
-                                db,
-                                multithread = TRUE,
-                                taxLevels = taxLevels, outputBootstraps = TRUE, minBoot=args$minBoot)
+    invisible(
+      capture.output(
+        assignments <- dada2::assignTaxonomy(
+          seqs,
+          db,
+          multithread = TRUE,
+          taxLevels = taxLevels,
+          outputBootstraps = TRUE,
+          minBoot = args$minBoot
+        )
+      )
+    )
   }, error = function(e) {
     print("Error in dada2::assignTaxonomy:")
     stop(e)
