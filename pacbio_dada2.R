@@ -22,6 +22,7 @@ require("argparse")
 require("autothresholdr")
 require("ShortRead")
 library(tidyr)
+require(rjson)
 
 parser <- ArgumentParser(description = "Assign taxa")
 parser$add_argument(
@@ -41,14 +42,38 @@ if (any(is.null(args))) {
   stop("Some args missing!")
 }
 
+run_dir <- getwd()
 inPath <- args$input
 
+cache_checksums <- function(files, name) {
+  checksums <- lapply(files, function(f) {
+    gsub("^\\s+|\\s+$", "", system(paste("sha512sum", f), intern = T))
+  }) %>% setNames(files)
+
+  info_file <- file.path(run_dir, ".checkpoints.json")
+
+  if (!exists("run_info")) {
+    if (!file.exists(info_file)) {
+      run_info <<- list()
+    } else {
+      run_info <<- rjson::fromJSON(file = file.path(run_dir, ".checkpoints.json"))
+    }
+  }
+
+  run_info[[name]] <- checksums
+  
+  info_json <- rjson::toJSON(run_info, indent = 4)
+  writeLines(info_json, con = info_file)
+}
+
 glob_pattern <- gsub("()", "(.*)", args$pattern, fixed = T)
-fastqs <- sort(list.files(inPath, pattern = glob_pattern)) # B01\..+\.css\.fastq\.gz
+fastqs <- sort(list.files(inPath, pattern = glob_pattern, full.names = T)) # B01\..+\.css\.fastq\.gz
+
+cache_checksums(fastqs, "samples")
+
 sample.names <- sapply(fastqs, function(filename) {
-  sub(glob_pattern, "\\1", filename, perl = T)
+  sub(glob_pattern, "\\1", basename(filename), perl = T)
 })
-fastqs <- file.path(inPath, fastqs)
 names(fastqs) <- sample.names
 samples <- data.frame(CCS = fastqs)
 
