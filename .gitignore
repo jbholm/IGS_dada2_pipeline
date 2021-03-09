@@ -2,3 +2,4 @@ report/js/data.js
 report/**/*.frag
 report/**/*.pyc
 taxonomy/*.idx_8
+**/__pycache__/

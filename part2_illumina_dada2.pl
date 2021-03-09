@@ -128,11 +128,14 @@ use Cwd qw(abs_path getcwd);
 use File::Temp qw/ tempfile /;
 require POSIX;
 require IO::Tee;
+use Data::Dumper;
 
 #use Email::MIME;
 #use Email::Sender::Simple qw(sendmail);
 use File::Spec;
 require IO::Tee;
+use JSON;
+
 
 $OUTPUT_AUTOFLUSH = 1;
 
@@ -179,27 +182,29 @@ if ( !$project ) {
 
 my $projDir = Cwd::cwd;
 
+if ( !$inRuns ) {
+    die "Please provide (a) run ID(s)\n\n";
+}
+
 ##split the list of runs to an array
 my @runs = split( ",", $inRuns );
 
 # Refine and validate all variables that refer to the filesystem
 foreach (@runs) {
-    if ( $_ ) {    # If the variable is a non-empty string...
+    if ($_) {    # If the variable is a non-empty string...
         my $copy = $_;
-        $copy =~ s/\/$//;      # remove any trailing slash
+        $copy =~ s/\/$//;    # remove any trailing slash
         my $relPath = $copy;
         $copy = abs_path($relPath);    # get abs path
             # At the same time, abs_path returns undef if the path doesn't exist
             # so we can verify the existence of each file and directory
-        if ( !defined $copy or ! -d $copy ) {
-            print
-            die $_
+        if ( !defined $copy or !-d $copy ) {
+            print die $_
               . " not found.\n"
               . "Current working directory: "
               . getcwd() . "\n";
         }
-        $_ =
-          $copy;    # external variable referenced by path has now been edited.
+        $_ = $copy;  # external variable referenced by path has now been edited.
     }
 }
 
@@ -223,13 +228,11 @@ if ($notVaginal) {
     $vaginal = 0;
 }
 
-if ($pacbio && !$region) {
+if ( $pacbio && !$region ) {
     $region = "FULL-LENGTH";
 }
 if ( !$region ) {
-    print $logTee "Please provide a variable region (-v), V3V4, V4, ITS, or FULL-LENGTH\n";
-    pod2usage( verbose => 2, exitstatus => 0 );
-    exit 1;
+    die "Please provide a variable region (-v), V3V4, V4, ITS, or FULL-LENGTH\n";
 }
 if (
     List::Util::none { $_ eq $region }
@@ -247,11 +250,12 @@ my $pecan;
 
     if ( $region eq "ITS" ) {
         @strategies = ("UNITE");
-        print $logTee 
+        print $logTee
 "Using the UNITE reference database because ITS region was targeted.\n";
     } elsif ($oral) {
         @strategies = ("HOMD");
-        print $logTee "Using the HOMD reference database because samples are oral.\n";
+        print $logTee
+          "Using the HOMD reference database because samples are oral.\n";
     } elsif ( scalar @strategies == 0 ) {
         if ($pacbio) {
             @strategies = ("SILVA");
@@ -277,8 +281,7 @@ my $pecan;
     }
 
 # Which taxonomies need to be assigned from using DADA2? Which need to be assigned by SPINGO?
-    %taxonomy_flags =
-      ( SILVA138 => 0, HOMD => 0, UNITE => 0, PECAN => 0 );
+    %taxonomy_flags = ( SILVA138 => 0, HOMD => 0, UNITE => 0, PECAN => 0 );
 
     if ($ps) {
         print $logTee "Using the PECAN-SILVA assignment scheme.\n";
@@ -315,15 +318,13 @@ my $pecan;
     }
 }
 
-if ( !$inRuns ) {
-    print $logTee "Please provide (a) run ID(s)\n\n";
-    pod2usage( verbose => 2, exitstatus => 0 );
-    exit 1;
-}
 print $logTee "\n";
 ####################################################################
 ##                               MAIN
 ####################################################################
+my $run_info_hash = get_run_info(@runs);
+print $logTee "---Copying map files to project\n";
+copy_maps_to_project($run_info_hash);
 
 my @classifs = ();
 my $projabund;
@@ -340,29 +341,32 @@ print $logTee "---Combining "
   . " abundance table(s) and removing bimeras.\n";
 print $logTee "Run(s):\n";
 
-
 my ( $abundRds, $abund, $stats, $fasta ) = (
     "all_runs_dada2_abundance_table.rds",
     "all_runs_dada2_abundance_table.csv",
-    "DADA2_stats.txt", "all_runs_dada2_ASV.fasta"
+    "DADA2_stats.txt",
+    "all_runs_dada2_ASV.fasta"
 );
-( $abundRds, $abund, $stats, $fasta ) = map { move_to_project( $project, $_, 1 ) } ( $abundRds, $abund, $stats, $fasta );
+( $abundRds, $abund, $stats, $fasta ) =
+  map { move_to_project( $project, $_, 1 ) }
+  ( $abundRds, $abund, $stats, $fasta );
 
 if ( List::Util::any { !-e $_ } ( $abundRds, $abund, $fasta, $stats ) ) {
     print $logTee "Combining runs and removing bimeras.\n";
-    ( $abundRds, $abund, $fasta, $stats ) = dada2_combine($pacbio, \@runs);
+    ( $abundRds, $abund, $fasta, $stats ) = dada2_combine( $pacbio, \@runs );
 
-    ( $abundRds, $abund, $fasta, $stats ) = map { move_to_project( $project, $$_ ) } ( \$abundRds, \$abund, \$fasta, \$stats );
+    ( $abundRds, $abund, $fasta, $stats ) =
+      map { move_to_project( $project, $$_ ) }
+      ( \$abundRds, \$abund, \$fasta, \$stats );
     foreach ( ( $abundRds, $abund, $fasta, $stats ) ) {
         print $logTee "$_\n";
-    };
+    }
 } else {
     print $logTee "Chimeras already removed. Skipping...\n";
 }
 
 # Give ASV's unique and easy-to-look-up IDs
-$cmd =
-"python2 $scriptsDir/rename_asvs.py $fasta -p $project";
+$cmd = "python2 $scriptsDir/rename_asvs.py $fasta -p $project";
 execute_and_log( $cmd, $logTee, $dryRun,
     "---Renaming ASVs in FASTA, abundance tables, and classification key(s)." );
 
@@ -484,7 +488,7 @@ if ( grep ( /^PECAN-SILVA$/, @strategies ) ) {
     my $msg       = "---Labeling count table with $db taxa.";
     my $silvaFile = "";
     foreach (@full_classif_csvs) {
-        if ($_ =~ /SILVA138/ ) {
+        if ( $_ =~ /SILVA138/ ) {
             $silvaFile = $_;
         }
     }
@@ -531,6 +535,87 @@ $logTee->close;
 ####################################################################
 ##                               SUBS
 ####################################################################
+sub read_json {
+    my $filepath = shift;
+
+    my $json;
+    {
+        local $/;    #Enable 'slurp' mode
+        if ( -e $filepath ) {
+            open my $FH, "+<$filepath";
+            seek $FH, 0, 0 or die;
+            $json = <$FH>;
+            close $FH;
+        }
+
+    }
+    my $data = {};
+    eval {
+        $data = decode_json($json);
+    };
+    return %{$data};
+}
+
+sub get_run_info {
+    my %all_run_info;
+    foreach my $run (@_) {
+        my %run_info = read_json( catfile( $run, ".checkpoints.json" ) );
+
+        $all_run_info{$run} = \%run_info;
+    }
+    return \%all_run_info;
+}
+
+sub copy_maps_to_project {
+    my $all_run_info = shift;
+    
+    my @runs = keys %{$all_run_info};
+    # the first map goes into project_map.txt nearly verbatim. For the remaining
+    # maps, all non-blank lines after the header go in
+
+    # I hate perl syntax so much
+    my @maps;
+    foreach my $run (@runs) {
+        my @recorded_map_filepaths = keys %{ $all_run_info->{$run}{"map"} };
+        if (@recorded_map_filepaths) {
+            push @maps, catfile($run, $recorded_map_filepaths[0]);
+        }
+    }
+
+    my ($inFH, $outFH);
+    if ( @maps ) {
+        open( $outFH, '>', 'project_map.txt' ) or die "Could not open project_map.txt: $!";
+
+        my $first_filepath = shift @maps;
+        open( $inFH, '<', $first_filepath ) or die "Could not open $first_filepath: $!";
+
+        while ( <$inFH> ) {
+            if ( $_ =~ /^\S+/ ) {
+                $outFH->print($_);
+            }
+        }
+        close $inFH;
+    } else {
+        $logTee->print("No maps found."); 
+    }
+    
+
+    while (my $run_map_filepath = shift @maps) {
+        open( $inFH, '<', $run_map_filepath ) or die "Could not open $run_map_filepath: $!";
+        my $line = 0;
+        while ( <$inFH> ) {
+            if ( $line != 0 && $_ =~ /^\S+/ ) {
+                $outFH->print($_);
+            }
+            $line += 1;
+        }
+        close $inFH;
+    }
+
+    if ($outFH) {
+        close $outFH;
+    }
+}
 
 sub readTbl {
 
@@ -562,11 +647,13 @@ sub R {
     my $shebang = <$scriptFH>;
     chomp $shebang;
     $shebang =~ s/#!//;    # Remove shebang itself
-    my $pathsep = catfile( '',       '' );
+    my $pathsep = catfile( '', '' );
+
     # my $outR    = catfile( $projDir, basename($script) . "out" );
 
     my $cmd = "$shebang --verbose $script $args";
     my ($stdout) = execute_and_log( $cmd, undef, 0, "" );
+
     # check_R_for_error(\$stdout); execute_and_log should die on error
     return ($stdout);
 }
@@ -577,22 +664,20 @@ sub R {
 # Returns the names of the three output file: abundance table (as RDS), abundance table (as
 #   CSV), and stats
 sub dada2_combine {
-    my $pacbio = shift;
+    my $pacbio  = shift;
     my $rundirs = shift;
     my @rundirs = @$rundirs;
-    
+
     my $sequencer = $pacbio ? "PACBIO" : "ILLUMINA";
 
     my $script = catfile( $pipelineDir, "scripts", "remove_bimeras.R" );
-    my $args   = "--seq=$sequencer " . join(" ", @rundirs);
+    my $args   = "--seq=$sequencer " . join( " ", @rundirs );
 
-    return (
-        split(/\s/, R( $script, $args ))
-    );
+    return ( split( /\s/, R( $script, $args ) ) );
 }
 
 sub dada2_classify {
-    my $fasta   = shift;
+    my $fasta      = shift;
     my $taxonomies = shift;
 
     my @taxonomies = @$taxonomies;
@@ -630,16 +715,17 @@ sub execute_and_log {
     my $lexicalFH = pop @_;
 
     # Print to STDOUT if filehandle was not provided
-    if ( ! $lexicalFH ) {
+    if ( !$lexicalFH ) {
         $lexicalFH = *STDOUT;
     }
 
     my @ans = ();
     $cuteMsg =~ s/^\n+|\n+$//g;    # remove leading and trailing newlines
-    print $lexicalFH "$cuteMsg\n";   
+    print $lexicalFH "$cuteMsg\n";
 
     # CAREFUL, $cmd holds a reference to a variable in the caller!
     foreach my $cmd (@_) {
+
         # print each command
         print $lexicalFH "> $cmd\n";
 
@@ -741,4 +827,5 @@ sub rename_temps {
     }
 }
 
+exit 0;
 exit 0;

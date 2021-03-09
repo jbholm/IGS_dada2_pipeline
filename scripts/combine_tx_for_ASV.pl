@@ -109,6 +109,10 @@ if ($homdFile) {
     print "---Using HOMD taxonomy\n";
     push @taxNames, "HOMD";
 }
+if ($uniteFile) {
+    print "---Using UNITE taxonomy\n";
+    push @taxNames, "UNITE";
+}
 
 ####################################################################
 ##                               MAIN

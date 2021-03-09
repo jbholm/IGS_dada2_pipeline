@@ -426,6 +426,7 @@ if (
 ## INITIALIZATION
 ###################################################################
 
+chdir $global_config{wd};
 # Initialize log file
 my $run     = File::Basename::basename( $global_config{wd} );
 my $pd      = ( File::Basename::fileparse( $global_config{wd} ) )[1];
@@ -491,6 +492,10 @@ my %step2number = (
     "dada2part1out" => 7
 );
 my $skip;
+
+if ( !$bcLen ) {
+    $bcLen = $oneStep ? 12 : 8;    # 2-step pcr
+}
 
 my $models;
 if ( $var eq 'V3V4' ) {
@@ -572,7 +577,7 @@ if (   !@dbg
 
     if ( !$noSkip ) {
         $skip = skippable( [$map], [ $localMap, $mapLog ],
-            $checksums{"map"}, $checksums{"meta"}, "map validation", ["map"] );
+            $checksums{$map}, $checksums{"meta"}, "map validation" );
     }
 
     if ( !$skip ) {
@@ -679,7 +684,7 @@ if (   !@dbg
           . "NO. PCR POSITIVE CONTROLS: $pcrpos\nNO. PCR NEGATIVE CONTROLS: $pcrneg\n";
 
         if ( !@dbg ) {
-            cacheChecksums( [$map], "map", ["map"] );
+            cacheChecksums( [$map], "map" );
             cacheChecksums(
                 [
                     $mappingError,
@@ -847,28 +852,24 @@ sub barcodes {
     my $count = 0;
 
     my @files;
-    my $ids;
     if ($oneStep) {
         print $logTee "Forward and reverse reads will be obtained from:\n"
           . "\t$readsForInput\n\t$readsRevInput\n";
         @files = ( $readsForInput, $readsRevInput );
-        $ids   = [ "RF", "RR" ];
     } else {
         print $logTee "Forward and reverse reads will be obtained from:\n"
           . "\t$readsForInput\n\t$readsRevInput\n";
         print $logTee "Index 1 and Index 2 will be obtained from:\n"
           . "\t$index1Input\n\t$index2Input\n";
         @files = ( $readsForInput, $readsRevInput, $index1Input, $index2Input );
-        $ids   = [ "RF", "RR", "I1", "I2" ];
     }
 
-    my $input = [ $readsForInput, $readsRevInput, $index1Input, $index2Input ];
-    my $inputNames = [ "RF", "RR", "I1", "I2" ];
+    my $input = \@files;
     my $output     = [$barcodes];
     if ( !$noSkip ) {
         $skip =
           skippable( $input, $output, $checksums{"raw"}, $checksums{"barcodes"},
-            "barcode extraction", $inputNames );
+            "barcode extraction" );
     }
 
     my $step1;
@@ -922,10 +923,6 @@ sub barcodes {
         # Was in original code, but maybe unnecessary?
         my $mapOpt = $oneStep ? "-m $map" : "";
 
-        if ( !$bcLen ) {
-            $bcLen = $oneStep ? 12 : 8;    # 2-step pcr
-        }
-
         my $cmd =
 "extract_barcodes.py -f $localNames{\"index1\"} -r $localNames{\"index2\"} -c barcode_paired_end --bc1_len $bcLen --bc2_len $bcLen $mapOpt -o $wd $oriParams";
 
@@ -947,7 +944,7 @@ sub barcodes {
 
         # Record hash of barcodes.fastq, and inputs
         if ( !@dbg ) {
-            cacheChecksums( \@files, "raw", $ids );
+            cacheChecksums( \@files, "raw" );
             cacheChecksums( [$barcodes], "barcodes" );
         }
 
@@ -984,12 +981,11 @@ sub barcodes {
 #######################################
 
 sub demux {
-    print $logTee @_;
     my $wd          = shift;
     my $die_on_fail = shift;
     print $logTee "Demuxing in: $wd\n";
 
-    my $barcodes = "$wd/barcodes.fastq";
+    my $barcodes = "$wd/barcodes.fastq"; # are we not in $wd???
     my $nSamples = count_samples($map);
     my $step2;
     my $step3;
@@ -1027,7 +1023,7 @@ sub demux {
             },
             $checksums{"library"},
             "demultiplexing",
-            [ "RF", "RR", "map", File::Spec->abs2rel( $barcodes, $wd ) ]
+            [ $readsForInput, $readsRevInput, $map, File::Spec->abs2rel( $barcodes, $wd ) ]
         );
     }
 
@@ -1555,8 +1551,14 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
         print $logTee
 "---All tagcleaned R4 (R2) samples accounted for in $global_config{wd}\n";
 
+        $cmd = "gzip *_tc.fastq";
+        execute_and_log( $cmd, $logTee, $dryRun,
+        "Compressing tagcleaned FASTQ's...\n");
+        print $logTee "---Tagcleaned FASTQ's compressed.\n";
+
         if ( !@dbg ) {
-            cacheChecksums( [ @fwdFiles, @revFiles ], "tagcleaned" );
+            my @gzipped = glob("$global_config{wd}/*R[1|2]_tc.fastq.gz");
+            cacheChecksums( \@fwdFiles, "tagcleaned" );
         }
 
         my $duration = time - $start;
@@ -1584,7 +1586,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
       "$global_config{wd}/$project" . "_" . $run . "_dada2_part1_rTmp.Rout";
 
     my @outputs = ( "$projrt", "$projrtout" );
-    my @inputs  = glob("$global_config{wd}/*R[1|2]_tc.fastq");
+    my @inputs  = glob("$global_config{wd}/*R[1|2]_tc.fastq.gz");
 
     if ( !$noSkip ) {
         $skip = skippable(
