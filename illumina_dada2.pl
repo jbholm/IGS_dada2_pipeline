@@ -223,6 +223,7 @@ require IO::Tee;
 use File::Path qw( remove_tree );
 use File::Copy::Recursive qw(dircopy );
 use Data::Dumper;
+use Hash::Merge qw( merge );
 
 $OUTPUT_AUTOFLUSH = 1;
 
@@ -388,8 +389,6 @@ foreach (@paths) {
     }
 }
 
-
-
 if (   !@dbg
     || grep( /^barcodes$/, @dbg )
     || grep( /^demux$/,    @dbg ) )
@@ -427,6 +426,7 @@ if (
 ###################################################################
 
 chdir $global_config{wd};
+
 # Initialize log file
 my $run     = File::Basename::basename( $global_config{wd} );
 my $pd      = ( File::Basename::fileparse( $global_config{wd} ) )[1];
@@ -543,8 +543,12 @@ if ( !-e $stdout_log ) {
     print "$stdout_log did not exist -> making $stdout_log\n";
 }
 
-my $checksumFile = "$global_config{wd}/.checkpoints.json";
-my %checksums    = read_checkpoints($checksumFile);
+my $metadata = project_metadata();
+$metadata = project_metadata(
+    params => {
+        "platform" => "ILLUMINA"
+    }
+);
 
 my $qiime =
   "$global_config{wd}/$project" . "_" . $run . "_" . "qiime_config.txt";
@@ -576,8 +580,13 @@ if (   !@dbg
         "QIIME CONFIGURATION DETAILS:\nsee $qiime\n" );
 
     if ( !$noSkip ) {
-        $skip = skippable( [$map], [ $localMap, $mapLog ],
-            $checksums{$map}, $checksums{"meta"}, "map validation" );
+        $skip = skippable(
+            [$map],
+            [ $localMap, $mapLog ],
+            $metadata->{"checkpoints"}{$map},
+            $metadata->{"checkpoints"}{"meta"},
+            "map validation"
+        );
     }
 
     if ( !$skip ) {
@@ -748,18 +757,21 @@ if ($tbshtBarcodes) {
 
         $success = demux( $dir, 0 );
         if ($success) {
+
             # if ( !$dir eq $global_config{wd} ) {
 
-            #  # cleanup after ourselves, so the pipeline can continue like normal
-            #     dircopy( $dir, $global_config{wd} );
-            # }
-            # foreach ( keys %dirs_params ) {
-            #     if ( !$_ eq $global_config{wd} ) {
-            #         remove_tree($_) or warn $!;
-            #     }
-            # }
-            print $logTee "Demux may have succeeded when extract_barcodes.py called with"
+          #  # cleanup after ourselves, so the pipeline can continue like normal
+          #     dircopy( $dir, $global_config{wd} );
+          # }
+          # foreach ( keys %dirs_params ) {
+          #     if ( !$_ eq $global_config{wd} ) {
+          #         remove_tree($_) or warn $!;
+          #     }
+          # }
+            print $logTee
+              "Demux may have succeeded when extract_barcodes.py called with"
               . " $dirs_params{$dir}\n";
+
             # last;
         } else {
             print $logTee "Demux failed when extract_barcodes.py called with "
@@ -768,7 +780,7 @@ if ($tbshtBarcodes) {
     }
 
     print $logTee "Attempting all permutations of reverse-complemented "
-        . "switched indexes.\n";
+      . "switched indexes.\n";
 
     for my $key ( keys %dirs_params ) {
         my $dir = "${key}_switched";
@@ -787,28 +799,30 @@ if ($tbshtBarcodes) {
 
         $success = demux( $dir, 0 );
         if ($success) {
+
             # if ( !$dir eq $global_config{wd} ) {
 
-            # # cleanup after ourselves, so the pipeline can continue like normal
-            #     dircopy( $dir, $global_config{wd} );
-            # }
-            # foreach ( keys %dirs_params ) {
-            #     if ( !$_ eq $global_config{wd} ) {
-            #         remove_tree($_) or warn $!;
-            #     }
-            # }
+           # # cleanup after ourselves, so the pipeline can continue like normal
+           #     dircopy( $dir, $global_config{wd} );
+           # }
+           # foreach ( keys %dirs_params ) {
+           #     if ( !$_ eq $global_config{wd} ) {
+           #         remove_tree($_) or warn $!;
+           #     }
+           # }
             print $logTee
-                "Demux may have succeeded when extract_barcodes.py called with"
-                . " $dirs_params{$key} and switched indexes.\n";
+              "Demux may have succeeded when extract_barcodes.py called with"
+              . " $dirs_params{$key} and switched indexes.\n";
+
             # last;
         } else {
-            print $logTee
-                "Demux failed when extract_barcodes.py called with "
-                . "$dirs_params{$key} and switched indexes.\n";
+            print $logTee "Demux failed when extract_barcodes.py called with "
+              . "$dirs_params{$key} and switched indexes.\n";
         }
     }
-    
-    die "Finished troubleshooting barcodes. Please inspect the split library logs in each trial directory to determine which demux was correct. Correct files can be moved back to this run directory, and the pipeline can be continued using '--debug splitsamples --debug tagclean --debug dada2'.";
+
+    die
+"Finished troubleshooting barcodes. Please inspect the split library logs in each trial directory to determine which demux was correct. Correct files can be moved back to this run directory, and the pipeline can be continued using '--debug splitsamples --debug tagclean --debug dada2'.";
 
 } else {
     if ( ( !@dbg ) || grep( /^barcodes$/, @dbg ) ) {
@@ -833,8 +847,8 @@ sub barcodes {
         $inDir ? find_raw_files( $inDir, $oneStep )
       : $oneStep ? ( $r1file, $r2file, $r1file, $r2file )
       :            ( $r1file, $r2file, $i1file, $i2file );
-    
-    if ($switch) { # Consider the i1's and i2's switched
+
+    if ($switch) {    # Consider the i1's and i2's switched
         my $oldi1 = $index1Input;
         $index1Input = $index2Input;
         $index2Input = $oldi1;
@@ -864,12 +878,15 @@ sub barcodes {
         @files = ( $readsForInput, $readsRevInput, $index1Input, $index2Input );
     }
 
-    my $input = \@files;
-    my $output     = [$barcodes];
+    my $input  = \@files;
+    my $output = [$barcodes];
     if ( !$noSkip ) {
-        $skip =
-          skippable( $input, $output, $checksums{"raw"}, $checksums{"barcodes"},
-            "barcode extraction" );
+        $skip = skippable(
+            $input, $output,
+            $metadata->{"checkpoints"}{"raw"},
+            $metadata->{"checkpoints"}{"barcodes"},
+            "barcode extraction"
+        );
     }
 
     my $step1;
@@ -985,7 +1002,7 @@ sub demux {
     my $die_on_fail = shift;
     print $logTee "Demuxing in: $wd\n";
 
-    my $barcodes = "$wd/barcodes.fastq"; # are we not in $wd???
+    my $barcodes = "$wd/barcodes.fastq";    # are we not in $wd???
     my $nSamples = count_samples($map);
     my $step2;
     my $step3;
@@ -1016,14 +1033,17 @@ sub demux {
             [ $readsForInput, $readsRevInput, $map, $barcodes ],
             [ $rForSeqsFq,    $rRevSeqsFq ],
             {
-                "RF" => $checksums{"raw"}->{"RF"},
-                "RR" => $checksums{"raw"}->{"RR"},
-                %{ $checksums{"map"} },
-                %{ $checksums{"barcodes"} }
+                "RF" => $metadata->{"checkpoints"}{"raw"}->{"RF"},
+                "RR" => $metadata->{"checkpoints"}{"raw"}->{"RR"},
+                %{ $metadata->{"checkpoints"}{"map"} },
+                %{ $metadata->{"checkpoints"}{"barcodes"} }
             },
-            $checksums{"library"},
+            $metadata->{"checkpoints"}{"library"},
             "demultiplexing",
-            [ $readsForInput, $readsRevInput, $map, File::Spec->abs2rel( $barcodes, $wd ) ]
+            [
+                $readsForInput, $readsRevInput,
+                $map, File::Spec->abs2rel( $barcodes, $wd )
+            ]
         );
     }
 
@@ -1156,7 +1176,9 @@ if ( !@dbg || grep( /^splitsamples$/, @dbg ) ) {
         $skip = skippable(
             [ $rForSeqsFq, $rRevSeqsFq ],
             [ @fwdOutput,  @revOutput ],
-            $checksums{"library"}, $checksums{"samples"}, "sample splitting"
+            $metadata->{"checkpoints"}{"library"},
+            $metadata->{"checkpoints"}{"samples"},
+            "sample splitting"
         );
     }
 
@@ -1322,8 +1344,8 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                 )
             ],
             [ @fwdTcFiles, @revTcFiles ],
-            $checksums{"samples"},
-            $checksums{"tagcleaned"},
+            $metadata->{"checkpoints"}{"samples"},
+            $metadata->{"checkpoints"}{"tagcleaned"},
             "primer removal"
         );
     }
@@ -1553,12 +1575,12 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
 
         $cmd = "gzip *_tc.fastq";
         execute_and_log( $cmd, $logTee, $dryRun,
-        "Compressing tagcleaned FASTQ's...\n");
+            "Compressing tagcleaned FASTQ's...\n" );
         print $logTee "---Tagcleaned FASTQ's compressed.\n";
 
         if ( !@dbg ) {
             my @gzipped = glob("$global_config{wd}/*R[1|2]_tc.fastq.gz");
-            cacheChecksums( \@fwdFiles, "tagcleaned" );
+            cacheChecksums( \@gzipped, "tagcleaned" );
         }
 
         my $duration = time - $start;
@@ -1591,8 +1613,8 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
     if ( !$noSkip ) {
         $skip = skippable(
             \@inputs, \@outputs,
-            $checksums{"tagcleaned"},
-            $checksums{"dada2part1out"}, "DADA2"
+            $metadata->{"checkpoints"}{"tagcleaned"},
+            $metadata->{"checkpoints"}{"dada2part1out"}, "DADA2"
         );
     }
 
@@ -1870,15 +1892,18 @@ END {
 ####################################################################
 ##                               SUBS
 ####################################################################
+sub project_metadata {
+    my %arg          = @_;
+    my $params       = delete $arg{params} // {};
+    my $checkpoints  = delete $arg{checkpoints} // {};
+    my $metadataFile = "$global_config{wd}/.meta.json";
 
-sub read_checkpoints {
-    my $filepath = shift;
-
+    # get existing metadata on filesystem
     my $json;
     {
         local $/;    #Enable 'slurp' mode
-        if ( -e $filepath ) {
-            open my $FH, "+<$filepath";
+        if ( -e $metadataFile ) {
+            open my $FH, "+<$metadataFile";
             seek $FH, 0, 0 or die;
             $json = <$FH>;
             close $FH;
@@ -1886,14 +1911,33 @@ sub read_checkpoints {
 
     }
 
-    my @checkpoints;
-    my $data = {};
+    my $old_metadata = {};
     eval {
-        $data = decode_json($json);
+        $old_metadata = decode_json($json);
 
     };
 
-    return %{$data};
+    # If no arguments, user wants to GET existing metadata
+    if ( !%$params && !%$checkpoints ) {
+        return
+          $old_metadata
+          ;    # can we change outside code so we can just return hashref here?
+    } else {
+
+        # If arguments, user wants to UPDATE AND GET existing metadata
+        my $new_meta = {
+            params      => $params,
+            checkpoints => $checkpoints,
+        };
+
+        # recursively merge params and checkpoints with $project_metadata
+        my $combined_metadata = merge( $old_metadata, $new_meta );
+
+        open my $metadataFH, ">$metadataFile";
+        print $metadataFH encode_json($combined_metadata);
+        close $metadataFH;
+        return $combined_metadata;
+    }
 }
 
 #' @_[0] Filenames of inputs to checksum
@@ -2062,50 +2106,46 @@ sub cacheChecksums {
         $names =
           [ map { File::Spec->abs2rel( $_, $wd ) } @$files ];
     }
-    if ( defined $checksumFile ) {
 
-        print $logTee "Saving progress in run folder...\n";
+    print $logTee "Saving progress in run folder...\n";
 
-        my $destroyNextStep = sub {
-            if ( $step2number{$step} + 1 < scalar keys %number2step ) {
+    my $destroyNextStep = sub {
+        if ( $step2number{$step} + 1 < scalar keys %number2step ) {
 
-             # Reset the next set of checksums so the next step is forced to run
-                $checksums{ $number2step{ $step2number{$step} + 1 } } = {};
+            # Reset the next set of checksums so the next step is forced to run
+            $metadata->{"checkpoints"}
+              { $number2step{ $step2number{$step} + 1 } } = {};
+        }
+    };
+    my $update = 0;
+    my @keys   = keys %{ $metadata->{"checkpoints"}{$step} };
+    if ( !setIdent( \@keys, $names ) ) {
+        $update = 1;
+        $destroyNextStep->()
+          ;    # MUST DO THIS BEFORE ANY NEW CHECKSUMS ARE WRITTEN
+         # PREVENTS "CHIMERIC" CHECKSUM FILE IN CASE OF PIPELINE INTERRUPTION HERE
+    }
+    my %newChecksums;
+
+    for my $i ( 0 .. scalar @$files - 1 ) {
+        my $file     = $files->[$i];
+        my $name     = $names->[$i];
+        my @output   = split( /\s/, `sha512sum $file` );
+        my $checksum = $output[0];
+        if ( !$update )
+        { # !$update means that $checksums{$step}->{ $file } is defined for all files
+            if ( $metadata->{"checkpoints"}{$step}->{$name} ne $checksum ) {
+                $destroyNextStep->();
             }
-        };
-        my $update = 0;
-        my @keys   = keys %{ $checksums{$step} };
-        if ( !setIdent( \@keys, $names ) ) {
-            $update = 1;
-            $destroyNextStep->()
-              ;    # MUST DO THIS BEFORE ANY NEW CHECKSUMS ARE WRITTEN
-             # PREVENTS "CHIMERIC" CHECKSUM FILE IN CASE OF PIPELINE INTERRUPTION HERE
         }
-        my %newChecksums;
 
-        for my $i ( 0 .. scalar @$files - 1 ) {
-            my $file     = $files->[$i];
-            my $name     = $names->[$i];
-            my @output   = split( /\s/, `sha512sum $file` );
-            my $checksum = $output[0];
-            if ( !$update )
-            { # !$update means that $checksums{$step}->{ $file } is defined for all files
-                if ( $checksums{$step}->{$name} ne $checksum ) {
-                    $destroyNextStep->();
-                }
-            }
+        # Store the checksum of the files just produced.
+        $newChecksums{$name} = $checksum;
+    }
+    $metadata->{"checkpoints"}{$step} = \%newChecksums;
 
-            # Store the checksum of the files just produced.
-            $newChecksums{$name} = $checksum;
-        }
-        $checksums{$step} = \%newChecksums;
-
-        open my $checksumFH, ">$checksumFile";
-        if ( List::Util::all { defined $_ } %checksums ) {
-            print $checksumFH encode_json( \%checksums );
-        }
-        close $checksumFH;
-
+    if ( List::Util::all { defined $_ } $metadata->{"checkpoints"} ) {
+        project_metadata( checkpoints => $metadata->{"checkpoints"} );
     }
 }
 

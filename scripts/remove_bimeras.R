@@ -43,6 +43,7 @@ if(any(!dir.exists(args$runs))) {
 
 require("dada2")
 library(tidyr)
+library(dplyr)
 
 runs <- args$runs %>% setNames(lapply(args$runs, basename))
 ## INPUT
@@ -58,7 +59,7 @@ counts_and_stats <- (function(runs) {
   old_count_table_sample_names <- do.call(c, lapply(tables, rownames))
   
   new_sample_names <- make.names(old_stats_sample_names, unique = T)
-  stats <- do.call(rbind, stats) %>% `row.names<-`(new_sample_names)
+  stats <- bind_rows(stats) %>% `row.names<-`(new_sample_names)
 
   # Combine count tables
   unqs <- unique(c(sapply(tables, colnames), recursive=TRUE))

@@ -288,7 +288,6 @@ def upload_to_jira(proj):
         stderr=PIPE,
     )
     tree = process.stdout.read().decode(encoding="utf8").split("\n")
-    print(tree)
     if len(tree) < 5:
         print("Cannot read contents of current directory.")
         return
@@ -463,7 +462,9 @@ def choose_project(default=None):
                     ["ls", "-al", str(Path.cwd())], stdin=PIPE, stdout=PIPE, stderr=PIPE
                 )
                 tree = process.stdout.read().decode(encoding="utf8").split("\n")
-
+                if len(tree) < 5:
+                    print("Cannot read contents of current directory. Exiting...")
+                    sys.exit(0)
                 questions = [
                     {
                         "type": "list",
@@ -549,14 +550,14 @@ def organize_reads(proj_path, run_paths):
 
         # if not ill_fwd_dir.is_dir() and not ill_rev_dir.is_dir():
         try:
-            with (proj_path / run_path / Path(".checkpoints.json")).open("r") as fh:
+            with (proj_path / run_path / Path(".meta.json")).open("r") as fh:
                 run_info = json.load(fh)
         except Exception as e:
             print(str(e))
             return False
         try:
             filepaths += [
-                os.path.join(run_path, rel_path) for rel_path in run_info['checksums']["samples"].keys()
+                os.path.join(run_path, rel_path) for rel_path in run_info['checkpoints']["samples"].keys()
             ]
         except KeyError:
             print("Incompatible with the pipeline version used on this run. Cannot find raw read files.")
@@ -779,10 +780,10 @@ def add_references(proj_path, run_paths):
         # add starter references for illumina or pacbio runs
         run_types = set()
         for run_path in run_paths:
-            with (proj_path / run_path / Path(".checkpoints.json")).open("r") as fh:
+            with (proj_path / run_path / Path(".meta.json")).open("r") as fh:
                 run_info = json.load(fh)
 
-            run_type = run_info['params']['manufacturer'].upper()
+            run_type = run_info['params']['platform'].upper()
             if run_type not in CITATION_GROUPS.keys():
                 print(f"Unrecognized run type: {run_type}. Don't know what citations to add.")
             else:
