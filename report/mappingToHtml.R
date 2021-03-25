@@ -52,9 +52,25 @@ if(is.null(opt$map)) {
     stop("Mapping file must be provided using -m or --map")
 }
 
-mapping <- read.delim(opt$map, row.names=NULL, header=T, comment.char="", na.strings="")
-
-colnames(mapping) = c("ID", "Barcode 1", "Barcode 2", "Description")
+mapping <- data.frame(
+                ID = character(),
+                `Barcode 1` = character(),
+                `Barcode 2` = character(),
+                Description = character()
+            ) %>%
+                set_colnames(c("ID", "Barcode 1", "Barcode 2", "Description"))
+tryCatch(
+    {
+        mapping <<- read.delim(opt$map, row.names = NULL, header = T, comment.char = "", na.strings = "") %>%
+            set_colnames(c("ID", "Barcode 1", "Barcode 2", "Description"))
+    },
+    error = function(e) {
+        if(grepl("no lines available in input", e$message, fixed = T)) {
+            return()
+        } else {
+            stop(e)
+        }
+    })
 
 
 

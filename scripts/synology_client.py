@@ -158,6 +158,7 @@ def inquire(questions):
 def choose_upload_dest(user, source, ul_type):
     global SYNOLOGY_GLOBALS
     wd = Path(SYNOLOGY_GLOBALS["START_PATH"])
+    success = True 
 
     while True:
         tree = get_remote_tree(user, wd) # may throw ConnectionRefusedError
@@ -193,6 +194,7 @@ def choose_upload_dest(user, source, ul_type):
         
         # GO BACK TO MAIN MENU
         elif choice == "CANCEL":
+            success = False
             break
 
         # DIRECTORY: resolve absolute path, and figure out whether to enter or upload
@@ -207,7 +209,7 @@ def choose_upload_dest(user, source, ul_type):
 
         elif choice == "BROWSE MODE":
             SYNOLOGY_GLOBALS["MODE"] = Mode.BROWSE
-    return
+    return success
 
 def ask_upload(user, source, dest, ul_type):
     if ul_type == "directory to directory":

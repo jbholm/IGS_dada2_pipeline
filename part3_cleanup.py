@@ -47,19 +47,18 @@ def main(args):
             upload_to_synology(args.project)
 
         elif choice == "D":
-            organize_reads(args.project, run_paths)
-            organize_trimmed(args.project, run_paths)
-            organize_counts_by_asv(args.project)
-            organize_counts_by_taxon(args.project)
-            organize_logs(args.project)
-            organize_map(args.project)
-            organize_taxonomies_final(args.project)
-            organize_taxonomies_intermediates(args.project)
+            if not organize_reads(args.project, run_paths): continue
+            if not organize_trimmed(args.project, run_paths): continue
+            if not organize_counts_by_asv(args.project): continue
+            if not organize_counts_by_taxon(args.project): continue
+            if not organize_logs(args.project): continue
+            if not organize_map(args.project): continue
+            if not organize_taxonomies_final(args.project): continue
+            if not organize_taxonomies_intermediates(args.project): continue
 
-            if not remove_trash(args.project, run_paths):
-                continue
+            if not remove_trash(args.project, run_paths): continue
 
-            share_unix_perms(args.project)
+            if not share_unix_perms(args.project): continue
 
         elif choice == "J":
             upload_to_jira(args.project)
@@ -160,8 +159,13 @@ def upload_to_synology(dirpath):
         error = False
         for dir in dirs_to_upload:
             try:
-
-                synology.choose_upload_dest(user, str(Path(dir).resolve()), "directory")
+                success = synology.choose_upload_dest(
+                    user, 
+                    str(Path(dir).resolve()), 
+                    "directory"
+                )
+                if not success:
+                    break
 
             except Exception as e:
                 print(e)
@@ -174,16 +178,27 @@ def upload_to_synology(dirpath):
 
 
 def share_unix_perms(path):
-    print("Adding owner file permissions to group file permissions...")
+    print("Expanding owner file permissions to group file permissions...")
     pathlist = Path(str(path)).rglob("*")
     user_to_group_divisor = int(stat.S_IRUSR / stat.S_IRGRP)
     for path in pathlist:
         st = path.stat()
         usr_perms = st.st_mode & stat.S_IRWXU
-        if st.st_mode > stat.S_IRUSR:
-            path.chmod(st.st_mode | int(usr_perms / user_to_group_divisor))
+        if usr_perms > 0:
+            if os.geteuid() == st.st_uid:
+                try:
+                    path.chmod(st.st_mode | int(usr_perms / user_to_group_divisor))
+                except PermissionError as e:
+                    print(f"Unable to expand permissions to group for: {str(path)}\n{str(e)}")
+                    return False 
+            else:
+                print(f"Cannot process {str(path)} without ownership\n")
+                return False 
+        else:
+            print(f"Owner has no permissions on {str(path)}.\n")
+            return False 
 
-    return
+    return True
 
 
 def getuser(prompt="User: "):
@@ -238,7 +253,7 @@ def upload_to_jira(proj):
                 "choices": [
                     {"name": "BROWSE OPEN MSL TICKETS", "value": "browse"},
                     {"name": "ENTER TICKET ID", "value": "enter"},
-                    {"name": "BACK"},
+                    {"name": "BACK", "value": "back"},
                 ],
             }
         ]
@@ -247,9 +262,10 @@ def upload_to_jira(proj):
         if choice == "browse":
             print("Looking up issues...")
             issue_name = jira_choose_issue_from_list(j_connection)
-
-        else:
+        elif choice == "enter":
             issue_name = jira_find_issue_from_input(j_connection)
+        else:
+            return
 
     # UPLOAD ###########################################################################
     if Path(pathfinder["map"]).is_file():
@@ -267,12 +283,16 @@ def upload_to_jira(proj):
         stderr=PIPE,
     )
     tree = process.stdout.read().decode(encoding="utf8").split("\n")
+    print(tree)
+    if len(tree) < 5:
+        print("Cannot read contents of current directory.")
+        return
     questions = [
         {
             "type": "checkbox",
             "name": "chooser",
             "message": "",
-            "choices": [{"name": line} for line in tree[3 : len(tree) - 1]],
+            "choices": [{"name": line} for line in tree[3:len(tree)-1]],
         }
     ]
 
@@ -420,8 +440,11 @@ def inquire(questions, extra_prompt=None):
     if extra_prompt is not None:
         print(extra_prompt)
     answers = PyInquirer.prompt(questions, style=examples.custom_style_2)
-    for answer in answers.values():
-        return answer  # only one answer expected
+    if answers:
+        for answer in answers.values():
+            return answer  # only one answer expected
+    else:
+        sys.exit(0)
 
 
 def choose_project(default=None):
@@ -520,17 +543,21 @@ def organize_reads(proj_path, run_paths):
         #     filepaths += glob.glob(str(proj_path / run_path / Path('revSplit/split_by_sample_out/*.fastq')))
 
         # if not ill_fwd_dir.is_dir() and not ill_rev_dir.is_dir():
-        with (proj_path / run_path / Path(".checkpoints.json")).open("r") as fh:
-            run_info = json.load(fh)
+        try:
+            with (proj_path / run_path / Path(".checkpoints.json")).open("r") as fh:
+                run_info = json.load(fh)
+        except Exception as e:
+            print(str(e))
+            return False
         filepaths += [
             os.path.join(run_path, rel_path) for rel_path in run_info["samples"].keys()
         ]
 
         if len(filepaths) > 0:
-            make_for_contents(organized_dir, any_files)
+            if not make_for_contents(organized_dir, any_files): return False
             any_files = True
             subdir_destination = str(Path(organized_dir) / run_path.name)
-            make_for_contents(subdir_destination)
+            if not make_for_contents(subdir_destination): return False
             print(f"Copying {len(filepaths)} raw read files to {subdir_destination}.")
             for filepath in filepaths:
                 shutil.copy2(filepath, Path(subdir_destination) / Path(filepath).name)
@@ -543,7 +570,7 @@ def organize_reads(proj_path, run_paths):
     if not any_files:
         print(f"Skipping creation of {organized_dir} (no demuxed reads found)")
 
-    return
+    return True
 
 
 def organize_trimmed(proj_path, run_paths):
@@ -558,10 +585,10 @@ def organize_trimmed(proj_path, run_paths):
         )
 
         if len(filepaths) > 0:
-            make_for_contents(organized_dir, any_files)
+            if not make_for_contents(organized_dir, any_files): return False
             any_files = True
             subdir_destination = str(Path(organized_dir) / run_path.name)
-            make_for_contents(subdir_destination)
+            if not make_for_contents(subdir_destination): return False
             print(
                 f"Copying {len(filepaths)} adapter-trimmed read files to {subdir_destination}."
             )
@@ -575,7 +602,7 @@ def organize_trimmed(proj_path, run_paths):
     if not any_files:
         print(f"Skipping creation of {organized_dir} (no adapter-trimmed reads found)")
 
-    return
+    return True
 
 
 def organize_counts_by_asv(proj_path):
@@ -586,14 +613,14 @@ def organize_counts_by_asv(proj_path):
     filepaths += glob.glob(str(proj_path / Path("*asvs+taxa.csv")))
 
     if len(filepaths) > 0:
-        make_for_contents(organized_dir)
+        if not make_for_contents(organized_dir): return False
         print(f"Moving {len(filepaths)} sample-ASV count tables to COUNTS_BY_ASV/.")
         for filepath in filepaths:
             Path(filepath).rename(Path(organized_dir) / Path(filepath).name)
     else:
         print(f"Skipping creation of {organized_dir} (no count-by-ASV tables found)")
 
-    return
+    return True
 
 
 def organize_counts_by_taxon(proj_path):
@@ -602,14 +629,14 @@ def organize_counts_by_taxon(proj_path):
     filepaths = glob.glob(str(proj_path / Path("*taxa-merged.csv")))
 
     if len(filepaths) > 0:
-        make_for_contents(organized_dir)
+        if not make_for_contents(organized_dir): return False
         print(f"Moving {len(filepaths)} sample-taxon count tables to COUNTS_BY_TAXON/.")
         for filepath in filepaths:
             Path(filepath).rename(Path(organized_dir) / Path(filepath).name)
     else:
         print(f"Skipping creation of {organized_dir} (no count-by-taxon tables found)")
 
-    return
+    return True
 
 
 def make_for_contents(dir, silent=False):
@@ -619,8 +646,11 @@ def make_for_contents(dir, silent=False):
     except FileExistsError:
         if not silent:
             print(f"Directory ./{dir}/ already exists")
+    except Exception as e:
+        print(str(e))
+        return False
 
-    return
+    return True
 
 
 def organize_logs(proj_path):
@@ -632,7 +662,7 @@ def organize_logs(proj_path):
     filepaths += glob.glob(str(proj_path / Path("*/*pipeline_log.txt")))
 
     if len(filepaths) > 0:
-        make_for_contents(organized_dir)
+        if not make_for_contents(organized_dir): return
         print(f"Moving {len(filepaths)} log files to LOGS/.")
 
         for filepath in filepaths:
@@ -640,7 +670,7 @@ def organize_logs(proj_path):
     else:
         print(f"Skipping creation of {organized_dir} (no logs found)")
 
-    return
+    return True
 
 
 def organize_map(proj_path):
@@ -649,7 +679,7 @@ def organize_map(proj_path):
     filepaths = glob.glob(str(proj_path / "project_map.txt"))
 
     if len(filepaths) > 0:
-        make_for_contents(organized_dir)
+        if not make_for_contents(organized_dir): return
         print(f"Moving {len(filepaths)} mapping file(s) to MAP/.")
 
         for filepath in filepaths:
@@ -657,7 +687,7 @@ def organize_map(proj_path):
     else:
         print(f"Skipping creation of {organized_dir} (no maps found)")
 
-    return
+    return True
 
 
 def organize_taxonomies_final(proj_path):
@@ -666,7 +696,7 @@ def organize_taxonomies_final(proj_path):
     filepaths = glob.glob(str(proj_path / "cmb_tx.txt"))
 
     if len(filepaths) > 0:
-        make_for_contents(organized_dir)
+        if not make_for_contents(organized_dir): return
         print(f"Moving cmb_tx.txt to TAXONOMY_FINAL/.")
 
         for filepath in filepaths:
@@ -674,7 +704,7 @@ def organize_taxonomies_final(proj_path):
     else:
         print(f"Skipping creation of {organized_dir} (no final taxonomy files found)")
 
-    return
+    return True
 
 
 def organize_taxonomies_intermediates(proj_path):
@@ -684,7 +714,7 @@ def organize_taxonomies_intermediates(proj_path):
     filepaths = glob.glob(str(proj_path / Path("MC_order7_results.txt")))
     if len(filepaths) > 0:
         any_files = True
-        make_for_contents(organized_dir)
+        if not make_for_contents(organized_dir): return
         print(f"Moving MC_order7_results.txt to TAXONOMY_INTERMEDIATES/PECAN.txt.")
 
         for filepath in filepaths:
@@ -696,7 +726,7 @@ def organize_taxonomies_intermediates(proj_path):
 
     if len(filepaths) > 0:
         any_files = True
-        make_for_contents(organized_dir, any_files)
+        if not make_for_contents(organized_dir, any_files): return
         print(f"Moving {len(filepaths)} raw RDP classifier files to TAXONOMY_INTERMEDIATES/")
 
         for filepath in filepaths:
@@ -709,7 +739,7 @@ def organize_taxonomies_intermediates(proj_path):
 
     filepaths = glob.glob(str(proj_path / Path("silva_condensed.txt")))
     if len(filepaths) > 0:
-        make_for_contents(organized_dir, any_files)
+        if not make_for_contents(organized_dir, any_files): return
         print(f"Moving silva_condensed.txt to TAXONOMY_INTERMEDIATES/SILVA.txt.")
 
         for filepath in filepaths:
@@ -719,7 +749,7 @@ def organize_taxonomies_intermediates(proj_path):
         print(
             f"Skipping creation of {organized_dir} (no intermediate taxonomy files found)"
         )
-    return
+    return True
 
 
 def remove_trash(proj_path, run_paths):

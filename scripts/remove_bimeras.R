@@ -43,45 +43,54 @@ if(any(!dir.exists(args$runs))) {
 
 require("dada2")
 library(tidyr)
+library(dplyr)
+library(magrittr)
 
 runs <- args$runs %>% setNames(lapply(args$runs, basename))
 ## INPUT
 ## list all of the files matching the pattern 
 counts_and_stats <- (function(runs) {
-  tables<-lapply(runs, function(run) {
-    readRDS(list.files(runs, pattern = "dada2_abundance_table.rds", full.names = TRUE)[[1]])
-  })
-  stats <- lapply(runs, function(run) {
-    read.csv(list.files(run, pattern = "dada2_part1_stats.txt", full.names = TRUE)[[1]], sep = "", stringsAsFactors = FALSE)
-  })
-  old_stats_sample_names <- do.call(c, lapply(stats, rownames))
-  old_count_table_sample_names <- do.call(c, lapply(tables, rownames))
-  
-  new_sample_names <- make.names(old_stats_sample_names, unique = T)
-  stats <- do.call(rbind, stats) %>% `row.names<-`(new_sample_names)
+    tables<-lapply(runs, function(run) {
+        readRDS(list.files(run, pattern = "dada2_abundance_table.rds", full.names = TRUE)[[1]])
+    })
+    stats <- lapply(runs, function(run) {
+        read.csv(list.files(run, pattern = "dada2_part1_stats.txt", full.names = TRUE)[[1]], sep = "", stringsAsFactors = FALSE)
+    })
+    old_stats_sample_names <- do.call(c, lapply(stats, rownames))
+    old_count_table_sample_names <- do.call(c, lapply(tables, rownames))
+    
+    new_sample_names <- make.names(old_stats_sample_names, unique = T)
+    stats <- do.call(rbind, stats) %>% `row.names<-`(new_sample_names)
+    # in future, use bind_rows to create stats using id column, then concatenate
+    # run name and rowname to create unique rownames. These can then be used 
+    # in place of new_sample_names to name the rows of st
 
-  # Combine count tables
-  unqs <- unique(c(sapply(tables, colnames), recursive=TRUE))
-  n<-sum(unlist(lapply(X=tables, FUN = nrow)))
-  st <- matrix(0L, nrow = n, ncol = length(unqs))
-  rownames(st) <- old_count_table_sample_names
-    colnames(st) <- unqs
-  for (run_count_table in tables) {
-    st[rownames(run_count_table), colnames(run_count_table)] <- run_count_table
-  }
-  
-  # Make count table sample names unique (and matching up with stat sample names)
-    stats_i <- 1
-  rownames(st) <- unlist(lapply(seq_along(old_count_table_sample_names), function(count_table_i) {
-    while (old_count_table_sample_names[count_table_i] != old_stats_sample_names[stats_i]) {
-      stats_i <<- stats_i + 1
+    # Combine count tables
+    unqs <- unique(c(sapply(tables, colnames), recursive=TRUE))
+    n<-sum(unlist(lapply(X=tables, FUN = nrow)))
+    st <- matrix(0L, nrow = n, ncol = length(unqs)) %>% set_colnames(unqs)
+    row <- 1
+    for (table in tables) {
+        st[row:(row + nrow(table) - 1), colnames(table)] <- table
+        row <- row + nrow(table)
     }
-    return(new_sample_names[stats_i])
-  }))
 
-  # sort ASVs by total frequency
-  st <- st[, order(colSums(st), decreasing = TRUE)]
-  return(list(counts = st, stats = stats))
+    # Make count table sample names unique (and matching up with stat sample names)
+    stats_i <- 1
+    rownames(st) <- lapply(
+        seq_along(old_count_table_sample_names), 
+        function(count_table_i) {
+            while (old_count_table_sample_names[count_table_i] != old_stats_sample_names[stats_i]) {
+                stats_i <<- stats_i + 1
+            }
+            return(new_sample_names[stats_i])
+        }
+    ) %>%
+    unlist()
+
+    # sort ASVs by total frequency
+    st <- st[, order(colSums(st), decreasing = TRUE)]
+    return(list(counts = st, stats = stats))
 })(runs)
 
 ##st.all<-mergeSequenceTables(runs)
