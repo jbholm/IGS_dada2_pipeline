@@ -82,13 +82,7 @@ fastqs <- sort(list.files(inPath, pattern = glob_pattern, full.names = T)) # B01
 cache_checksums(fastqs, "samples")
 
 sample.names <- sapply(fastqs, function(filename) {
-<<<<<<< HEAD
     sub(glob_pattern, "\\1", basename(filename), perl = T)
-||||||| merged common ancestors
-  sub(glob_pattern, "\\1", filename, perl = T)
-=======
-  sub(glob_pattern, "\\1", basename(filename), perl = T)
->>>>>>> master
 })
 names(fastqs) <- sample.names
 samples <- data.frame(CCS = fastqs)

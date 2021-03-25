@@ -136,7 +136,6 @@ use File::Spec;
 require IO::Tee;
 use JSON;
 
-
 $OUTPUT_AUTOFLUSH = 1;
 
 ####################################################################
@@ -220,6 +219,12 @@ print $logTee "PIPELINE VERSION: " . Version::version() . "\n";
 my $time = POSIX::strftime( "%Y-%m-%d %H:%M:%S", localtime(time) );
 print $logTee "$time\n\n";
 
+local $SIG{__WARN__} = sub {
+    print $logFH "WARNING: $_[0]";
+    print "WARNING: $_[0]";
+    print STDERR "WARNING: $_[0]";
+};    # Warnings go to log file, stdout, and stderr
+
 $ENV{'LD_LIBRARY_PATH'} =
   $ENV{'LD_LIBRARY_PATH'} . ":/usr/local/packages/gcc/lib64";
 my $R = "/usr/local/packages/r-3.6.0/bin/R";
@@ -232,7 +237,8 @@ if ( $pacbio && !$region ) {
     $region = "FULL-LENGTH";
 }
 if ( !$region ) {
-    die "Please provide a variable region (-v), V3V4, V4, ITS, or FULL-LENGTH\n";
+    die
+      "Please provide a variable region (-v), V3V4, V4, ITS, or FULL-LENGTH\n";
 }
 if (
     List::Util::none { $_ eq $region }
@@ -541,25 +547,25 @@ sub read_json {
     my $json;
     {
         local $/;    #Enable 'slurp' mode
-        if ( -e $filepath ) {
+        if ( -e -f -r $filepath ) {
             open my $FH, "+<$filepath";
             seek $FH, 0, 0 or die;
             $json = <$FH>;
             close $FH;
+        } else {
+            warn "Unable to read $filepath to locate maps. Please concatenate maps to project_map.txt manually.\n";
         }
 
     }
     my $data = {};
-    eval {
-        $data = decode_json($json);
-    };
+    eval { $data = decode_json($json); };
     return %{$data};
 }
 
 sub get_run_info {
     my %all_run_info;
     foreach my $run (@_) {
-        my %run_info = read_json( catfile( $run, ".checkpoints.json" ) );
+        my %run_info = read_json( catfile( $run, ".meta.json" ) );
 
         $all_run_info{$run} = \%run_info;
     }
@@ -568,53 +574,67 @@ sub get_run_info {
 
 sub copy_maps_to_project {
     my $all_run_info = shift;
-    
+
     my @runs = keys %{$all_run_info};
+
     # the first map goes into project_map.txt nearly verbatim. For the remaining
     # maps, all non-blank lines after the header go in
 
     # I hate perl syntax so much
     my @maps;
     foreach my $run (@runs) {
-        my @recorded_map_filepaths = keys %{ $all_run_info->{$run}{"map"} };
+        my @recorded_map_filepaths = keys %{ $all_run_info->{$run}{"checkpoints"}{"map"} };
         if (@recorded_map_filepaths) {
-            push @maps, catfile($run, $recorded_map_filepaths[0]);
+            push @maps, catfile( $run, $recorded_map_filepaths[0] );
         }
     }
 
-    my ($inFH, $outFH);
-    if ( @maps ) {
-        open( $outFH, '>', 'project_map.txt' ) or die "Could not open project_map.txt: $!";
+    my ( $inFH, $outFH );
+    if (@maps) {
+        $logTee->print("Found " . @maps . " maps.\n");
+        open( $outFH, '>', 'project_map.txt' )
+          or die "Could not open project_map.txt: $!";
 
         my $first_filepath = shift @maps;
-        open( $inFH, '<', $first_filepath ) or die "Could not open $first_filepath: $!";
+        if ( -e -f -r $first_filepath ) {
+            open( $inFH, '<', $first_filepath )
+              or die "Could not open $first_filepath: $!";
+            while (<$inFH>) {
+                if ( $_ =~ /^\S+/ ) {
+                    $outFH->print($_);
+                }
+            }
+            close $inFH;
+        } else {
+            warn
+"Pipeline version compatibility error. Please manually create your project map by concatenating the maps from individual runs.\n";
+        }
 
-        while ( <$inFH> ) {
-            if ( $_ =~ /^\S+/ ) {
-                $outFH->print($_);
+        while ( my $run_map_filepath = shift @maps ) {
+            if ( -e -f -r $run_map_filepath ) {
+                open( $inFH, '<', $run_map_filepath )
+                  or die "Could not open $run_map_filepath: $!";
+                my $line = 0;
+                while (<$inFH>) {
+                    if ( $line != 0 && $_ =~ /^\S+/ ) {
+                        $outFH->print($_);
+                    }
+                    $line += 1;
+                }
+                close $inFH;
+            } else {
+                warn
+"Pipeline version compatibility error. Please manually create your project map by concatenating the maps from individual runs.\n";
             }
         }
-        close $inFH;
+
+        if ($outFH) {
+            close $outFH;
+        }
     } else {
-        $logTee->print("No maps found."); 
-    }
-    
-
-    while (my $run_map_filepath = shift @maps) {
-        open( $inFH, '<', $run_map_filepath ) or die "Could not open $run_map_filepath: $!";
-        my $line = 0;
-        while ( <$inFH> ) {
-            if ( $line != 0 && $_ =~ /^\S+/ ) {
-                $outFH->print($_);
-            }
-            $line += 1;
-        }
-        close $inFH;
+        $logTee->print("No maps found.");
     }
 
-    if ($outFH) {
-        close $outFH;
-    }
 }
 
 sub readTbl {
