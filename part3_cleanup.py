@@ -296,7 +296,7 @@ def upload_to_jira(proj):
             "type": "checkbox",
             "name": "chooser",
             "message": "",
-            "choices": [{"name": line} for line in tree[3:len(tree)-1]],
+            "choices": [{"name": line} for line in tree[3 : len(tree) - 1]],
         }
     ]
 
