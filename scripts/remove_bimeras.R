@@ -60,7 +60,7 @@ counts_and_stats <- (function(runs) {
     old_count_table_sample_names <- do.call(c, lapply(tables, rownames))
     
     new_sample_names <- make.names(old_stats_sample_names, unique = T)
-    stats <- do.call(rbind, stats) %>% `row.names<-`(new_sample_names)
+    stats <- bind_rows(stats) %>% `row.names<-`(new_sample_names)
     # in future, use bind_rows to create stats using id column, then concatenate
     # run name and rowname to create unique rownames. These can then be used 
     # in place of new_sample_names to name the rows of st

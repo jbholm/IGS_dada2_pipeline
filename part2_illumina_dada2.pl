@@ -547,11 +547,13 @@ sub read_json {
     my $json;
     {
         local $/;    #Enable 'slurp' mode
-        if ( -e $filepath ) {
+        if ( -e -f -r $filepath ) {
             open my $FH, "+<$filepath";
             seek $FH, 0, 0 or die;
             $json = <$FH>;
             close $FH;
+        } else {
+            warn "Unable to read $filepath to locate maps. Please concatenate maps to project_map.txt manually.\n";
         }
 
     }
@@ -563,7 +565,7 @@ sub read_json {
 sub get_run_info {
     my %all_run_info;
     foreach my $run (@_) {
-        my %run_info = read_json( catfile( $run, ".checkpoints.json" ) );
+        my %run_info = read_json( catfile( $run, ".meta.json" ) );
 
         $all_run_info{$run} = \%run_info;
     }
@@ -581,7 +583,7 @@ sub copy_maps_to_project {
     # I hate perl syntax so much
     my @maps;
     foreach my $run (@runs) {
-        my @recorded_map_filepaths = keys %{ $all_run_info->{$run}{"map"} };
+        my @recorded_map_filepaths = keys %{ $all_run_info->{$run}{"checkpoints"}{"map"} };
         if (@recorded_map_filepaths) {
             push @maps, catfile( $run, $recorded_map_filepaths[0] );
         }
@@ -589,6 +591,7 @@ sub copy_maps_to_project {
 
     my ( $inFH, $outFH );
     if (@maps) {
+        $logTee->print("Found " . @maps . " maps.\n");
         open( $outFH, '>', 'project_map.txt' )
           or die "Could not open project_map.txt: $!";
 
