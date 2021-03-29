@@ -6,6 +6,7 @@ import PyInquirer  # MUST USE PYTHON3.6 FOUND IN interactive TO USE THIS
 import examples
 from subprocess import run, Popen, PIPE
 from enum import Enum
+from datetime import datetime
 
 class Mode(Enum):
     BROWSE = 1
@@ -178,8 +179,9 @@ def choose_upload_dest(user, source, ul_type):
         if choice[0] == "-" and ul_type == "file":
             basename = choice.split()[8]
             fullname = wd / Path(basename)
-            if ask_upload(user, source, fullname, "file to file"):
-                break
+            if(type(source) == str):
+                if ask_upload(user, source, fullname, "file to file"):
+                    break
         
         # Can't upload directory to a file
         elif choice[0] == "-" and ul_type == "directory":
@@ -204,22 +206,49 @@ def choose_upload_dest(user, source, ul_type):
             wd = fullpath
 
         elif choice == "UPLOAD HERE":
-            if ask_upload(user, source, wd, "%s to directory" % ul_type):
+            if ask_upload(user, list(source), wd, "%s to directory" % ul_type):
                 break
 
         elif choice == "BROWSE MODE":
             SYNOLOGY_GLOBALS["MODE"] = Mode.BROWSE
     return success
 
+def archive_project(user, name, subdirs):
+    # make target directory
+    dest = Path("/") / Path("volume1") / Path("NetBackup") / Path("MSL") / Path("projects")
+    year = str(datetime.today().year)
+    dest = dest / Path(f"{year}_{name.upper()}")
+    cmd = ["ssh", user + "@10.90.233.174", "-o", "ConnectTimeout=10", "-p", "24", "mkdir", "-p", str(dest)]
+    print("Creating project directory on Rosalind...")
+    print(" ".join(cmd))
+    # process = Popen(
+    #         cmd,
+    #         stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    # stderr = process.stderr.read().decode(encoding='utf8')
+    # print(stderr)
+    # if "Connection timed out" in stderr:
+    #     raise ConnectionError(stderr)
+    # elif len(stderr) > 0:
+    #     raise Exception(stderr)
+
+    # upload all
+    full_paths = [str(Path(subdir).resolve()) for subdir in subdirs]
+    for dir in full_paths:
+        if not Path(dir).exists():
+            raise FileNotFoundError(dir + " does not exist")
+        if not Path(dir).is_dir():
+            raise Exception(dir + " is not a directory")
+    ask_upload(user, full_paths, dest, "directory to directory")
+
 def ask_upload(user, source, dest, ul_type):
     if ul_type == "directory to directory":
-        msg = "Upload directory %s to %s now?"
+        msg = "Upload the following directory/ies\n\n%s\n\nto %s now?"
     elif ul_type == "file to directory":
-        msg = "Upload file %s to %s now?"
+        msg = "Upload the following file(s)\n\n%s\n\nto %s now?"
     elif ul_type == "file to file":
         msg = "Overwrite file %s to %s now?"
 
-    msg = msg % (source, dest)
+    msg = msg % ("\n".join(source), dest)
     questions = [
         {
             'type': 'confirm',
@@ -231,7 +260,7 @@ def ask_upload(user, source, dest, ul_type):
     ok = inquire(questions)
 
     if ok:
-        cmd = "rsync -azh --append-verify --progress %s %s@10.90.233.174:%s" % (source, user, dest)
+        cmd = "rsync -azh --append-verify --progress %s %s@10.90.233.174:%s" % (" ".join(source), user, dest)
         print(cmd)
         run(shlex.split(cmd))
     return ok

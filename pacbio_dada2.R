@@ -48,15 +48,14 @@ inPath <- args$input
 project_meta <- function(new_params = list(), checkpoints = list()) {
     info_file <- file.path(run_dir, ".meta.json")
 
-    if (!exists("run_info")) {
-        if (!file.exists(info_file)) {
-            run_info <<- list()
-        } else {
-            run_info <<- rjson::fromJSON(
-                file = file.path(run_dir, ".meta.json")
-            )
-        }
+    if (!file.exists(info_file)) {
+        run_info <- list()
+    } else {
+        run_info <- rjson::fromJSON(
+            file = file.path(info_file)
+        )
     }
+    
 
     new_info <- list(params = new_params, checkpoints = checkpoints)
     run_info <- utils::modifyList(run_info, new_info)
