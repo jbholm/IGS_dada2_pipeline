@@ -12,7 +12,10 @@ from jira.exceptions import JIRAError
 
 pathfinder = {
     "map": Path("MAP") / Path("project_map.txt"),
-    "intermediate_taxonomies": Path("TAXONOMY_INTERMEDIATES") 
+    "intermediate_taxonomies": Path("TAXONOMY_INTERMEDIATES"),
+    "final_taxonomies": Path("TAXONOMY_FINAL"),
+    "counts-by-taxon": Path("COUNTS_BY_TAXON"),
+    "counts-by-ASV": Path("COUNTS_BY_ASV")
 }
 
 
@@ -34,10 +37,10 @@ def main(args):
                         "name": "UPLOAD TO JIRA - Upload select files to MSL JIRA ticket",
                         "value": "J",
                     },
-                    {
-                        'name': "ARCHIVE - copy to Rosalind",
-                        'value': 'A'
-                    },
+                    # {
+                    #     'name': "ARCHIVE - copy to Rosalind",
+                    #     'value': 'A'
+                    # },
                     {"name": "BACK", "value": "B"},
                     {"name": "QUIT"},
                 ],
@@ -143,7 +146,7 @@ def upload_to_synology(dirpath):
                 "type": "list",
                 "name": "chooser",
                 "message": "Upload project to Synology?",
-                "choices": ["Skip", "Upload"],
+                "choices": ["Upload", "Back"],
             }
         ]
         if inquire(questions) != "Upload":
@@ -152,32 +155,24 @@ def upload_to_synology(dirpath):
         user = getuser("Synology user: ")
 
         dirs_to_upload = [
-            "COUNTS_BY_ASV",
-            "COUNTS_BY_TAXON",
-            "MAPS",
+            str(pathfinder['counts-by-ASV']),
+            str(pathfinder['counts-by-taxon']),
+            "MAP",
             "REPORT",
             "FASTQ",
-            "TAXONOMY_FINAL",
-            "TAXONOMY_INTERMEDIATES",
+            str(pathfinder['final_taxonomies']),
+            str(pathfinder['intermediate_taxonomies']),
         ]
 
-        error = False
-        for dir in dirs_to_upload:
-            try:
-                success = synology.choose_upload_dest(
-                    user, 
-                    str(Path(dir).resolve()), 
-                    "directory"
-                )
-                if not success:
-                    break
-
-            except Exception as e:
-                print(e)
-                error = True
-                break
-        if not error:
+        try:
+            synology.archive_project(
+                user,
+                dirpath.name,
+                dirs_to_upload, 
+            )
             done = True
+        except Exception as e:
+            print(e)
 
     return
 
@@ -282,7 +277,7 @@ def upload_to_jira(proj):
         print(f"Map not found at: {pathfinder['map']}\n")
 
     process = Popen(
-        ["ls", "-al", str(proj / Path("COUNTS_BY_TAXON"))],
+        ["ls", "-al", str(proj / pathfinder["counts-by-taxon"])],
         stdin=PIPE,
         stdout=PIPE,
         stderr=PIPE,
@@ -303,7 +298,7 @@ def upload_to_jira(proj):
     choices = inquire(questions, "Choose count tables to upload:")
 
     for choice in choices:
-        filepath = str(proj / Path("COUNTS_BY_TAXON") / Path(choice.split()[8]))
+        filepath = str(proj / pathfinder["counts-by-taxon"] / Path(choice.split()[8]))
         if not attach_to_issue(j_connection, issue_name, filepath):
             return
 
@@ -533,6 +528,17 @@ def get_runs(proj_path):
 
     return inquire(questions, prompt)
 
+def read_metadata(run_path):
+    with (run_path / Path(".meta.json")).open("r") as fh:
+        run_info = json.load(fh)
+    if not type(run_info) is dict:
+        raise Exception("Run metadata not a JSON dictionary")
+    if not "params" in run_info.keys() or not "checkpoints" in run_info.keys():
+        raise Exception("Run metadata doesn't contain 'checkpoints' and 'params'")
+    if not type(run_info["params"]) is dict or not type(run_info["checkpoints"]) is dict:
+        raise Exception("Run metadata 'params' or 'checkpoints' is not a JSON dictionary")
+
+    return run_info
 
 def organize_reads(proj_path, run_paths):
     organized_dir = "FASTQ"
@@ -550,17 +556,18 @@ def organize_reads(proj_path, run_paths):
 
         # if not ill_fwd_dir.is_dir() and not ill_rev_dir.is_dir():
         try:
-            with (proj_path / run_path / Path(".meta.json")).open("r") as fh:
-                run_info = json.load(fh)
+            run_info = read_metadata(proj_path / run_path)
         except Exception as e:
             print(str(e))
-            return False
+            print("WARNING: Can't open run metadata from " + run_path.name + ". Unable to locate raw reads")
+            return True # NOT A SHOWSTOPPER
+
         try:
             filepaths += [
                 os.path.join(run_path, rel_path) for rel_path in run_info['checkpoints']["samples"].keys()
             ]
         except KeyError:
-            print("Incompatible with the pipeline version used on this run. Cannot find raw read files.")
+            print("WARNING: Incompatible with the pipeline version used on this run. Cannot find raw read files.")
             return True # not a show-stopper
 
         if len(filepaths) > 0:
@@ -616,7 +623,7 @@ def organize_trimmed(proj_path, run_paths):
 
 
 def organize_counts_by_asv(proj_path):
-    organized_dir = "COUNTS_BY_ASV"
+    organized_dir = str(pathfinder['counts-by-ASV'])
 
     filepaths = glob.glob(str(proj_path / Path("*all_runs_dada2_abundance_table.rds")))
     filepaths += glob.glob(str(proj_path / Path("*all_runs_dada2_abundance_table.csv")))
@@ -624,7 +631,7 @@ def organize_counts_by_asv(proj_path):
 
     if len(filepaths) > 0:
         if not make_for_contents(organized_dir): return False
-        print(f"Moving {len(filepaths)} sample-ASV count tables to COUNTS_BY_ASV/.")
+        print(f"Moving {len(filepaths)} sample-ASV count tables to {organized_dir}/.")
         for filepath in filepaths:
             Path(filepath).rename(Path(organized_dir) / Path(filepath).name)
     else:
@@ -634,13 +641,13 @@ def organize_counts_by_asv(proj_path):
 
 
 def organize_counts_by_taxon(proj_path):
-    organized_dir = "COUNTS_BY_TAXON"
+    organized_dir = str(pathfinder['counts-by-taxon'])
 
     filepaths = glob.glob(str(proj_path / Path("*taxa-merged.csv")))
 
     if len(filepaths) > 0:
         if not make_for_contents(organized_dir): return False
-        print(f"Moving {len(filepaths)} sample-taxon count tables to COUNTS_BY_TAXON/.")
+        print(f"Moving {len(filepaths)} sample-taxon count tables to {organized_dir}/.")
         for filepath in filepaths:
             Path(filepath).rename(Path(organized_dir) / Path(filepath).name)
     else:
@@ -701,13 +708,13 @@ def organize_map(proj_path):
 
 
 def organize_taxonomies_final(proj_path):
-    organized_dir = "TAXONOMY_FINAL"
+    organized_dir = str(pathfinder['final_taxonomies'])
 
     filepaths = glob.glob(str(proj_path / "cmb_tx.txt"))
 
     if len(filepaths) > 0:
         if not make_for_contents(organized_dir): return
-        print(f"Moving cmb_tx.txt to TAXONOMY_FINAL/.")
+        print(f"Moving cmb_tx.txt to {organized_dir}/.")
 
         for filepath in filepaths:
             Path(filepath).rename(Path(organized_dir) / Path("final_taxonomy.txt"))
@@ -718,14 +725,14 @@ def organize_taxonomies_final(proj_path):
 
 
 def organize_taxonomies_intermediates(proj_path):
-    organized_dir = "TAXONOMY_INTERMEDIATES"
+    organized_dir = str(pathfinder['intermediate_taxonomies'])
     any_files = False
 
     filepaths = glob.glob(str(proj_path / Path("MC_order7_results.txt")))
     if len(filepaths) > 0:
         any_files = True
         if not make_for_contents(organized_dir): return
-        print(f"Moving MC_order7_results.txt to TAXONOMY_INTERMEDIATES/PECAN_raw.txt.")
+        print(f"Moving MC_order7_results.txt to {organized_dir}/PECAN_raw.txt.")
 
         for filepath in filepaths:
             Path(filepath).rename(Path(organized_dir) / Path("PECAN_raw.txt"))
@@ -737,7 +744,7 @@ def organize_taxonomies_intermediates(proj_path):
     if len(filepaths) > 0:
         any_files = True
         if not make_for_contents(organized_dir, any_files): return
-        print(f"Moving {len(filepaths)} raw RDP classifier files to TAXONOMY_INTERMEDIATES/")
+        print(f"Moving {len(filepaths)} raw RDP classifier files to {organized_dir}/")
 
         for filepath in filepaths:
             newname = re.sub(
@@ -748,12 +755,16 @@ def organize_taxonomies_intermediates(proj_path):
             )
 
     filepaths = glob.glob(str(proj_path / Path("silva_condensed.txt")))
+    filepaths += glob.glob(str(proj_path / Path("homd_condensed.txt")))
+    filepaths += glob.glob(str(proj_path / Path("unite_condensed.txt")))
     if len(filepaths) > 0:
         if not make_for_contents(organized_dir, any_files): return
-        print(f"Moving silva_condensed.txt to TAXONOMY_INTERMEDIATES/SILVA.txt.")
+        print(f"Moving {len(filepaths)} condensed taxonomy file to {organized_dir}/.")
 
         for filepath in filepaths:
-            Path(filepath).rename(Path(organized_dir) / Path("SILVA.txt"))
+            match = re.match(r"^([^_]*)_condensed\.txt$", Path(filepath).name)
+            tax_name = match.group(1)
+            Path(filepath).rename(Path(organized_dir) / Path(f"{tax_name.upper()}.txt"))
 
     if not any_files:
         print(
@@ -780,14 +791,16 @@ def add_references(proj_path, run_paths):
         # add starter references for illumina or pacbio runs
         run_types = set()
         for run_path in run_paths:
-            with (proj_path / run_path / Path(".meta.json")).open("r") as fh:
-                run_info = json.load(fh)
-
-            run_type = run_info['params']['platform'].upper()
-            if run_type not in CITATION_GROUPS.keys():
-                print(f"Unrecognized run type: {run_type}. Don't know what citations to add.")
-            else:
-                run_types.add(run_type)
+            try:
+                run_info = read_metadata(proj_path / run_path)
+                run_type = run_info['params']['platform'].upper()
+                if run_type not in CITATION_GROUPS.keys():
+                    print(f"Unrecognized run type: {run_type}. Don't know what citations to add.")
+                else:
+                    run_types.add(run_type)
+            except Exception as e:
+                print(f"WARNING: Unable to determine what platform was used in {run_path.name}. Cannot add required citations.")
+            
         if len(run_types) > 0:
             print(f"Adding citations for the following run types:")
             for run_type in run_types:
@@ -815,8 +828,8 @@ def add_references(proj_path, run_paths):
             outfile.write(references.to_string())
 
     except Exception as e:
-        raise e
-        #return False
+        print(e)
+        return False
     return True
 
 def remove_trash(proj_path, run_paths):
@@ -847,11 +860,16 @@ def remove_trash(proj_path, run_paths):
         ]
         if not inquire(questions) == "Delete all":
             return False
+        
+        part2_danger = not (pathfinder['counts-by-taxon'].is_dir() and pathfinder['counts-by-ASV'].is_dir() and pathfinder['intermediate_taxonomies'].is_dir() and pathfinder['final_taxonomies'].is_dir())
+        confirm_msg = "Are you sure?"
+        if part2_danger:
+            confirm_msg = "Looks like Part 2 hasn't been run!  " + confirm_msg
         questions = [
             {
                 "type": "list",
                 "name": "chooser",
-                "message": "Are you sure?",
+                "message": confirm_msg,
                 "choices": ["Stop", "Delete all"],
             }
         ]
@@ -873,11 +891,13 @@ def share_project(proj_path):
     return
 
 index_contents = """
+*_all_runs_dada2_ASV.fasta: Denoised ASVs (Amplicon Sequence Variants).
+*_DADA2_stats.txt: Table of sample read throughput.
 COUNTS_BY_ASV: Read count tables with reads counted by ASV
 COUNTS_BY_TAXON: Read count tables with reads counted by taxon. Corresponding taxonomic assignment files in ./TAXONOMY_FINAL and ./TAXONOMY_INTERMEDIATES.
 FASTQ: Raw reads per sample
 FASTQ_TRIMMED: Sample reads trimmed of primers
-LOGS: Documentation of MSL computational pipeline parameters and workflow. If any runs were Illumina runs, the "split library" logs record any samples that dropped out during sequencing.
+LOGS: Documentation of MSL computational pipeline parameters and workflow.
 MAPS: Barcodes used to demultiplex reads to samples. This directory may be absent if all runs were PacBio runs, or if files sent to MSL did not require demultiplexing.
 REPORT: An HTML document and accompanying assets summarizing the results. To display the report in a browser, all contents of the directory must be present.
 TAXONOMY_FINAL: File(s) documenting taxonomies assigned to ASVs, drawing on results in TAXONOMY_INTERMEDIATES. Each taxonomically-annotated file in ./COUNTS_BY_ASV and ./COUNTS_BY_TAXON is named after a file in this directory.
