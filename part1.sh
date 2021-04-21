@@ -1,11 +1,6 @@
 #!/bin/bash
 set -e # exit when any command fails (returns non-0 exit status)
 
-use () 
-{ 
-    eval `/usr/local/packages/usepackage-1.13/bin/usepackage -b "$*"`
-}
-
 # QSUB_ARGS=""
 # DRY_RUN=""
 # FOR=""
@@ -338,11 +333,27 @@ if [[ -n "$EMAIL" ]]; then
 fi
 
 # Acquire binaries
-use sge
-. /usr/local/packages/qiime-1.9.1/activate.sh
-export PATH=/usr/local/packages/python-2.7.14/bin:$PATH
-export LD_LIBRARY_PATH=/usr/local/packages/python-2.7.14/lib:/usr/local/packages/gcc/lib64:$LD_LIBRARY_PATH
-. /usr/local/packages/usepackage/share/usepackage/use.bsh
+
+use () 
+{ 
+    eval `/usr/local/packages/usepackage/bin/usepackage -b $*` || true
+}
+
+
+use sge > /dev/null 2>&1  || true
+module load sge 2>/dev/null || true
+
+if [[ -e "/usr/local/packages/miniconda3/etc/profile.d/conda.sh" ]]; then
+    source /usr/local/packages/miniconda3/etc/profile.d/conda.sh 2>/dev/null
+else
+    source "/local/projects-t3/MSL/pipelines/packages/miniconda3/etc/profile.d/conda.sh" 2>/dev/null
+fi
+conda activate qiime1
+
+# . /usr/local/packages/qiime-1.9.1/activate.sh
+# export PATH=/usr/local/packages/python-2.7/bin:$PATH
+# export LD_LIBRARY_PATH=/usr/local/packages/python-2.7/lib:/usr/local/packages/gcc/lib64:$LD_LIBRARY_PATH
+# . /usr/local/packages/usepackage/share/usepackage/use.bsh 2>/dev/null || true
 
 # # Begin log (will be continued by illumina_dada2.pl)
 log="$SD/${PROJECT}_${RUN}_16S_pipeline_log.txt"

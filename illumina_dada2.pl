@@ -1,4 +1,4 @@
-#!/usr/bin/env perl
+#!/usr/local/packages/perl-5.30.2/bin/perl
 #. /usr/local/packages/usepackage/share/usepackage/use.bsh
 
 =head1 NAME
@@ -250,8 +250,8 @@ GetOptions(
     "dry-run!"               => \my $dryRun,
     "noskip!"                => \my $noSkip,
     "bclen=i"                => \my $bcLen,
-    "dada2-truncLen-f|for=i" => \my $f,
-    "dada2-truncLen-r|rev=i" => \my $r,
+    "dada2-truncLen-f|for=i" => \my $truncLenL,
+    "dada2-truncLen-r|rev=i" => \my $truncLenR,
     "dada2-maxN=s"           => \my $maxN,
     "dada2-maxEE=s"          => \my $maxEE,
     "dada2-truncQ=s"         => \my $truncQ,
@@ -332,7 +332,7 @@ if (@dbg) {
     $noSkip = 1;
 }
 
-if ( $f && !$r ) {
+if ( $truncLenL && !$truncLenR ) {
     print "***\nPlease provide truncation lengths for forward and reverse "
       . "reads\n";
     die;
@@ -421,6 +421,8 @@ if (
     die "Working directory (-wd) must have the pattern */PROJECT/RUN";
 }
 
+my $params_hashref = params();
+
 ####################################################################
 ## INITIALIZATION
 ###################################################################
@@ -446,12 +448,12 @@ local $SIG{__WARN__} = sub {
 # Now that we're done checking parameters, I want the more serious error
 # messages to be printed to the log file.
 $SIG{__DIE__} = sub {
-    if ($^S) {
-        die @_;    # If die was called inside an eval, simply pass it along
-    } else {
-        print $logFH @_ . "\n";
+    # if ($^S) {
+    #     die @_;    # If die was called inside an eval, simply pass it along
+    # } else {
+        print $logTee @_ . "\n";
         return 1;
-    }
+    # }
 };
 
 print "Logging to: $log\n";
@@ -512,8 +514,6 @@ if ( !$qproj ) {
     $qproj = "jravel-lab";
 }
 
-my $R = "/usr/local/packages/r-3.6.0/bin/R";
-
 if ( !-e $error_log ) {
     mkdir $error_log;
     print "$error_log did not exist -> making $error_log\n";
@@ -561,7 +561,7 @@ if (@dbg) {
     print $logTee "\n";
 }
 print $logTee "PROJECT: $project\nVARIABLE REGION: $var\n"
-  . "R VERSION: $R\nPECAN MODELS: $models\n";
+  . "R VERSION: " . $params_hashref->{'R'} . "\nPECAN MODELS: $models\n";
 if ($oneStep) {
     print $logTee "PCR PREPARATION METHOD: 1-Step\n";
 } else {
@@ -575,7 +575,7 @@ if (   !@dbg
 {
     ###### BEGIN CHECK OF QIIME CONFIGURATION ###########
     #####################################################
-    my $cmd = "print_qiime_config.py > $qiime";
+    my $cmd = $params_hashref->{'print_qiime_config.py'} . " > $qiime";
     execute_and_log( $cmd, $logTee, $dryRun,
         "QIIME CONFIGURATION DETAILS:\nsee $qiime\n" );
 
@@ -594,7 +594,7 @@ if (   !@dbg
         ################################################
         print $logTee "MAPPING FILE: $map\n";
 
-        my $cmd = "validate_mapping_file.py -m $map -s -o $error_log";
+        my $cmd = $params_hashref->{'validate_mapping_file.py'} . " -m $map -s -o $error_log";
         execute_and_log( $cmd, $logTee, $dryRun, "Validating map from $map\n" );
         my $mappingError = glob("$error_log/*.log");
         if ($mappingError) {
@@ -941,7 +941,7 @@ sub barcodes {
         my $mapOpt = $oneStep ? "-m $map" : "";
 
         my $cmd =
-"extract_barcodes.py -f $localNames{\"index1\"} -r $localNames{\"index2\"} -c barcode_paired_end --bc1_len $bcLen --bc2_len $bcLen $mapOpt -o $wd $oriParams";
+$params_hashref->{'extract_barcodes.py'} . " -f $localNames{\"index1\"} -r $localNames{\"index2\"} -c barcode_paired_end --bc1_len $bcLen --bc2_len $bcLen $mapOpt -o $wd $oriParams";
 
         execute_and_log( $cmd, $logTee, $dryRun,
             "Waiting for barcode extraction to complete...\n" );
@@ -1050,15 +1050,15 @@ sub demux {
     if ( !$skip ) {
         my $start = time;
         my $step2 = "split_libraries_fastq.py";
-
+        my $script = $params_hashref->{$step2};
    # qiime's split_libraries_fastq accepts some keywords too, such as "golay_12"
         my $barcodeType = 2 * $bcLen;
 
         @cmds = ();
         push @cmds,
-"qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log $step2 -i $readsForInput -o $fwdProjDir -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
+"qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $readsForInput -o $fwdProjDir -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
         push @cmds,
-"qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log $step2 -i $readsRevInput -o $revProjDir -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
+"qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $readsRevInput -o $revProjDir -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
 
         execute_and_log( @cmds, $logTee, $dryRun,
             "Demultiplexing to get the project library...\n" );
@@ -1109,14 +1109,15 @@ sub demux {
         ###### BEGIN FASTQC ON SEQS.FASTQ #####
         #######################################
         # Replace this with calls to execute_and_log after merging in master
+        my $binary = "/local/projects-t3/MSL/pipelines/bin/fastqc";
         my $cmd =
-"qsub -cwd -b y -l mem_free=300M -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log fastqc --limits $pipelineDir/ext/fastqc/limits.txt --outdir $fwdProjDir $fwdProjDir/seqs.fastq";
+"qsub -cwd -b y -l mem_free=300M -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $binary --limits $pipelineDir/ext/fastqc/limits.txt --outdir $fwdProjDir $fwdProjDir/seqs.fastq";
         print "\tcmd=$cmd\n" if $verbose;
         system($cmd) == 0
           or die "system($cmd) failed with exit code: $?"
           if !$dryRun;
         $cmd =
-"qsub -cwd -b y -l mem_free=300M -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log fastqc --limits $pipelineDir/ext/fastqc/limits.txt --outdir $revProjDir $revProjDir/seqs.fastq";
+"qsub -cwd -b y -l mem_free=300M -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $binary --limits $pipelineDir/ext/fastqc/limits.txt --outdir $revProjDir $revProjDir/seqs.fastq";
         print "\tcmd=$cmd\n" if $verbose;
         system($cmd) == 0
           or die "system($cmd) failed with exit code: $?"
@@ -1184,13 +1185,14 @@ if ( !@dbg || grep( /^splitsamples$/, @dbg ) ) {
 
     if ( !$skip ) {
         my $step3 = "split_sequence_file_on_sample_ids.py";
+        my $script = $params_hashref->{$step3};
         my @cmds  = ();
         while ( !( -e $rForSeqsFq ) || !( -e $rRevSeqsFq ) ) { sleep 1; }
 
         push @cmds,
-"qsub -cwd -b y -l mem_free=4G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $step3 -i $rForSeqsFq --file_type fastq -o $fwdSampleDir";
+"qsub -cwd -b y -l mem_free=4G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $rForSeqsFq --file_type fastq -o $fwdSampleDir";
         push @cmds,
-"qsub -cwd -b y -l mem_free=4G -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $step3 -i $rRevSeqsFq --file_type fastq -o $revSampleDir";
+"qsub -cwd -b y -l mem_free=4G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $rRevSeqsFq --file_type fastq -o $revSampleDir";
         execute_and_log( @cmds, $logTee, $dryRun,
             "Splitting $project seqs.fastq " . "files by sample ID\n" );
 
@@ -1365,7 +1367,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                           File::Basename::basename( $filename, @suffixes );
                         my $tc = "$global_config{wd}/$Prefix" . "_R1_tc";
                         $cmd =
-"qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2 -trim_within 50";
+"qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl " . $params_hashref->{"tagcleaner"} . " -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2 -trim_within 50";
                         push @cmds, $cmd;
                     }
                 }
@@ -1381,7 +1383,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                           File::Basename::basename( $filename, @suffixes );
                         my $tc = "$global_config{wd}/$Prefix" . "_R2_tc";
                         $cmd =
-"qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2 -trim_within 50";
+"qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl " . $params_hashref->{"tagcleaner"} . " -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2 -trim_within 50";
                         push @cmds, $cmd;
                     }
                 }
@@ -1399,7 +1401,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                           File::Basename::basename( $filename, @suffixes );
                         my $tc = "$global_config{wd}/$Prefix" . "_R1_tc";
                         $cmd =
-"qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
+"qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl " . $params_hashref->{"tagcleaner"} . " -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
                         push @cmds, $cmd;
                     }
                 }
@@ -1415,7 +1417,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                           File::Basename::basename( $filename, @suffixes );
                         my $tc = "$global_config{wd}/$Prefix" . "_R2_tc";
                         $cmd =
-"qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
+"qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl " . $params_hashref->{"tagcleaner"} . " -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
                         push @cmds, $cmd;
                     }
                 }
@@ -1434,7 +1436,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my $tc = "$global_config{wd}/$Prefix" . "_R1_tc";
 
                         $cmd =
-"qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
+"qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl " . $params_hashref->{"tagcleaner"} . " -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
                         push @cmds, $cmd;
                     }
                 }
@@ -1450,7 +1452,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                         my $tc = "$global_config{wd}/$Prefix" . "_R2_tc";
 
                         $cmd =
-"qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2";
+"qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl " . $params_hashref->{"tagcleaner"} . " -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2";
                         push @cmds, $cmd;
                     }
                 }
@@ -1467,7 +1469,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                           File::Basename::basename( $filename, @suffixes );
                         my $tc = "$global_config{wd}/$Prefix" . "_R1_tc";
                         $cmd =
-"qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
+"qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl " . $params_hashref->{"tagcleaner"} . " -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
                         push @cmds, $cmd;
 
                     }
@@ -1484,7 +1486,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                           File::Basename::basename( $filename, @suffixes );
                         my $tc = "$global_config{wd}/$Prefix" . "_R2_tc";
                         $cmd =
-"qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
+"qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl " . $params_hashref->{"tagcleaner"} . " -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
                         push @cmds, $cmd;
                     }
                 }
@@ -1501,7 +1503,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                           File::Basename::basename( $filename, @suffixes );
                         my $tc = "$global_config{wd}/$Prefix" . "_R1_tc";
                         $cmd =
-"qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 CTGCCCTTTGTACACACCGC -mm5 2";
+"qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl " . $params_hashref->{"tagcleaner"} . " -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 CTGCCCTTTGTACACACCGC -mm5 2";
                         push @cmds, $cmd;
                     }
                 }
@@ -1517,7 +1519,7 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
                           File::Basename::basename( $filename, @suffixes );
                         my $tc = "$global_config{wd}/$Prefix" . "_R2_tc";
                         $cmd =
-"qsub -cwd -b y -l mem_free=400M -P $qproj -V -e $error_log -o $stdout_log perl /usr/local/packages/tagcleaner-0.16/bin/tagcleaner.pl -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 TTTCGCTGCGTTCTTCATCG -mm5 2";
+"qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl " . $params_hashref->{"tagcleaner"} . " -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 TTTCGCTGCGTTCTTCATCG -mm5 2";
                         push @cmds, $cmd;
                     }
                 }
@@ -1602,12 +1604,12 @@ if ( !@dbg || grep( /^tagclean$/, @dbg ) ) {
 ###### BEGIN DADA2 ##########
 #############################
 if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
-    my $projrt =
-      "$global_config{wd}/$project" . "_" . $run . "_dada2_part1_rTmp.R";
     my $projrtout =
       "$global_config{wd}/$project" . "_" . $run . "_dada2_part1_rTmp.Rout";
+    my $stats_file = catfile($global_config{wd}, "dada2_part1_stats.txt");
+    my $counts_file = catfile($global_config{wd}, "dada2_abundance_table.rds");
 
-    my @outputs = ( "$projrt", "$projrtout" );
+    my @outputs = ( $stats_file, $counts_file );
     my @inputs  = glob("$global_config{wd}/*R[1|2]_tc.fastq.gz");
 
     if ( !$noSkip ) {
@@ -1620,28 +1622,25 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
 
     if ( !$skip ) {
         my $truncLen;
-        if ( $f && $r ) {
-            $truncLen = "c($f,$r)";
-        }
 
         chdir $pd;
         if ($oneStep) {
             if ( $var eq "V3V4" ) {
 
-                if ( !$truncLen ) {
-                    $truncLen = "c(255,255)";
-                }
+                $truncLenL = 255 if ( !$truncLenL );
+                $truncLenR = 255 if ( !$truncLenR );
+                
                 if ( !$maxN ) {
                     $maxN = 0;
                 }
                 if ( !$maxEE ) {
-                    $maxEE = "c(2,2)";
+                    $maxEE = "2";
                 }
                 if ( !$truncQ ) {
                     $truncQ = 2;
                 }
                 if ( !$phix ) {
-                    $phix = "TRUE";
+                    $phix = "1";
                 }
                 if ( !$maxLen ) {
                     $maxLen = "Inf";
@@ -1653,26 +1652,26 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
                     $minQ = 0;
                 }
                 dada2(
-                    $run,  $truncLen, $maxN,   $maxEE, $truncQ,
+                    $run,  $truncLenL, $truncLenR, $maxN,   $maxEE, $truncQ,
                     $phix, $maxLen,   $minLen, $minQ,  $logFH
                 );
             }
 
             if ( $var eq "V4" ) {
-                if ( !$truncLen ) {
-                    $truncLen = 200;
-                }
+                $truncLenL = 200 if ( !$truncLenL );
+                $truncLenR = 200 if ( !$truncLenR );
+
                 if ( !$maxN ) {
                     $maxN = 0;
                 }
                 if ( !$maxEE ) {
-                    $maxEE = "c(2,2)";
+                    $maxEE = "2";
                 }
                 if ( !$truncQ ) {
                     $truncQ = 2;
                 }
                 if ( !$phix ) {
-                    $phix = "TRUE";
+                    $phix = "1";
                 }
                 if ( !$maxLen ) {
                     $maxLen = "Inf";
@@ -1684,26 +1683,26 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
                     $minQ = 0;
                 }
                 dada2(
-                    $run,  $truncLen, $maxN,   $maxEE, $truncQ,
+                    $run,  $truncLenL, $truncLenR, $maxN,   $maxEE, $truncQ,
                     $phix, $maxLen,   $minLen, $minQ,  $logFH
                 );
             }
         } else {
             if ( $var eq "V3V4" ) {
-                if ( !$truncLen ) {
-                    $truncLen = "c(255,225)";
-                }
+                $truncLenL = 255 if ( !$truncLenL );
+                $truncLenR = 225 if ( !$truncLenR );
+
                 if ( !$maxN ) {
                     $maxN = 0;
                 }
                 if ( !$maxEE ) {
-                    $maxEE = "c(2,2)";
+                    $maxEE = "2";
                 }
                 if ( !$truncQ ) {
                     $truncQ = 2;
                 }
                 if ( !$phix ) {
-                    $phix = "TRUE";
+                    $phix = "1";
                 }
                 if ( !$maxLen ) {
                     $maxLen = "Inf";
@@ -1715,26 +1714,26 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
                     $minQ = 0;
                 }
                 dada2(
-                    $run,  $truncLen, $maxN,   $maxEE, $truncQ,
+                    $run,  $truncLenL, $truncLenR, $maxN,   $maxEE, $truncQ,
                     $phix, $maxLen,   $minLen, $minQ,  $logFH
                 );
             }
 
             if ( $var eq "V4" ) {
-                if ( !$truncLen ) {
-                    $truncLen = 200;
-                }
+                                $truncLenL = 200 if ( !$truncLenL );
+                $truncLenR = 200 if ( !$truncLenR );
+
                 if ( !$maxN ) {
                     $maxN = 0;
                 }
                 if ( !$maxEE ) {
-                    $maxEE = "c(2,2)";
+                    $maxEE = "2";
                 }
                 if ( !$truncQ ) {
                     $truncQ = 2;
                 }
                 if ( !$phix ) {
-                    $phix = "TRUE";
+                    $phix = "1";
                 }
                 if ( !$maxLen ) {
                     $maxLen = "Inf";
@@ -1746,15 +1745,15 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
                     $minQ = 0;
                 }
                 dada2(
-                    $run,  $truncLen, $maxN,   $maxEE, $truncQ,
+                    $run,  $truncLenL, $truncLenR, $maxN,   $maxEE, $truncQ,
                     $phix, $maxLen,   $minLen, $minQ,  $logFH
                 );
             }
 
             if ( $var eq "ITS" ) {
-                if ( !$truncLen ) {
-                    $truncLen = 0;
-                }
+                                $truncLenL = 0 if ( !$truncLenL );
+                $truncLenR = 0 if ( !$truncLenR );
+
                 if ( !$maxN ) {
                     $maxN = 0;
                 }
@@ -1765,7 +1764,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
                     $truncQ = 2;
                 }
                 if ( !$phix ) {
-                    $phix = "TRUE";
+                    $phix = "1";
                 }
                 if ( !$maxLen ) {
                     $maxLen = "Inf";
@@ -1777,62 +1776,29 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
                     $minQ = 0;
                 }
                 dada2(
-                    $run,  $truncLen, $maxN,   $maxEE, $truncQ,
+                    $run,  $truncLenL, $truncLenR, $maxN,   $maxEE, $truncQ,
                     $phix, $maxLen,   $minLen, $minQ,  $logFH
                 );
             }
         }
 
         # Rename DADA2 R files
-        my $rt   = "$global_config{wd}/dada2_part1_rTmp.R";
-        my @cmds = ();
-        push @cmds, "mv $rt $projrt";
+
         my $rtout = "$global_config{wd}/dada2_part1_rTmp.Rout";
-        push @cmds, "mv $rtout $projrtout";
+        my @cmds = ("mv $rtout $projrtout");
         eval {
             execute_and_log( @cmds, 0, $dryRun, "Renaming DADA2 R files.\n" );
         };
         warn $@ if $@;
-        print $logTee "---DADA2-specific commands with output can be found in "
-          . "$projrtout\n";
 
 ###### EVALUATING DADA2 OUTPUT ##########
 #########################################
         my @removed;
 ## do a scan of this file for those samples not passing filtering (0 sequences surviving - and log this)
         open RTOUT, "<$projrtout"
-          or die "Cannot open $rtout for reading: $OS_ERROR";
+          or die "Cannot open $projrtout for reading: $OS_ERROR";
         while (<RTOUT>) {
             chomp;
-            if ( $_ =~ /filterAndTrim/ ) {
-
-                #print "Splitting $_\n";
-                my @filtTrim = split( /\s/, $_ );
-                for my $x (@filtTrim) {
-
-                    #print "Searching $x\n";
-                    if ( $x =~ /truncLen/ ) {
-                        chomp;
-                        $truncLen = $x;
-                    }
-                    if ( $x =~ /maxN/ ) {
-                        chomp;
-                        $maxN = $x;
-                    }
-                    if ( $x =~ /maxEE/ ) {
-                        chomp;
-                        $maxEE = $x;
-                    }
-                    if ( $x =~ /truncQ/ ) {
-                        chomp;
-                        $truncQ = $x;
-                    }
-                    if ( $x =~ /phix/ ) {
-                        chomp;
-                        $phix = $x;
-                    }
-                }
-            }
             if ( $_ =~ /The filter removed all reads/ ) {
                 push @removed, $_;
             }
@@ -1851,7 +1817,9 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
         if ( List::Util::all { -e $_ } @outputs ) {
             print $logTee
               "\nFor $var region, dada2 used the following filtering "
-              . "requirements:\n$truncLen\n$maxN\n$maxEE\n$truncQ\n$phix\n";
+              . "requirements:\ntruncLen = $truncLenL, $truncLenR\n"
+              . "maxN = $maxN\nmaxEE = $maxEE\ntruncQ = $truncQ\n"
+              . "rm.phix = $phix\n";
 
             # "dada2 completed successfully" is a key phrase that causes
             # an appropriate message printed to STDOUT
@@ -1892,18 +1860,14 @@ END {
 ####################################################################
 ##                               SUBS
 ####################################################################
-sub project_metadata {
-    my %arg          = @_;
-    my $params       = delete $arg{params} // {};
-    my $checkpoints  = delete $arg{checkpoints} // {};
-    my $metadataFile = "$global_config{wd}/.meta.json";
-
-    # get existing metadata on filesystem
+sub read_json {
+    my $file = pop;
+# get existing metadata on filesystem
     my $json;
     {
         local $/;    #Enable 'slurp' mode
-        if ( -e $metadataFile ) {
-            open my $FH, "+<$metadataFile";
+        if ( -e $file ) {
+            open my $FH, "+<$file";
             seek $FH, 0, 0 or die;
             $json = <$FH>;
             close $FH;
@@ -1911,11 +1875,30 @@ sub project_metadata {
 
     }
 
-    my $old_metadata = {};
+    my $hash = {};
     eval {
-        $old_metadata = decode_json($json);
-
+        $hash = decode_json($json);
     };
+
+    return $hash;
+}
+
+sub params {
+    my %arg          = @_;
+    my $new_params       = delete $arg{new_params} // {};
+    my $orig_param_file = "$pipelineDir/config.json";
+
+    my $params = read_json($orig_param_file);
+
+    return $params->{"part1"};
+}
+sub project_metadata {
+    my %arg          = @_;
+    my $params       = delete $arg{params} // {};
+    my $checkpoints  = delete $arg{checkpoints} // {};
+    my $metadataFile = "$global_config{wd}/.meta.json";
+
+    my $old_metadata = read_json($metadataFile);
 
     # If no arguments, user wants to GET existing metadata
     if ( !%$params && !%$checkpoints ) {
@@ -2324,7 +2307,8 @@ sub readSplitLog {
 
 sub dada2 {
     my $run      = shift;
-    my $truncLen = shift;
+    my $truncLenL = shift;
+    my $truncLenR = shift;
     my $maxN     = shift;
     my $maxEE    = shift;
     my $truncQ   = shift;
@@ -2333,111 +2317,22 @@ sub dada2 {
     my $minLen   = shift;
     my $minQ     = shift;
 
-    my $Rscript = qq~
-options(
-    show.error.locations = TRUE,
-    show.error.messages = TRUE,
-    keep.source = TRUE,
-    warn = 1,
-    error = function() {
-      # cat(attr(last.dump,"error.message"))
-      sink(file = stderr())
-      dump.frames("dump", TRUE)
-      cat('\nTraceback:', file = stderr())
-      cat('\n', file = stderr())
-      traceback(2) # Print full traceback of function calls with all parameters. The 2 passed to traceback omits the outermost two function calls.
-      if (!interactive()) quit(status = 1)
-    },
-    stringsAsFactors = FALSE
-    )
-    .libPaths("/home/jolim/share/R/x86_64-pc-linux-gnu-library/3.6")
-  library("dada2")
-  packageVersion("dada2")
-  cwd<-getwd()
-
-
-  ## perform filtering and trimming
-  path <- cwd
-  filtpath <- file.path(path, "filtered")
-  fastqFs <- sort(list.files(path, pattern="R1_tc.fastq"))
-  fastqRs <- sort(list.files(path, pattern="R2_tc.fastq"))
-  sample.names <- sapply(strsplit(basename(fastqFs), "_"), `[`, 1)
-  filtFs<-(paste0(sample.names, "_F_filt.fastq.gz"))
-  filtRs<-(paste0(sample.names, "_R_filt.fastq.gz"))
-  filtFs_files<-file.path(filtpath,filtFs)
-  filtRs_files<-file.path(filtpath,filtRs)
-  if(length(fastqFs) != length(fastqRs)) stop("Forward and reverse files do not match.")
-  out<-filterAndTrim(fwd=file.path(path,fastqFs), filt=filtFs_files, rev=file.path(path,fastqRs), filt.rev=filtRs_files, truncLen=$truncLen, maxN=$maxN, maxEE=$maxEE, truncQ=$truncQ, rm.phix=$phix, compress=TRUE, multithread=TRUE, verbose=TRUE, matchIDs=TRUE)
-
-## use this to produce the first 5 files to check the quality of the samples.
-  ##make post-trimmed quality figures
-  ##postscript("filt_forward_reads_quality.eps")
-  ##plotQualityProfile(filtFs) ## can take some time if being produced for all samples
-  ##dev.off()
-  ##if you specify a range it makes only that number of plots, otherwise all plots are produced in grid fashion
-  ##postscript("filt_reverse_reads_quality.eps")
-  ##plotQualityProfile(filtRs)
-
-  ## Learn errors
-  filtFs <- list.files(filtpath, pattern="_F_filt.fastq.gz", full.names = TRUE)
-  filtRs <- list.files(filtpath, pattern="_R_filt.fastq.gz", full.names = TRUE)
-  sample.names <- sapply(strsplit(basename(filtFs), "_"), `[`, 1)
-  sample.namesR <- sapply(strsplit(basename(filtRs), "_"), `[`, 1)
-  if(!identical(sample.names, sample.namesR)) stop("Forward and reverse files do not match.")
-  names(filtFs) <- sample.names
-  names(filtRs) <- sample.namesR
-  set.seed(100)
-  # Learn forward error rates
-  errF <- learnErrors(filtFs, nread=1e6, multithread=TRUE)
-  # Learn reverse error rates
-  errR <- learnErrors(filtRs, nread=1e6, multithread=TRUE)
-  # Sample inference and merger of paired-end reads
-  mergers <- vector("list", length(sample.names))
-  names(mergers) <- sample.names
-  for(sam in sample.names) {
-    cat("Processing:", sam, "\n")
-      derepF <- derepFastq(filtFs[[sam]])
-      ddF <- dada(derepF, err=errF, multithread=TRUE)
-      derepR <- derepFastq(filtRs[[sam]])
-      ddR <- dada(derepR, err=errR, multithread=TRUE)
-      merger <- mergePairs(ddF, derepF, ddR, derepR)
-      mergers[[sam]] <- merger
-  }
-
-  rm(derepF); rm(derepR)
-
-  ## Make sequence abundance table 
-  seqtab <- makeSequenceTable(mergers)
-  saveRDS(seqtab, "dada2_abundance_table.rds")
-
-  getN <- function(x) sum(getUniques(x))
-  ## track <- cbind(out, rowSums(seqtab))
-  v<-rowSums(seqtab)
-  v0<-numeric(nrow(out))
-  track<-cbind(out, v0)
-  rownames(track)<-Map(function(x) strsplit(x, split = "_", fixed = TRUE)[[1]][1], rownames(track))
-  track[names(v),3]<-v
-  colnames(track) <- c("input", "filtered", "merged")
-  write.table(track, "dada2_part1_stats.txt", quote=FALSE, append=FALSE, sep=\t, row.names=TRUE, col.names=TRUE)
-  ~;
-    run_R_script( $Rscript, $logFH );
+    my $script = catfile( $pipelineDir, "scripts", "filter_and_denoise_illumina.R" );
+    my $args   = "--truncLenL=$truncLenL --truncLenR=$truncLenR --maxN=$maxN --maxEE=$maxEE --truncQ=$truncQ --rm.phix=$phix";
+    run_R_script( $script, $args, $logFH );
 }
 
 sub run_R_script {
     my $Rscript = shift;
+    my $args = shift;
     my $logFH   = shift;
     my $wd      = $global_config{wd};
     chdir $wd;
 
-    my $outFile = "dada2_part1_rTmp.R";
-    open OUT, ">$outFile", or die "cannot write to $outFile: $!\n";
-    print OUT "$Rscript";
-    close OUT;
-
+    my $outR = "dada2_part1_rTmp.Rout";
     my $exitStatus = 1;
 
-    while ( $exitStatus == 1 ) {
-        my $outR = $outFile . "out";
+    while (  $exitStatus == 1) {
         my $cmd =
 "rm -rf $wd/filtered $outR $wd/dada2_part1_stats.txt $wd/dada2_abundance_table.rds $wd/.RData";
         execute_and_log( $cmd, 0, $dryRun,
@@ -2445,19 +2340,19 @@ sub run_R_script {
         );
 
         $cmd =
-"qsub -cwd -b y -l mem_free=$dada2mem -P $qproj -q threaded.q -pe thread 4 -V -e $error_log -o $stdout_log -V $R CMD BATCH $outFile";
+"qsub -cwd -b y -l mem_free=$dada2mem -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log -N Rscript \"{ module load r/4.0.3 2>/dev/null || eval \\`/usr/local/packages/usepackage/bin/usepackage -b r-3.6.0\\` > /dev/null 2>&1; } && $params_hashref->{R}script $Rscript $args > $outR 2>&1\"";
         execute_and_log( $cmd, $logTee, $dryRun,
             "Running DADA2 with fastq files in $wd for $var region...\n" );
 
         while ( !-e $outR ) {
-            check_error_log( $error_log, "R" );
+            check_error_log( $error_log, "Rscript" );
         }
 
         # Until DADA2 succeeds, look for the R output file and monitor for
         # signs of termination
         if ( -e $outR ) {
             my $decided = 0;    # flag to stop re-reading .Rout
-            while ( !$decided ) {
+            while ( ! $decided ) {
                 open IN, "<$outR"
                   or die "Cannot open $outR for reading: $OS_ERROR\n";
                 my $line = <IN>;
@@ -2474,8 +2369,8 @@ sub run_R_script {
                         && $line !~ /errors/
                       )
                     {
-                        $decided =
-                          1;    # Leave $exitStatus = 1 so DADA2 is restarted
+                        # Don't change $exitStatus, so DADA2 is restarted
+                        $decided = 1;    
                         print $logTee "---R script crashed at: $line\n";
 
                      # Preserve the last R log file that errored. Get rid of the
@@ -2484,10 +2379,11 @@ sub run_R_script {
                         print $logTee "---See $outR.old for details.\n";
                         print $logTee "---Attempting to restart R...\n";
 
-                    } elsif ( $line =~ /proc.time()/ ) {    # sign of success
+                    } elsif ( -e "dada2_part1_stats.txt"  ) {    # sign of success
 
-                        print $logTee "---R script completed without errors."
-                          if $verbose;
+                        print $logTee "---R script completed without errors.\n";
+                        print $logTee "---DADA2-specific commands can be found in "
+                            . "$Rscript\n";
                         $exitStatus = 0;                    # Move on from DADA2
                         $decided    = 1;                    # Stop reading .Rout
 
