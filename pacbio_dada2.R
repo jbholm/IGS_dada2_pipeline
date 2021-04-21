@@ -1,4 +1,4 @@
-#!/usr/local/packages/r-3.6.0/bin/Rscript
+#!/usr/local/packages/r-3.6.3/bin/Rscript
 options(
     show.error.locations = TRUE,
     show.error.messages = TRUE,
@@ -15,14 +15,23 @@ options(
     },
     stringsAsFactors = FALSE
 )
-.libPaths("/home/jolim/share/R/x86_64-pc-linux-gnu-library/3.6")
+require(jsonlite)
+
+initial.options <- commandArgs(trailingOnly = FALSE)
+pipelineDir <-
+  dirname(sub("--file=", "", initial.options[grep("--file=", initial.options)]))
+config_file <- file.path(pipelineDir, "config.json")
+config <- jsonlite::read_json(
+    path = file.path(config_file)
+)
+
+.libPaths(config[["r-lib-3.6"]])
 require("dada2")
 packageVersion("dada2") # 1.12.1  cwd<-getwd()
 require("argparse")
 require("autothresholdr")
 require("ShortRead")
 library(tidyr)
-require(rjson)
 
 parser <- ArgumentParser(description = "Assign taxa")
 parser$add_argument(
@@ -51,8 +60,8 @@ project_meta <- function(new_params = list(), checkpoints = list()) {
     if (!file.exists(info_file)) {
         run_info <- list()
     } else {
-        run_info <- rjson::fromJSON(
-            file = file.path(info_file)
+        run_info <- jsonlite::read_json(
+    path = file.path(info_file)
         )
     }
     
@@ -60,8 +69,7 @@ project_meta <- function(new_params = list(), checkpoints = list()) {
     new_info <- list(params = new_params, checkpoints = checkpoints)
     run_info <- utils::modifyList(run_info, new_info)
 
-    info_json <- rjson::toJSON(run_info, indent = 4)
-    writeLines(info_json, con = info_file)
+    info_json <- jsonlite::write_json(run_info, info_file)
 }
 cache_checksums <- function(files, name) {
     checksums <- lapply(files, function(f) {

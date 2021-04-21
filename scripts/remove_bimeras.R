@@ -1,4 +1,4 @@
-#!/usr/local/packages/r-3.6.0/bin/Rscript
+#!/usr/local/packages/r-4.0.3/bin/Rscript
 options(
   show.error.locations = TRUE,
   show.error.messages = TRUE,
@@ -15,7 +15,18 @@ options(
   },
   stringsAsFactors = FALSE
 )
-.libPaths("/home/jolim/share/R/x86_64-pc-linux-gnu-library/3.6")
+
+require(jsonlite)
+
+initial.options <- commandArgs(trailingOnly = FALSE)
+pipelineDir <-
+  dirname(dirname(sub("--file=", "", initial.options[grep("--file=", initial.options)])))
+config_file <- file.path(pipelineDir, "config.json")
+config <- jsonlite::read_json(
+    path = file.path(config_file)
+)
+.libPaths(config[["r-lib-4.0"]])
+
 require("argparse")
 library("Biostrings")
 

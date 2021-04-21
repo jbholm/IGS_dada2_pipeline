@@ -1,14 +1,18 @@
 {
     "part1":{
-        "print_qiime_config.py": "/usr/local/packages/python-2.7.14/bin/print_qiime_config.py",
-        "validate_mapping_file.py": "/usr/local/packages/python-2.7.14/bin/validate_mapping_file.py",
-        "extract_barcodes.py": "/usr/local/packages/python-2.7.14/bin/extract_barcodes.py",
-        "split_libraries_fastq.py": "/usr/local/packages/python-2.7.14/bin/split_libraries_fastq.py",
-        "fastqc": "/usr/local/bin/fastqc",
-        "split_sequence_file_on_sample_ids.py": "/usr/local/packages/python-2.7.14/bin/split_sequence_file_on_sample_ids.py",
-        
+        "print_qiime_config.py": "/local/projects-t3/MSL/pipelines/bin/print_qiime_config.py",
+        "validate_mapping_file.py": "/local/projects-t3/MSL/pipelines/bin/validate_mapping_file.py",
+        "extract_barcodes.py": "/local/projects-t3/MSL/pipelines/bin/extract_barcodes.py",
+        "split_libraries_fastq.py": "/local/projects-t3/MSL/pipelines/bin/split_libraries_fastq.py",
+        "fastqc": "/local/projects-t3/MSL/pipelines/bin/fastqc",
+        "split_sequence_file_on_sample_ids.py": "/local/projects-t3/MSL/pipelines/bin/split_sequence_file_on_sample_ids.py",
+        "tagcleaner": "/local/projects-t3/MSL/pipelines/bin/tagcleaner.pl",
         "bbduk.sh": "/local/projects-t3/MSL/pipelines/packages/bbmap/bbduk.sh",
-        "R": "/usr/local/packages/r-3.4.0/bin/R"
+        "R": "/usr/local/packages/r-4.0.3/bin/R"
     },
-    "ref_16s_dir": "/local/projects-t3/MSL/pipelines/share/taxonomy"
+    "R": "/usr/local/packages/r-4.0.2/bin/R",
+    "r-lib-3.6": "/local/projects-t3/MSL/pipelines/packages/R/x86_64-pc-linux-gnu-library/3.6",
+    "r-lib-4.0": "/local/projects-t3/MSL/pipelines/packages/R/x86_64-pc-linux-gnu-library/4.0",
+    "ref_16s_dir": "/local/projects-t3/MSL/pipelines/share/taxonomy",
+    "python2": "/usr/local/packages/python-2.7.17/bin/python2"
 }

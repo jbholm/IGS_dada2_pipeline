@@ -16,16 +16,16 @@ options(
     stringsAsFactors = FALSE
     )
 invisible({
+    require(jsonlite)
+
     initial.options <- commandArgs(trailingOnly = FALSE)
     wd <- dirname(sub("--file=", "", initial.options[grep("--file=", initial.options)]))
-    fileConn <- file(file.path(wd, "config.txt"))
-    lines <- readLines(fileConn)
-    sapply(lines, function(line) {
-        fields = strsplit(line, ": ")[[1]]
-        if(fields[1] == "rlibpath") {
-            .libPaths(c(fields[2], .libPaths()))
-        }
-    })
+    
+    config_file <- file.path(dirname(wd), "config.json")
+    config <- jsonlite::read_json(
+        path = file.path(config_file)
+    )
+    .libPaths(config[["r-lib-4.0"]])
 
     lapply(initial.options, FUN = function(x) {
         cat(x)

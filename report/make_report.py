@@ -301,7 +301,7 @@ def getMappingFile(pw):
 # def joinMaps(
 #     files
 # ):  # concatenates files into a tab-delimited mapping file in the current directory
-#     dest = 
+#     dest =
 #     with open(dest, "w") as outF:
 #         with open(files[0], "r") as inF:
 #             for line in inF:
@@ -324,9 +324,16 @@ def getMapHTML(pw):
     status = -1
     while status != 0:
         getMappingFile(pw)
-
+        rscript = config["R"] + "script"
         try:
-            cmd = "Rscript " + os.path.join(scriptDir, "mappingToHtml.R") + " -m " + enquote(opts["map"])
+            cmd = ' '.join(
+                [
+                    rscript,
+                    os.path.join(scriptDir, "mappingToHtml.R"),
+                    "-m",
+                    enquote(opts["map"]),
+                ]
+            )
         except TypeError:
             return None  # if this project doesn't have a mapping file
         if not args.verbose:
@@ -352,7 +359,7 @@ def getDada2Stats(pw):
     os.chdir(pw.pd)
 
     statsFile = os.path.join(pw.proj("REPORT"), "DADA2_stats.txt")
-    oldStatsFile = glob.glob('*DADA2_stats.txt')[0]
+    oldStatsFile = glob.glob("*DADA2_stats.txt")[0]
     oldStatsFile = pw.proj(oldStatsFile)
 
     status = -1  # Status of whole operation
@@ -388,14 +395,32 @@ def getDada2Stats(pw):
             fields = line.split()
             if i == 0:
                 # The sample ID column is where the footer label "Total reads:" is placed
-                ans += "<th data-field=" + enquote(fields[0]) + """ data-footer-formatter="totReadsText">""" + fields[0].capitalize() + "</th>\n"
+                ans += (
+                    "<th data-field="
+                    + enquote(fields[0])
+                    + """ data-footer-formatter="totReadsText">"""
+                    + fields[0].capitalize()
+                    + "</th>\n"
+                )
 
                 # The other columns show the sum of reads in the footer
                 # These footer formatter functions are inline javascript in MSL_REPORT.HTML
                 for fieldI in range(1, len(fields) - 1):
-                    ans += "<th data-field=" + enquote(fields[fieldI]) + """ data-footer-formatter="sum">""" + fields[fieldI].capitalize() + "</th>\n"
+                    ans += (
+                        "<th data-field="
+                        + enquote(fields[fieldI])
+                        + """ data-footer-formatter="sum">"""
+                        + fields[fieldI].capitalize()
+                        + "</th>\n"
+                    )
                 # The very last column, whatever it is, is the only one we care about sorting.
-                ans += "<th data-field=" + enquote(fields[len(fields) - 1]) + """ data-footer-formatter="sum" data-sortable="true">""" + fields[len(fields) - 1].capitalize() + "</th>\n"
+                ans += (
+                    "<th data-field="
+                    + enquote(fields[len(fields) - 1])
+                    + """ data-footer-formatter="sum" data-sortable="true">"""
+                    + fields[len(fields) - 1].capitalize()
+                    + "</th>\n"
+                )
                 ans += """</tr>
                 </thead>
                 <tbody>"""
@@ -758,8 +783,9 @@ def getAsvTables(pw):
                 print("\n")
 
     else:
-        include = glob.glob(pw.proj('*asvs+taxa*.csv'), recursive=True) + \
-            glob.glob(pw.proj('*taxa-merged*.csv'), recursive=True)
+        include = glob.glob(pw.proj("*asvs+taxa*.csv"), recursive=True) + glob.glob(
+            pw.proj("*taxa-merged*.csv"), recursive=True
+        )
 
     for file in include:
         opts["asvDfs"][file] = readAsvTable(pw.proj(file))
@@ -808,7 +834,8 @@ def df_to_js(df, float_format=None):
             formatted = float_format.format(val) if isinstance(val, float) else val
             items.append(str(formatted) + ",")
         items.append("],\n[")
-    items.pop()
+    if(len(df.index) > 0):
+        items.pop()
     items.append("]]\n")
     return "".join(items)
 
@@ -819,7 +846,7 @@ def createAsvHeatmaps(pw):
     html = ""
     js = ""
     heatmapNbr = 1
-    for file in opts['asvDfs'].keys():
+    for file in opts["asvDfs"].keys():
         fields = os.path.splitext(file)[0].split(sep=".")
 
         active = "active" if heatmapNbr == 1 else ""
@@ -1206,6 +1233,8 @@ def getCtrlPlots(pw, pars):
     idxs = [i for i, x in enumerate(meds) if x > 0]
     meds = [meds[i] for i in idxs]
     data = data.iloc[:, idxs]
+    if len(data) == 0 or data.empty:
+        return ans
     if len(taxa) > 0:
         taxa = [taxa[i] for i in idxs]
     sems = [sems[i] for i in idxs]
@@ -1410,7 +1439,7 @@ if __name__ == "__main__":
     scriptDir = os.path.dirname(os.path.abspath(__file__))
 
     parser = argparse.ArgumentParser(
-        description='''A script that automatically populates fields in the HTML report template. 
+        description="""A script that automatically populates fields in the HTML report template. 
 Required project folder hierarchy:
 PROJECT
 +-- RUNS
@@ -1421,15 +1450,25 @@ PROJECT
         +-- seqs_fastqc.zip
 +-- *DADA2_stats.txt
 +-- *.csv
-''',
-        epilog="""""")
-    parser.add_argument("wd", nargs=1, metavar="PROJECT_DIR",
-                        help="The project directory")
-    parser.add_argument("--verbose", action='store_true')
-    parser.add_argument("--interactive", "-i", action='store_true')
-    parser.add_argument("--runs", "-r", nargs='+',
-                        help="The names of the run directories to include. These must be subdirectories of DIR. If not --interactive, --run is required.")
-    parser.add_argument("--plotly", action='store_true', help="Use Plotly for heatmaps. Not recommended for HiSeq-size projects.")
+""",
+        epilog="""""",
+    )
+    parser.add_argument(
+        "wd", nargs=1, metavar="PROJECT_DIR", help="The project directory"
+    )
+    parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--interactive", "-i", action="store_true")
+    parser.add_argument(
+        "--runs",
+        "-r",
+        nargs="+",
+        help="The names of the run directories to include. These must be subdirectories of DIR. If not --interactive, --run is required.",
+    )
+    parser.add_argument(
+        "--plotly",
+        action="store_true",
+        help="Use Plotly for heatmaps. Not recommended for HiSeq-size projects.",
+    )
     args = parser.parse_args()
     np.set_printoptions(threshold=np.inf)
     if not args.interactive and args.runs is None:
@@ -1441,6 +1480,10 @@ PROJECT
 
             warnings.simplefilter("default")  # print all warnings
     os.environ["PYTHONWARNINGS"] = "default"  # Also affect subprocesses
+
+    with (Path(scriptDir).parent / Path("config.json")).open("r") as fh:
+        config = json.load(fh)
+
     for wd in args.wd:
         pw = Pathwiz(
             scriptsDir=scriptDir, projectDir=os.path.abspath(os.path.expanduser(wd))
