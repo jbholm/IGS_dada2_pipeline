@@ -1,26 +1,26 @@
 #!/usr/local/packages/r-4.0.3/bin/Rscript
 options(
-  show.error.locations = TRUE,
-  show.error.messages = TRUE,
-  keep.source = TRUE,
-  warn = 1,
-  error = function() {
-    # cat(attr(last.dump,"error.message"))
-    sink(file = stderr())
-    dump.frames("dump", TRUE)
-    cat("\nTraceback:", file = stderr())
-    cat("\n", file = stderr())
-    traceback(2) # Print full traceback of function calls with all parameters. The 2 passed to traceback omits the outermost two function calls.
-    if (!interactive()) quit(status = 1)
-  },
-  stringsAsFactors = FALSE
+    show.error.locations = TRUE,
+    show.error.messages = TRUE,
+    keep.source = TRUE,
+    warn = 1,
+    error = function() {
+        # cat(attr(last.dump,"error.message"))
+        sink(file = stderr())
+        dump.frames("dump", TRUE)
+        cat("\nTraceback:", file = stderr())
+        cat("\n", file = stderr())
+        traceback(2) # Print full traceback of function calls with all parameters. The 2 passed to traceback omits the outermost two function calls.
+        if (!interactive()) quit(status = 1)
+    },
+    stringsAsFactors = FALSE
 )
 
 require(jsonlite)
 
 initial.options <- commandArgs(trailingOnly = FALSE)
 pipelineDir <-
-  dirname(dirname(sub("--file=", "", initial.options[grep("--file=", initial.options)])))
+    dirname(dirname(sub("--file=", "", initial.options[grep("--file=", initial.options)])))
 config_file <- file.path(pipelineDir, "config.json")
 config <- jsonlite::read_json(
     path = file.path(config_file)
@@ -28,57 +28,133 @@ config <- jsonlite::read_json(
 .libPaths(config[["r-lib-4.0"]])
 
 require("argparse")
-library("Biostrings")
 
 initial.options <- commandArgs(trailingOnly = FALSE)
 pipelineDir <- dirname(dirname(sub("--file=", "", initial.options[grep("--file=", initial.options)])))
 
-parser <- ArgumentParser(description='Remove chimeras and assign taxa')
-parser$add_argument('--seq', metavar='SEQUENCING_MACHINE', type="character",
-                  help='ILLUMINA or PACBIO')
+parser <- ArgumentParser(description = "Remove chimeras and assign taxa")
+parser$add_argument("--seq",
+    metavar = "SEQUENCING_MACHINE", type = "character",
+    help = "ILLUMINA or PACBIO"
+)
 parser$add_argument("runs",
-  metavar = "RUN_ID", type = "character",
-  nargs = "+",
-  help = "Name of run directory(ies)"
+    metavar = "RUN_ID", type = "character",
+    nargs = "+",
+    help = "Name of run directory(ies)"
 )
 args <- parser$parse_args()
 if (is.null(args$seq)) {
-  stop("Please provide --seq. Execute dada2_part2.R --help for help.")
+    stop("Please provide --seq. Execute dada2_part2.R --help for help.")
 }
-if(any(!dir.exists(args$runs))) {
-  stop(do.call(base::paste, args = list(c(
-    "Directories do not exist:",
-    args$runs[!dir.exists(args$runs)]
-  ), sep = " ")))
+if (any(!dir.exists(args$runs))) {
+    stop(do.call(base::paste, args = list(c(
+        "Directories do not exist:",
+        args$runs[!dir.exists(args$runs)]
+    ), sep = " ")))
 }
 
-require("dada2")
-library(tidyr)
-library(dplyr)
-library(magrittr)
-
+suppressMessages(
+    suppressWarnings({
+        library("Biostrings")
+        require("dada2")
+        library(tidyr)
+        library(dplyr)
+        library(magrittr)
+        library(readr)
+    })
+)
 runs <- args$runs %>% setNames(lapply(args$runs, basename))
+
+run_meta <- function(new_params = list(), checkpoints = list(), run_dir = getwd()) {
+    info_file <- file.path(run_dir, ".meta.json")
+
+    if (!file.exists(info_file)) {
+        run_info <- list()
+    } else {
+        run_info <- jsonlite::read_json(
+            path = file.path(info_file)
+        )
+    }
+
+    if (length(new_params) > 0 || length(checkpoints) > 0) {
+        new_info <- list(params = new_params, checkpoints = checkpoints)
+        run_info <- utils::modifyList(run_info, new_info)
+
+        info_json <- jsonlite::write_json(run_info, info_file)
+    }
+    return(run_info)
+}
+
+# combine maps
+map_filepath <- (function(runs) {
+    # get each map, looking in the path specified by the run's metadata file
+    maps <- lapply(names(runs), function(run_name) {
+        run_info <- run_meta(run_dir = runs[run_name])
+        if ("map" %in% names(run_info[["checkpoints"]])) {
+            map_filepath <- file.path(
+                runs[run_name], names(run_info[["checkpoints"]][["map"]])[1]
+            )
+            tryCatch(
+                {
+                    suppressMessages(
+                        map <- read_tsv(map_filepath, quote = "", na = "", trim_ws = F)
+                    )
+                },
+                error = function(e) {
+                    stop(paste("Unable to find mapping file; supposed to be at", map_filepath))
+                }
+            )
+
+            if (length(runs) > 1) {
+                # add a Run column to the map
+                map <- map %>%
+                    mutate(Run = run_name) %>%
+                    relocate(Run)
+            }
+            return(map)
+        } else {
+            return()
+        }
+    })
+    bind_rows(maps) %>% write_tsv(file = "map.txt")
+    return("map.txt")
+})(runs)
+
 ## INPUT
-## list all of the files matching the pattern 
+## list all of the files matching the pattern
 counts_and_stats <- (function(runs) {
-    tables<-lapply(runs, function(run) {
-        readRDS(list.files(run, pattern = "dada2_abundance_table.rds", full.names = TRUE)[[1]])
+    tables <- lapply(names(runs), function(run_name) {
+        count_table <- readRDS(list.files(runs[run_name], pattern = "dada2_abundance_table.rds", full.names = TRUE)[[1]])
+        if (length(runs) > 1) {
+            rownames(count_table) <- paste(run_name, rownames(count_table), sep = "_")
+        }
+        return(count_table)
     })
-    stats <- lapply(runs, function(run) {
-        read.csv(list.files(run, pattern = "dada2_part1_stats.txt", full.names = TRUE)[[1]], sep = "", stringsAsFactors = FALSE)
+    stats <- lapply(names(runs), function(run_name) {
+        stat_table <- read.csv(
+            list.files(runs[run_name], pattern = "dada2_part1_stats.txt", full.names = TRUE)[[1]],
+            sep = "", stringsAsFactors = FALSE
+        )
+        if (length(runs) > 1) {
+            rownames(stat_table) <- paste(run_name, rownames(stat_table), sep = "_")
+        }
+        return(stat_table)
     })
+    # basically, this code is here solely to accommodate when two runs have the
+    # same name, or a run with two samples of the same name (if that's even possible)
     old_stats_sample_names <- do.call(c, lapply(stats, rownames))
     old_count_table_sample_names <- do.call(c, lapply(tables, rownames))
-    
+
     new_sample_names <- make.names(old_stats_sample_names, unique = T)
-    stats <- bind_rows(stats) %>% `row.names<-`(new_sample_names)
+    stats <- bind_rows(stats)
+    stats <- stats %>% set_rownames(new_sample_names)
     # in future, use bind_rows to create stats using id column, then concatenate
-    # run name and rowname to create unique rownames. These can then be used 
+    # run name and rowname to create unique rownames. These can then be used
     # in place of new_sample_names to name the rows of st
 
     # Combine count tables
-    unqs <- unique(c(sapply(tables, colnames), recursive=TRUE))
-    n<-sum(unlist(lapply(X=tables, FUN = nrow)))
+    unqs <- unique(c(sapply(tables, colnames), recursive = TRUE))
+    n <- sum(unlist(lapply(X = tables, FUN = nrow)))
     st <- matrix(0L, nrow = n, ncol = length(unqs)) %>% set_colnames(unqs)
     row <- 1
     for (table in tables) {
@@ -89,7 +165,7 @@ counts_and_stats <- (function(runs) {
     # Make count table sample names unique (and matching up with stat sample names)
     stats_i <- 1
     rownames(st) <- lapply(
-        seq_along(old_count_table_sample_names), 
+        seq_along(old_count_table_sample_names),
         function(count_table_i) {
             while (old_count_table_sample_names[count_table_i] != old_stats_sample_names[stats_i]) {
                 stats_i <<- stats_i + 1
@@ -97,20 +173,20 @@ counts_and_stats <- (function(runs) {
             return(new_sample_names[stats_i])
         }
     ) %>%
-    unlist()
+        unlist()
 
     # sort ASVs by total frequency
     st <- st[, order(colSums(st), decreasing = TRUE)]
     return(list(counts = st, stats = stats))
 })(runs)
 
-##st.all<-mergeSequenceTables(runs)
+## st.all<-mergeSequenceTables(runs)
 # Remove chimeras
-mfpoa <- if(args$seq == "ILLUMINA") 2 else 3.5
-seqtab <- dada2::removeBimeraDenovo(counts_and_stats$counts, method="consensus", minFoldParentOverAbundance=mfpoa, multithread=TRUE)
+mfpoa <- if (args$seq == "ILLUMINA") 2 else 3.5
+seqtab <- dada2::removeBimeraDenovo(counts_and_stats$counts, method = "consensus", minFoldParentOverAbundance = mfpoa, multithread = TRUE)
 # Write to disk
 saveRDS(seqtab, "all_runs_dada2_abundance_table.rds") # CHANGE ME to where you want sequence table saved
-write.csv(seqtab, "all_runs_dada2_abundance_table.csv", quote=FALSE)
+write.csv(seqtab, "all_runs_dada2_abundance_table.csv", quote = FALSE)
 outputs <- c("all_runs_dada2_abundance_table.rds", "all_runs_dada2_abundance_table.csv")
 # Create a reference FASTA containing all the ASVs from colnames(seqtab)
 # (each sequence's FASTA header is itself)
@@ -119,13 +195,13 @@ writeXStringSet(DNAStringSet(colnames(seqtab)), fasta, format = "fasta")
 outputs <- append(outputs, fasta)
 
 nonchimerics <- rowSums(seqtab)[rownames(counts_and_stats$stats)] %>%
-  replace_na(0) %>%
-  setNames(rownames(counts_and_stats$stats))
+    replace_na(0) %>%
+    setNames(rownames(counts_and_stats$stats))
 project_stats <- cbind(Sample = rownames(counts_and_stats$stats), counts_and_stats$stats, Nonchimeric = nonchimerics)
 write.table(project_stats, "DADA2_stats.txt",
-  quote = FALSE, append = FALSE,
-  sep = "\t", row.names = F, col.names = TRUE
+    quote = FALSE, append = FALSE,
+    sep = "\t", row.names = F, col.names = TRUE
 )
-outputs <- append(outputs, "DADA2_stats.txt")
+outputs <- append(outputs, c("DADA2_stats.txt", map_filepath))
 
 cat(outputs)

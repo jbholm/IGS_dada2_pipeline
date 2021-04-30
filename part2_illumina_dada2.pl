@@ -355,7 +355,8 @@ print $logTee "\n";
 ####################################################################
 my $run_info_hash = get_run_info(@runs);
 print $logTee "---Copying map files to project\n";
-copy_maps_to_project($run_info_hash);
+
+# copy_maps_to_project($run_info_hash);
 
 my @classifs = ();
 my $projabund;
@@ -372,23 +373,28 @@ print $logTee "---Combining "
   . " abundance table(s) and removing bimeras.\n";
 print $logTee "Run(s):\n";
 
-my ($abundRds, $abund, $stats, $fasta) = (
-                                          "all_runs_dada2_abundance_table.rds",
-                                          "all_runs_dada2_abundance_table.csv",
-                                          "DADA2_stats.txt",
-                                          "all_runs_dada2_ASV.fasta"
-                                         );
-($abundRds, $abund, $stats, $fasta) =
-  map {move_to_project($project, $_, 1)} ($abundRds, $abund, $stats, $fasta);
+my ($abundRds, $abund, $stats, $fasta, $map) = (
+                                           "all_runs_dada2_abundance_table.rds",
+                                           "all_runs_dada2_abundance_table.csv",
+                                           "DADA2_stats.txt",
+                                           "all_runs_dada2_ASV.fasta",
+                                           "map.txt"
+);
+($abundRds, $abund, $stats, $fasta, $map) =
+  map {move_to_project($project, $_, 1)}
+  ($abundRds, $abund, $stats, $fasta, $map);
 
-if (List::Util::any {!-e $_} ($abundRds, $abund, $fasta, $stats))
+if (List::Util::any {!-e $_} ($abundRds, $abund, $fasta, $stats, $map))
 {
     print $logTee "Combining runs and removing bimeras.\n";
-    ($abundRds, $abund, $fasta, $stats) = dada2_combine($pacbio, \@runs);
+    ($abundRds, $abund, $fasta, $stats, $map) = dada2_combine($pacbio, \@runs);
 
-    ($abundRds, $abund, $fasta, $stats) = map {move_to_project($project, $$_)}
-      (\$abundRds, \$abund, \$fasta, \$stats);
-    foreach (($abundRds, $abund, $fasta, $stats))
+    ($abundRds, $abund, $fasta, $stats, $map) =
+      map {move_to_project($project, $$_)}
+      (\$abundRds, \$abund, \$fasta, \$stats, \$map);
+
+    $logTee->print("Outputs:\n");
+    foreach (($abundRds, $abund, $fasta, $stats, $map))
     {
         print $logTee "$_\n";
     }
@@ -602,7 +608,8 @@ my $final_merge = glob("*.taxa-merged.csv");
 unlink glob "*.taxa.csv";
 my $final_ASV_taxa = glob("*.asvs+taxa.csv");
 
-$cmd = "$pipelineDir/report/report16s.sh '$projDir' --runs @runs";
+$cmd =
+  "$pipelineDir/report/report16s.sh '$projDir' --runs @runs --project $project";
 execute_and_log($cmd, $logTee, $dryRun, "Creating report...");
 print $logTee "---Final files succesfully produced!\n";
 print $logTee
