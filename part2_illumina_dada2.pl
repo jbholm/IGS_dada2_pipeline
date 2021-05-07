@@ -353,10 +353,7 @@ print $logTee "\n";
 ####################################################################
 ##                               MAIN
 ####################################################################
-my $run_info_hash = get_run_info(@runs);
-print $logTee "---Copying map files to project\n";
-
-# copy_maps_to_project($run_info_hash);
+my $run_info_hash = combine_run_metadata(@runs);
 
 my @classifs = ();
 my $projabund;
@@ -656,13 +653,18 @@ sub config
     return $params;
 }
 
-sub get_run_info
+sub combine_run_metadata
 {
     my %all_run_info;
     foreach my $run (@_)
     {
         $all_run_info{$run} = read_json(catfile($run, ".meta.json"));
     }
+
+    open my $metadataFH, ">.meta.json";
+    print $metadataFH encode_json($all_run_info);
+    close $metadataFH;
+    
     return \%all_run_info;
 }
 
@@ -675,10 +677,10 @@ sub copy_maps_to_project
     # the first map goes into project_map.txt nearly verbatim. For the remaining
     # maps, all non-blank lines after the header go in
 
-    # I hate perl syntax so much
     my @maps;
     foreach my $run (@runs)
     {
+        # I hate perl syntax so much
         my @recorded_map_filepaths =
           keys %{$all_run_info->{$run}{"checkpoints"}{"map"}};
         if (@recorded_map_filepaths)
