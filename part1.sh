@@ -343,12 +343,16 @@ use ()
 use sge > /dev/null 2>&1  || true
 module load sge 2>/dev/null || true
 
-if [[ -e "/usr/local/packages/miniconda3/etc/profile.d/conda.sh" ]]; then
-    source /usr/local/packages/miniconda3/etc/profile.d/conda.sh 2>/dev/null
-else
-    source "/local/projects-t3/MSL/pipelines/packages/miniconda3/etc/profile.d/conda.sh" 2>/dev/null
-fi
-conda activate qiime1
+# if [[ -e "/usr/local/packages/miniconda3/etc/profile.d/conda.sh" ]]; then
+#     source /usr/local/packages/miniconda3/etc/profile.d/conda.sh 2>/dev/null
+# else
+#     source "/local/projects-t3/MSL/pipelines/packages/miniconda3/etc/profile.d/conda.sh" 2>/dev/null
+# fi
+# conda=`cat "$MY_DIR/config.json" | \
+#     python3 -c "import sys, json; print(json.load(sys.stdin)['conda'])"`
+# qiime_env=`cat "$MY_DIR/config.json" | \
+#     python3 -c "import sys, json; print(json.load(sys.stdin)['qiime_env'])"`
+# conda activate "$qiime_env"
 
 # . /usr/local/packages/qiime-1.9.1/activate.sh
 # export PATH=/usr/local/packages/python-2.7/bin:$PATH
