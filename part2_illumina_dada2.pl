@@ -189,7 +189,8 @@ if (!$inRuns)
 ##split the list of runs to an array
 my @runs = split(",", $inRuns);
 
-# Refine and validate all variables that refer to the filesystem
+# Refine and validate the run paths (no duplicates, must exist on filesystem)
+my %seen;
 foreach (@runs)
 {
     if ($_)
@@ -206,6 +207,10 @@ foreach (@runs)
               . " not found.\n"
               . "Current working directory: "
               . getcwd() . "\n";
+        }
+        if ($seen{basename($copy)}++)
+        {
+            die "$_ is a duplicate run name and not allowed\n";
         }
         $_ = $copy;  # external variable referenced by path has now been edited.
     }
@@ -655,17 +660,46 @@ sub config
 
 sub combine_run_metadata
 {
-    my %all_run_info;
-    foreach my $run (@_)
+    my $all_run_info = {};
+    foreach my $rundir (@_)
     {
-        $all_run_info{$run} = read_json(catfile($run, ".meta.json"));
+        my $run = basename($rundir);
+        $all_run_info->{$run} = read_json(catfile($rundir, ".meta.json"));
+        if (exists $all_run_info->{$run}->{"samples"}
+            && ref $all_run_info->{$run}->{"samples"} eq ref {})
+        {
+            foreach my $sample (keys %{$all_run_info->{$run}->{"samples"}})
+            {
+                if (ref $all_run_info->{$run}->{"samples"}->{$sample} eq ref {})
+                {
+                    foreach my $filepath (
+                        values %{$all_run_info->{$run}->{"samples"}->{$sample}})
+                    {
+  # an absent file will be decoded from JSON to either an empty hashref or undef
+                        if (!ref($filepath) && defined $filepath)
+                        {
+                            $filepath = catfile($rundir, $filepath);
+                        }
+                    }
+                } else
+                {
+                    warn
+                      "Malformed metadata: $run: samples: $sample. Part3 won't be able to organize FASTQs.\n";
+                }
+            }
+        } else
+        {
+            warn
+              "Malformed metadata: $run: samples. Part3 won't be able to organize FASTQs.\n";
+        }
     }
 
+    my $metadata = {runs => $all_run_info};
     open my $metadataFH, ">.meta.json";
-    print $metadataFH encode_json($all_run_info);
+    print $metadataFH encode_json($metadata);
     close $metadataFH;
-    
-    return \%all_run_info;
+
+    return $metadata;
 }
 
 sub copy_maps_to_project
@@ -980,5 +1014,4 @@ sub rename_temps
     }
 }
 
-exit 0;
 exit 0;

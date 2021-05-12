@@ -15,7 +15,7 @@ pathfinder = {
     "intermediate_taxonomies": Path("TAXONOMY_INTERMEDIATES"),
     "final_taxonomies": Path("TAXONOMY_FINAL"),
     "counts-by-taxon": Path("COUNTS_BY_TAXON"),
-    "counts-by-ASV": Path("COUNTS_BY_ASV")
+    "counts-by-ASV": Path("COUNTS_BY_ASV"),
 }
 
 
@@ -54,20 +54,33 @@ def main(args):
 
         elif choice == "D":
             run_paths = get_runs(args.project)
-            if not organize_reads(args.project, run_paths): continue
-            if not organize_trimmed(args.project, run_paths): continue
-            if not organize_counts_by_asv(args.project): continue
-            if not organize_counts_by_taxon(args.project): continue
-            if not organize_logs(args.project): continue
-            if not organize_map(args.project): continue
-            if not organize_taxonomies_final(args.project): continue
-            if not organize_taxonomies_intermediates(args.project): continue
-            if not add_index(): continue
-            if not add_references(args.project, run_paths): continue
+            if not organize_reads(args.project, run_paths):
+                continue
+            sys.exit(0)
+            if not organize_trimmed(args.project, run_paths):
+                continue
+            if not organize_counts_by_asv(args.project):
+                continue
+            if not organize_counts_by_taxon(args.project):
+                continue
+            if not organize_logs(args.project):
+                continue
+            if not organize_map(args.project):
+                continue
+            if not organize_taxonomies_final(args.project):
+                continue
+            if not organize_taxonomies_intermediates(args.project):
+                continue
+            if not add_index():
+                continue
+            if not add_references(args.project, run_paths):
+                continue
 
-            if not remove_trash(args.project, run_paths): continue
+            if not remove_trash(args.project, run_paths):
+                continue
 
-            if not share_unix_perms(args.project): continue
+            if not share_unix_perms(args.project):
+                continue
 
         elif choice == "J":
             upload_to_jira(args.project)
@@ -155,21 +168,17 @@ def upload_to_synology(dirpath):
         user = getuser("Synology user: ")
 
         dirs_to_upload = [
-            str(pathfinder['counts-by-ASV']),
-            str(pathfinder['counts-by-taxon']),
+            str(pathfinder["counts-by-ASV"]),
+            str(pathfinder["counts-by-taxon"]),
             "MAP",
             "REPORT",
             "FASTQ",
-            str(pathfinder['final_taxonomies']),
-            str(pathfinder['intermediate_taxonomies']),
+            str(pathfinder["final_taxonomies"]),
+            str(pathfinder["intermediate_taxonomies"]),
         ]
 
         try:
-            synology.archive_project(
-                user,
-                dirpath.name,
-                dirs_to_upload, 
-            )
+            synology.archive_project(user, dirpath.name, dirs_to_upload)
             done = True
         except Exception as e:
             print(e)
@@ -189,14 +198,16 @@ def share_unix_perms(path):
                 try:
                     path.chmod(st.st_mode | int(usr_perms / user_to_group_divisor))
                 except PermissionError as e:
-                    print(f"Unable to expand permissions to group for: {str(path)}\n{str(e)}")
-                    return False 
+                    print(
+                        f"Unable to expand permissions to group for: {str(path)}\n{str(e)}"
+                    )
+                    return False
             else:
                 print(f"Cannot process {str(path)} without ownership\n")
-                return False 
+                return False
         else:
             print(f"Owner has no permissions on {str(path)}.\n")
-            return False 
+            return False
 
     return True
 
@@ -291,7 +302,7 @@ def upload_to_jira(proj):
             "type": "checkbox",
             "name": "chooser",
             "message": "",
-            "choices": [{"name": line} for line in tree[3:len(tree)-1]],
+            "choices": [{"name": line} for line in tree[3 : len(tree) - 1]],
         }
     ]
 
@@ -528,64 +539,134 @@ def get_runs(proj_path):
 
     return inquire(questions, prompt)
 
-def read_metadata(run_path):
-    with (run_path / Path(".meta.json")).open("r") as fh:
-        run_info = json.load(fh)
-    if not type(run_info) is dict:
-        raise Exception("Run metadata not a JSON dictionary")
-    if not "params" in run_info.keys() or not "checkpoints" in run_info.keys():
-        raise Exception("Run metadata doesn't contain 'checkpoints' and 'params'")
-    if not type(run_info["params"]) is dict or not type(run_info["checkpoints"]) is dict:
-        raise Exception("Run metadata 'params' or 'checkpoints' is not a JSON dictionary")
 
-    return run_info
+def read_metadata(run_path=None):
+    if run_path is not None:
+        with (run_path / Path(".meta.json")).open("r") as fh:
+            metadata = json.load(fh)
+        if not type(metadata) is dict:
+            raise Exception("Run metadata is not a JSON dictionary\n")
+        if not "params" in metadata.keys() or not type(metadata["params"]) is dict:
+            raise Exception(
+                "Run metadata doesn't contain 'checkpoints' as a JSON object\n"
+            )
+        if (
+            not "checkpoints" in metadata.keys()
+            or not type(metadata["checkpoints"]) is dict
+        ):
+            raise Exception(
+                "Run metadata does not contain 'checkpoints' as a JSON object\n"
+            )
+    else:
+        with Path(".meta.json").open("r") as fh:
+            metadata = json.load(fh)
+        if not type(metadata) is dict:
+            raise Exception("Project metadata is not a JSON dictionary\n")
+        if not "samples" in metadata.keys() or not type(metadata) is dict:
+            raise Exception(
+                "Project metadata does not contain sample filepaths as a JSON object\n"
+            )
+
+    return metadata
+
 
 def organize_reads(proj_path, run_paths):
     organized_dir = "FASTQ"
 
     filepaths = []
     any_files = False
-    for run_path in run_paths:
-        ill_fwd_dir = proj_path / run_path / Path("fwdSplit")
-        ill_rev_dir = proj_path / run_path / Path("revSplit")
+    proj_meta = read_metadata()
 
-        # if ill_fwd_dir.is_dir():
-        #     filepaths += glob.glob(str(proj_path / run_path / Path('fwdSplit/split_by_sample_out/*.fastq')))
-        # if ill_rev_dir.is_dir():
-        #     filepaths += glob.glob(str(proj_path / run_path / Path('revSplit/split_by_sample_out/*.fastq')))
+    if not make_for_contents(organized_dir, any_files):
+        return False
 
-        # if not ill_fwd_dir.is_dir() and not ill_rev_dir.is_dir():
-        try:
-            run_info = read_metadata(proj_path / run_path)
-        except Exception as e:
-            print(str(e))
-            print("WARNING: Can't open run metadata from " + run_path.name + ". Unable to locate raw reads")
-            return True # NOT A SHOWSTOPPER
+    count = 0
+    problem_samples = 0
+    for sample, sample_files in proj_meta["samples"].items():
+        # if type(sample) is dict:
 
-        try:
-            filepaths += [
-                os.path.join(run_path, rel_path) for rel_path in run_info['checkpoints']["samples"].keys()
-            ]
-        except KeyError:
-            print("WARNING: Incompatible with the pipeline version used on this run. Cannot find raw read files.")
-            return True # not a show-stopper
+        # 1. sample_files doen't have raw_fwd or raw_rev -> bad metadata: tell user and continue
+        # 2. shutil.copy2 fails with file permission error -> assume nothing else to do, stop and tell user why
+        if type(sample_files) is not dict:
+            print(f"WARNING: malformed project metadata for {sample}. Unable to copy the raw files to ./FASTQ/.")
+            problem_samples += 1
+            continue
+        
+        problem = False
+        for filekey in ["raw_fwd", "raw_rev"]:
+            try:
+                src = sample_files[filekey]
+            except KeyError:
+                print(f"WARNING: project metadata doesn't contain filepath for {sample} raw file: {filekey}. Unable to copy the file to ./FASTQ/.")
+                problem = True
+                continue            
 
-        if len(filepaths) > 0:
-            if not make_for_contents(organized_dir, any_files): return False
-            any_files = True
-            subdir_destination = str(Path(organized_dir) / run_path.name)
-            if not make_for_contents(subdir_destination): return False
-            print(f"Copying {len(filepaths)} raw read files to {subdir_destination}.")
-            for filepath in filepaths:
-                shutil.copy2(filepath, Path(subdir_destination) / Path(filepath).name)
+            shutil.copy2(src, Path(organized_dir) / Path(sample + ".fastq"))
+            count += 1
+
+        if problem:
+            problem_samples += 1
+
+    # for run_path in run_paths:
+    #     ill_fwd_dir = proj_path / run_path / Path("fwdSplit")
+    #     ill_rev_dir = proj_path / run_path / Path("revSplit")
+
+    #     # if ill_fwd_dir.is_dir():
+    #     #     filepaths += glob.glob(str(proj_path / run_path / Path('fwdSplit/split_by_sample_out/*.fastq')))
+    #     # if ill_rev_dir.is_dir():
+    #     #     filepaths += glob.glob(str(proj_path / run_path / Path('revSplit/split_by_sample_out/*.fastq')))
+
+    #     # if not ill_fwd_dir.is_dir() and not ill_rev_dir.is_dir():
+    #     try:
+    #         run_info = read_metadata(proj_path / run_path)
+    #     except Exception as e:
+    #         print(str(e))
+    #         print(
+    #             "WARNING: Can't open run metadata from "
+    #             + run_path.name
+    #             + ". Unable to locate raw reads"
+    #         )
+    #         return True  # NOT A SHOWSTOPPER
+
+    #     try:
+    #         filepaths += [
+    #             os.path.join(run_path, rel_path)
+    #             for rel_path in run_info["checkpoints"]["samples"].keys()
+    #         ]
+    #     except KeyError:
+    #         print(
+    #             "WARNING: Incompatible with the pipeline version used on this run. Cannot find raw read files."
+    #         )
+    #         return True  # not a show-stopper
+
+    #     if len(filepaths) > 0:
+    #         if not make_for_contents(organized_dir, any_files):
+    #             return False
+    #         any_files = True
+    #         subdir_destination = str(Path(organized_dir) / run_path.name)
+    #         if not make_for_contents(subdir_destination):
+    #             return False
+    #         print(f"Copying {len(filepaths)} raw read files to {subdir_destination}.")
+    #         for filepath in filepaths:
+    #             shutil.copy2(filepath, Path(subdir_destination) / Path(filepath).name)
 
             # gzip all if needed
-            for f in Path(subdir_destination).iterdir():
-                if f.suffix != ".gz":
-                    gz(str(f))
+    for f in Path(organized_dir).iterdir():
+        if f.suffix != ".gz":
+            gz(str(f))
 
-    if not any_files:
-        print(f"Skipping creation of {organized_dir} (no demuxed reads found)")
+    if count == 0:
+        print(f"Removing {organized_dir} (no demuxed reads found)")
+        try:
+            os.rmdir(organized_dir)
+        except Exception as e:
+            print(str(e))
+
+    elif count > 0:
+        print(f"Moved {count} demuxed reads to ./{organized_dir}/")
+
+    if problem_samples > 0:
+        print(f"Unable to read metadata and relocate raw reads for {problem_samples} samples. Continuing.")
 
     return True
 
@@ -602,10 +683,12 @@ def organize_trimmed(proj_path, run_paths):
         )
 
         if len(filepaths) > 0:
-            if not make_for_contents(organized_dir, any_files): return False
+            if not make_for_contents(organized_dir, any_files):
+                return False
             any_files = True
             subdir_destination = str(Path(organized_dir) / run_path.name)
-            if not make_for_contents(subdir_destination): return False
+            if not make_for_contents(subdir_destination):
+                return False
             print(
                 f"Copying {len(filepaths)} adapter-trimmed read files to {subdir_destination}."
             )
@@ -623,14 +706,15 @@ def organize_trimmed(proj_path, run_paths):
 
 
 def organize_counts_by_asv(proj_path):
-    organized_dir = str(pathfinder['counts-by-ASV'])
+    organized_dir = str(pathfinder["counts-by-ASV"])
 
     filepaths = glob.glob(str(proj_path / Path("*all_runs_dada2_abundance_table.rds")))
     filepaths += glob.glob(str(proj_path / Path("*all_runs_dada2_abundance_table.csv")))
     filepaths += glob.glob(str(proj_path / Path("*asvs+taxa.csv")))
 
     if len(filepaths) > 0:
-        if not make_for_contents(organized_dir): return False
+        if not make_for_contents(organized_dir):
+            return False
         print(f"Moving {len(filepaths)} sample-ASV count tables to {organized_dir}/.")
         for filepath in filepaths:
             Path(filepath).rename(Path(organized_dir) / Path(filepath).name)
@@ -641,12 +725,13 @@ def organize_counts_by_asv(proj_path):
 
 
 def organize_counts_by_taxon(proj_path):
-    organized_dir = str(pathfinder['counts-by-taxon'])
+    organized_dir = str(pathfinder["counts-by-taxon"])
 
     filepaths = glob.glob(str(proj_path / Path("*taxa-merged.csv")))
 
     if len(filepaths) > 0:
-        if not make_for_contents(organized_dir): return False
+        if not make_for_contents(organized_dir):
+            return False
         print(f"Moving {len(filepaths)} sample-taxon count tables to {organized_dir}/.")
         for filepath in filepaths:
             Path(filepath).rename(Path(organized_dir) / Path(filepath).name)
@@ -679,7 +764,8 @@ def organize_logs(proj_path):
     filepaths += glob.glob(str(proj_path / Path("*/*pipeline_log.txt")))
 
     if len(filepaths) > 0:
-        if not make_for_contents(organized_dir): return
+        if not make_for_contents(organized_dir):
+            return
         print(f"Moving {len(filepaths)} log files to LOGS/.")
 
         for filepath in filepaths:
@@ -696,7 +782,8 @@ def organize_map(proj_path):
     filepaths = glob.glob(str(proj_path / "project_map.txt"))
 
     if len(filepaths) > 0:
-        if not make_for_contents(organized_dir): return
+        if not make_for_contents(organized_dir):
+            return
         print(f"Moving {len(filepaths)} mapping file(s) to MAP/.")
 
         for filepath in filepaths:
@@ -708,12 +795,13 @@ def organize_map(proj_path):
 
 
 def organize_taxonomies_final(proj_path):
-    organized_dir = str(pathfinder['final_taxonomies'])
+    organized_dir = str(pathfinder["final_taxonomies"])
 
     filepaths = glob.glob(str(proj_path / "cmb_tx.txt"))
 
     if len(filepaths) > 0:
-        if not make_for_contents(organized_dir): return
+        if not make_for_contents(organized_dir):
+            return
         print(f"Moving cmb_tx.txt to {organized_dir}/.")
 
         for filepath in filepaths:
@@ -725,13 +813,14 @@ def organize_taxonomies_final(proj_path):
 
 
 def organize_taxonomies_intermediates(proj_path):
-    organized_dir = str(pathfinder['intermediate_taxonomies'])
+    organized_dir = str(pathfinder["intermediate_taxonomies"])
     any_files = False
 
     filepaths = glob.glob(str(proj_path / Path("MC_order7_results.txt")))
     if len(filepaths) > 0:
         any_files = True
-        if not make_for_contents(organized_dir): return
+        if not make_for_contents(organized_dir):
+            return
         print(f"Moving MC_order7_results.txt to {organized_dir}/PECAN_raw.txt.")
 
         for filepath in filepaths:
@@ -743,22 +832,22 @@ def organize_taxonomies_intermediates(proj_path):
 
     if len(filepaths) > 0:
         any_files = True
-        if not make_for_contents(organized_dir, any_files): return
+        if not make_for_contents(organized_dir, any_files):
+            return
         print(f"Moving {len(filepaths)} raw RDP classifier files to {organized_dir}/")
 
         for filepath in filepaths:
             newname = re.sub(
                 r"^.*?([^_]*)\.classification\.csv$", r"\1_raw.csv", Path(filepath).name
             )
-            Path(filepath).rename(
-                Path(organized_dir) / Path(newname)
-            )
+            Path(filepath).rename(Path(organized_dir) / Path(newname))
 
     filepaths = glob.glob(str(proj_path / Path("silva_condensed.txt")))
     filepaths += glob.glob(str(proj_path / Path("homd_condensed.txt")))
     filepaths += glob.glob(str(proj_path / Path("unite_condensed.txt")))
     if len(filepaths) > 0:
-        if not make_for_contents(organized_dir, any_files): return
+        if not make_for_contents(organized_dir, any_files):
+            return
         print(f"Moving {len(filepaths)} condensed taxonomy file to {organized_dir}/.")
 
         for filepath in filepaths:
@@ -772,6 +861,7 @@ def organize_taxonomies_intermediates(proj_path):
         )
     return True
 
+
 def add_index():
     try:
         with open("_INDEX.txt", "w") as outfile:
@@ -781,26 +871,31 @@ def add_index():
         return False
     return True
 
+
 def add_references(proj_path, run_paths):
     # get illumina references as orderedDict
     references = Citations()
-    print('')
+    print("")
 
-    try: # ugh I don't like this huge try catch block, but it works...and I don't
+    try:  # ugh I don't like this huge try catch block, but it works...and I don't
         # know what exceptions to catch any way
         # add starter references for illumina or pacbio runs
         run_types = set()
         for run_path in run_paths:
             try:
                 run_info = read_metadata(proj_path / run_path)
-                run_type = run_info['params']['platform'].upper()
+                run_type = run_info["params"]["platform"].upper()
                 if run_type not in CITATION_GROUPS.keys():
-                    print(f"Unrecognized run type: {run_type}. Don't know what citations to add.")
+                    print(
+                        f"Unrecognized run type: {run_type}. Don't know what citations to add."
+                    )
                 else:
                     run_types.add(run_type)
             except Exception as e:
-                print(f"WARNING: Unable to determine what platform was used in {run_path.name}. Cannot add required citations.")
-            
+                print(
+                    f"WARNING: Unable to determine what platform was used in {run_path.name}. Cannot add required citations."
+                )
+
         if len(run_types) > 0:
             print(f"Adding citations for the following run types:")
             for run_type in run_types:
@@ -809,16 +904,18 @@ def add_references(proj_path, run_paths):
             print("")
         else:
             print(f"No recognized run types found.\n")
-        
+
         # add citations for any taxonomy/classifiers used
-        directory = str(pathfinder['intermediate_taxonomies'])
+        directory = str(pathfinder["intermediate_taxonomies"])
         taxonomy_files = glob.glob(os.path.join(directory, "*_raw.*"))
         for my_file in taxonomy_files:
-            match = re.match('^(.*?)_raw.(?:csv|txt)$', Path(my_file).name)
+            match = re.match("^(.*?)_raw.(?:csv|txt)$", Path(my_file).name)
             if match:
                 taxonomy = match.group(1)
                 if taxonomy not in CITATION_GROUPS.keys():
-                    print(f"Unrecognized taxonomy: {taxonomy} inferred from file {my_file}, unable to add citations.")
+                    print(
+                        f"Unrecognized taxonomy: {taxonomy} inferred from file {my_file}, unable to add citations."
+                    )
                     continue
                 references.merge(CITATION_GROUPS[taxonomy])
                 print(f"Adding citation for {taxonomy}")
@@ -831,6 +928,7 @@ def add_references(proj_path, run_paths):
         print(e)
         return False
     return True
+
 
 def remove_trash(proj_path, run_paths):
     trash_files = []
@@ -860,8 +958,13 @@ def remove_trash(proj_path, run_paths):
         ]
         if not inquire(questions) == "Delete all":
             return False
-        
-        part2_danger = not (pathfinder['counts-by-taxon'].is_dir() and pathfinder['counts-by-ASV'].is_dir() and pathfinder['intermediate_taxonomies'].is_dir() and pathfinder['final_taxonomies'].is_dir())
+
+        part2_danger = not (
+            pathfinder["counts-by-taxon"].is_dir()
+            and pathfinder["counts-by-ASV"].is_dir()
+            and pathfinder["intermediate_taxonomies"].is_dir()
+            and pathfinder["final_taxonomies"].is_dir()
+        )
         confirm_msg = "Are you sure?"
         if part2_danger:
             confirm_msg = "Looks like Part 2 hasn't been run!  " + confirm_msg
@@ -890,6 +993,7 @@ def share_project(proj_path):
     print("Read and write permissions granted for group.")
     return
 
+
 index_contents = """
 *_all_runs_dada2_ASV.fasta: Denoised ASVs (Amplicon Sequence Variants).
 *_DADA2_stats.txt: Table of sample read throughput.
@@ -903,6 +1007,7 @@ REPORT: An HTML document and accompanying assets summarizing the results. To dis
 TAXONOMY_FINAL: File(s) documenting taxonomies assigned to ASVs, drawing on results in TAXONOMY_INTERMEDIATES. Each taxonomically-annotated file in ./COUNTS_BY_ASV and ./COUNTS_BY_TAXON is named after a file in this directory.
 TAXONOMY_INTERMEDIATES: Taxonomic classifications rendered by one or more taxonomic classifiers, including full taxonomic output from the RDP classifier.
 """
+
 
 class Step_citations(set):
     def __init__(self, title, citations=[], order=None):
@@ -921,17 +1026,23 @@ class Step_citations(set):
             self.update([str(citation) for citation in citations])
         except:
             raise TypeError("One or more citations cannot be cast to str")
-    
+
     def to_string(self):
-        return("\n".join(self))
-    
+        return "\n".join(self)
+
     def merge(self, other):
         if type(other) != Step_citations:
-            raise TypeError("Attempt to merge a Step_citations object with an incompatible object.")
+            raise TypeError(
+                "Attempt to merge a Step_citations object with an incompatible object."
+            )
         if self.title != other.title:
-            raise Exception(f"Not allowed to merge citations for different steps: {self.title} and {other.title}")
+            raise Exception(
+                f"Not allowed to merge citations for different steps: {self.title} and {other.title}"
+            )
         if self.order and other.order and self.order != other.order:
-            raise Exception(f"Conflicting order of citation step {self.title}: {self.order} or {other.order}?")
+            raise Exception(
+                f"Conflicting order of citation step {self.title}: {self.order} or {other.order}?"
+            )
         if (not self.order) and other.order:
             self.order = other.order
         self.update(other)
@@ -943,102 +1054,120 @@ class Citations(dict):
             if type(step) is not Step_citations:
                 raise TypeError("Citations can only hold Step_citations objects")
             self[step.title] = step
+
     def merge(self, other):
         if type(other) != Citations:
-            raise TypeError("Attempt to merge a Citations object with an incompatible object.")
+            raise TypeError(
+                "Attempt to merge a Citations object with an incompatible object."
+            )
         for step_title, step in other.items():
             if step_title in self.keys():
                 self[step_title].merge(other[step_title])
             else:
                 self[step_title] = step
-    
+
     def to_string(self):
-        sorted_steps = sorted(self.keys(), key=lambda step_title: self[step_title].order)
+        sorted_steps = sorted(
+            self.keys(), key=lambda step_title: self[step_title].order
+        )
         content = ""
         for step in sorted_steps:
             content += self[step].title + ":\n"
             content += self[step].to_string() + "\n\n"
-        return(content)
+        return content
+
 
 CITATION_GROUPS = {
-    'ILLUMINA': Citations([
-        Step_citations(
-            title='Barcode extraction, library demultiplexing', 
-            order=1,
-            citations=[
-                'QIIME allows analysis of high-throughput community sequencing data. J Gregory Caporaso, Justin Kuczynski, Jesse Stombaugh, Kyle Bittinger, Frederic D Bushman, Elizabeth K Costello, Noah Fierer, Antonio Gonzalez Pena, Julia K Goodrich, Jeffrey I Gordon, Gavin A Huttley, Scott T Kelley, Dan Knights, Jeremy E Koenig, Ruth E Ley, Catherine A Lozupone, Daniel McDonald, Brian D Muegge, Meg Pirrung, Jens Reeder, Joel R Sevinsky, Peter J Turnbaugh, William A Walters, Jeremy Widmann, Tanya Yatsunenko, Jesse Zaneveld and Rob Knight; Nature Methods, 2010; doi:10.1038/nmeth.f.303'
-            ]
-        ),
-        Step_citations(
-            'Primer removal',
-            [
-                'Schmieder R, Lim YW, Rohwer F, Edwards R: TagCleaner: Identification and removal of tag sequences from genomic and metagenomic datasets. BMC Bioinformatics 2010, 11:341. [PMID: 20573248]'
-            ],
-            2
-        ),
-        Step_citations(
-            'QC, decontamination, and denoising',
-            [
-                'Callahan, B., McMurdie, P., Rosen, M. et al. DADA2: High-resolution sample inference from Illumina amplicon data. Nat Methods 13, 581–583 (2016). https://doi.org/10.1038/nmeth.3869'
-            ],
-            3
-        ),
-        Step_citations(
-            'Taxonomic assignment',
-            [
-                "Wang, Q, G. M. Garrity, J. M. Tiedje, and J. R. Cole. 2007. Naïve Bayesian Classifier for Rapid Assignment of rRNA Sequences into the New Bacterial Taxonomy. Appl Environ Microbiol. 73(16):5261-7."
-            ],
-            10
-        )
-    ]),
-    'PACBIO': Citations([
-        Step_citations(
-            'QC, decontamination, and denoising',
-            [
-                'Callahan, B., McMurdie, P., Rosen, M. et al. DADA2: High-resolution sample inference from Illumina amplicon data. Nat Methods 13, 581–583 (2016). https://doi.org/10.1038/nmeth.3869'
-            ],
-            3
-        ),
-        Step_citations(
-            'Taxonomic assignment',
-            [
-                "Wang, Q, G. M. Garrity, J. M. Tiedje, and J. R. Cole. 2007. Naïve Bayesian Classifier for Rapid Assignment of rRNA Sequences into the New Bacterial Taxonomy. Appl Environ Microbiol. 73(16):5261-7."
-            ],
-            10
-        ),
-    ]),
-    'SILVA138': Citations([
-        Step_citations(
-            'Taxonomic assignment',
-            [
-                'Michael R. McLaren. (2020). Silva SSU taxonomic training data formatted for DADA2 (Silva version 138) (Version 1) [Data set]. Zenodo. http://doi.org/10.5281/zenodo.3986799'
-            ]
-        )
-    ]),
-    'PECAN': Citations([
-        Step_citations(
-            'Taxonomic assignment',
-            [
-                'Pawel Gajer, Jacques Ravel, Johanna Holm. Github. 2018. SpeciateIT. [Online]. Available: https://github.com/Ravel-Laboratory/speciateIT'
-            ]
-        )
-    ]),
-    'UNITE': Citations([
-        Step_citations(
-            'Taxonomic assignment',
-            [
-                'UNITE Community (2017): UNITE general FASTA release. Version 01.12.2017. UNITE Community. https://doi.org/10.15156/BIO/587475'
-            ]
-        )
-    ]),
-    'HOMD': Citations([
-        Step_citations(
-            'Taxonomic assignment',
-            [
-                'F. Escapa, I., Huang, Y., Chen, T., Lin, M., Kokaras, A., Dewhirst F.E., Lemon, K.P. (2020) Construction of habitat-specific training sets to achieve species-level assignment in 16S rRNA gene datasets. Microbiome 8, 65. Online Open Access https://doi.org/10.1186/s40168-020-00841-w'
-            ]
-        )
-    ])
+    "ILLUMINA": Citations(
+        [
+            Step_citations(
+                title="Barcode extraction, library demultiplexing",
+                order=1,
+                citations=[
+                    "QIIME allows analysis of high-throughput community sequencing data. J Gregory Caporaso, Justin Kuczynski, Jesse Stombaugh, Kyle Bittinger, Frederic D Bushman, Elizabeth K Costello, Noah Fierer, Antonio Gonzalez Pena, Julia K Goodrich, Jeffrey I Gordon, Gavin A Huttley, Scott T Kelley, Dan Knights, Jeremy E Koenig, Ruth E Ley, Catherine A Lozupone, Daniel McDonald, Brian D Muegge, Meg Pirrung, Jens Reeder, Joel R Sevinsky, Peter J Turnbaugh, William A Walters, Jeremy Widmann, Tanya Yatsunenko, Jesse Zaneveld and Rob Knight; Nature Methods, 2010; doi:10.1038/nmeth.f.303"
+                ],
+            ),
+            Step_citations(
+                "Primer removal",
+                [
+                    "Schmieder R, Lim YW, Rohwer F, Edwards R: TagCleaner: Identification and removal of tag sequences from genomic and metagenomic datasets. BMC Bioinformatics 2010, 11:341. [PMID: 20573248]"
+                ],
+                2,
+            ),
+            Step_citations(
+                "QC, decontamination, and denoising",
+                [
+                    "Callahan, B., McMurdie, P., Rosen, M. et al. DADA2: High-resolution sample inference from Illumina amplicon data. Nat Methods 13, 581–583 (2016). https://doi.org/10.1038/nmeth.3869"
+                ],
+                3,
+            ),
+            Step_citations(
+                "Taxonomic assignment",
+                [
+                    "Wang, Q, G. M. Garrity, J. M. Tiedje, and J. R. Cole. 2007. Naïve Bayesian Classifier for Rapid Assignment of rRNA Sequences into the New Bacterial Taxonomy. Appl Environ Microbiol. 73(16):5261-7."
+                ],
+                10,
+            ),
+        ]
+    ),
+    "PACBIO": Citations(
+        [
+            Step_citations(
+                "QC, decontamination, and denoising",
+                [
+                    "Callahan, B., McMurdie, P., Rosen, M. et al. DADA2: High-resolution sample inference from Illumina amplicon data. Nat Methods 13, 581–583 (2016). https://doi.org/10.1038/nmeth.3869"
+                ],
+                3,
+            ),
+            Step_citations(
+                "Taxonomic assignment",
+                [
+                    "Wang, Q, G. M. Garrity, J. M. Tiedje, and J. R. Cole. 2007. Naïve Bayesian Classifier for Rapid Assignment of rRNA Sequences into the New Bacterial Taxonomy. Appl Environ Microbiol. 73(16):5261-7."
+                ],
+                10,
+            ),
+        ]
+    ),
+    "SILVA138": Citations(
+        [
+            Step_citations(
+                "Taxonomic assignment",
+                [
+                    "Michael R. McLaren. (2020). Silva SSU taxonomic training data formatted for DADA2 (Silva version 138) (Version 1) [Data set]. Zenodo. http://doi.org/10.5281/zenodo.3986799"
+                ],
+            )
+        ]
+    ),
+    "PECAN": Citations(
+        [
+            Step_citations(
+                "Taxonomic assignment",
+                [
+                    "Pawel Gajer, Jacques Ravel, Johanna Holm. Github. 2018. SpeciateIT. [Online]. Available: https://github.com/Ravel-Laboratory/speciateIT"
+                ],
+            )
+        ]
+    ),
+    "UNITE": Citations(
+        [
+            Step_citations(
+                "Taxonomic assignment",
+                [
+                    "UNITE Community (2017): UNITE general FASTA release. Version 01.12.2017. UNITE Community. https://doi.org/10.15156/BIO/587475"
+                ],
+            )
+        ]
+    ),
+    "HOMD": Citations(
+        [
+            Step_citations(
+                "Taxonomic assignment",
+                [
+                    "F. Escapa, I., Huang, Y., Chen, T., Lin, M., Kokaras, A., Dewhirst F.E., Lemon, K.P. (2020) Construction of habitat-specific training sets to achieve species-level assignment in 16S rRNA gene datasets. Microbiome 8, 65. Online Open Access https://doi.org/10.1186/s40168-020-00841-w"
+                ],
+            )
+        ]
+    ),
 }
 
 ########################################################################################

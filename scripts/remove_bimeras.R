@@ -65,31 +65,30 @@ suppressMessages(
 )
 runs <- args$runs %>% setNames(lapply(args$runs, basename))
 
-run_meta <- function(new_params = list(), checkpoints = list(), run_dir = getwd()) {
-    info_file <- file.path(run_dir, ".meta.json")
-
-    if (!file.exists(info_file)) {
-        run_info <- list()
+project_meta <- function(runs = list(), samples = list()) {
+    filepath <- ".meta.json"
+    if (!file.exists(filepath)) {
+        proj_info <- list()
     } else {
-        run_info <- jsonlite::read_json(
-            path = file.path(info_file)
+        proj_info <- jsonlite::read_json(
+            path = filepath
         )
     }
 
-    if (length(new_params) > 0 || length(checkpoints) > 0) {
-        new_info <- list(params = new_params, checkpoints = checkpoints)
-        run_info <- utils::modifyList(run_info, new_info)
+    if (length(runs) > 0 || length(samples) > 0) {
+        proj_info$runs[names(runs)] <- runs
+        proj_info$samples <- samples
 
-        info_json <- jsonlite::write_json(run_info, info_file)
+        jsonlite::write_json(proj_info, filepath, auto_unbox = T)
     }
-    return(run_info)
+    return(proj_info)
 }
 
 # combine maps
 map_filepath <- (function(runs) {
     # get each map, looking in the path specified by the run's metadata file
     maps <- lapply(names(runs), function(run_name) {
-        run_info <- run_meta(run_dir = runs[run_name])
+        run_info <- jsonlite::read_json(file.path(runs[run_name], ".meta.json"))
         if ("map" %in% names(run_info[["checkpoints"]])) {
             map_filepath <- file.path(
                 runs[run_name], names(run_info[["checkpoints"]][["map"]])[1]
@@ -116,7 +115,7 @@ map_filepath <- (function(runs) {
             return()
         }
     })
-    bind_rows(maps) %>% write_tsv(file = "map.txt")
+    bind_rows(maps) %>% write_tsv("map.txt")
     return("map.txt")
 })(runs)
 
@@ -124,33 +123,58 @@ map_filepath <- (function(runs) {
 ## list all of the files matching the pattern
 counts_and_stats <- (function(runs) {
     tables <- lapply(names(runs), function(run_name) {
-        count_table <- readRDS(list.files(runs[run_name], pattern = "dada2_abundance_table.rds", full.names = TRUE)[[1]])
+        count_table <- readRDS(
+            list.files(
+                runs[run_name],
+                pattern = "dada2_abundance_table.rds", full.names = TRUE
+            )[[1]]
+        )
         if (length(runs) > 1) {
-            rownames(count_table) <- paste(run_name, rownames(count_table), sep = "_")
+            rownames(count_table) <- paste(
+                run_name, rownames(count_table),
+                sep = "_"
+            )
         }
+
         return(count_table)
     })
     stats <- lapply(names(runs), function(run_name) {
         stat_table <- read.csv(
-            list.files(runs[run_name], pattern = "dada2_part1_stats.txt", full.names = TRUE)[[1]],
+            list.files(
+                runs[run_name], 
+                pattern = "dada2_part1_stats.txt", 
+                full.names = TRUE
+                )[[1]],
             sep = "", stringsAsFactors = FALSE
         )
         if (length(runs) > 1) {
-            rownames(stat_table) <- paste(run_name, rownames(stat_table), sep = "_")
+            old_sample_names <- rownames(stat_table)
+            rownames(stat_table) <- paste(
+                run_name, rownames(stat_table),
+                sep = "_"
+            )
+            run_metadata <- project_meta()$runs[[run_name]]
+            names(run_metadata$samples) <- rownames(stat_table)[match(names(run_metadata$samples), old_sample_names)]
+            project_meta(runs = list(run_metadata) %>% set_names(run_name))
         }
+
         return(stat_table)
     })
     # basically, this code is here solely to accommodate when two runs have the
     # same name, or a run with two samples of the same name (if that's even possible)
-    old_stats_sample_names <- do.call(c, lapply(stats, rownames))
-    old_count_table_sample_names <- do.call(c, lapply(tables, rownames))
+    # old_stats_sample_names <- do.call(c, lapply(stats, rownames))
+    # old_count_table_sample_names <- do.call(c, lapply(tables, rownames))
 
-    new_sample_names <- make.names(old_stats_sample_names, unique = T)
+    # new_sample_names <- make.names(old_stats_sample_names, unique = T)
     stats <- bind_rows(stats)
-    stats <- stats %>% set_rownames(new_sample_names)
-    # in future, use bind_rows to create stats using id column, then concatenate
-    # run name and rowname to create unique rownames. These can then be used
-    # in place of new_sample_names to name the rows of st
+    # stats <- stats %>% set_rownames(new_sample_names)
+
+    samples <- do.call(c, lapply(names(runs), function(run_name) {
+        run_metadata <- project_meta()$runs[[run_name]]
+        return(run_metadata$samples)
+    }))
+    # names(samples) <- rownames(stats)[match(names(samples), old_stats_sample_names)]
+    project_meta(samples = samples)
 
     # Combine count tables
     unqs <- unique(c(sapply(tables, colnames), recursive = TRUE))
@@ -163,17 +187,17 @@ counts_and_stats <- (function(runs) {
     }
 
     # Make count table sample names unique (and matching up with stat sample names)
-    stats_i <- 1
-    rownames(st) <- lapply(
-        seq_along(old_count_table_sample_names),
-        function(count_table_i) {
-            while (old_count_table_sample_names[count_table_i] != old_stats_sample_names[stats_i]) {
-                stats_i <<- stats_i + 1
-            }
-            return(new_sample_names[stats_i])
-        }
-    ) %>%
-        unlist()
+    # stats_i <- 1
+    # rownames(st) <- lapply(
+    #     seq_along(old_count_table_sample_names),
+    #     function(count_table_i) {
+    #         while (old_count_table_sample_names[count_table_i] != old_stats_sample_names[stats_i]) {
+    #             stats_i <<- stats_i + 1
+    #         }
+    #         return(new_sample_names[stats_i])
+    #     }
+    # ) %>%
+    #     unlist()
 
     # sort ASVs by total frequency
     st <- st[, order(colSums(st), decreasing = TRUE)]
