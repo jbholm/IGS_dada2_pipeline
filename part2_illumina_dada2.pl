@@ -615,27 +615,26 @@ $logTee->close;
 ####################################################################
 sub read_json
 {
-    my $filepath = shift;
+    my $file = shift;
+    my $mode = shift;
 
     my $json;
     {
         local $/;    #Enable 'slurp' mode
-        if (-e -f -r $filepath)
+        if (-e $file)
         {
-            open my $FH, "+<$filepath";
+            open my $FH, $mode, $file;
             seek $FH, 0, 0 or die;
             $json = <$FH>;
             close $FH;
-        } else
-        {
-            warn
-              "Unable to read $filepath to locate maps. Please concatenate maps to project_map.txt manually.\n";
         }
 
     }
-    my $data = {};
-    eval {$data = decode_json($json);};
-    return $data;
+
+    my $hash = {};
+    eval {$hash = decode_json($json);};
+
+    return $hash;
 }
 
 sub config
@@ -644,7 +643,7 @@ sub config
     my $new_params      = delete $arg{new_params} // {};
     my $orig_param_file = "$pipelineDir/config.json";
 
-    my $params = read_json($orig_param_file);
+    my $params = read_json($orig_param_file, "<");
 
     return $params;
 }
@@ -654,7 +653,7 @@ sub get_run_info
     my %all_run_info;
     foreach my $run (@_)
     {
-        $all_run_info{$run} = read_json(catfile($run, ".meta.json"));
+        $all_run_info{$run} = read_json(catfile($run, ".meta.json"), "+<");
     }
     return \%all_run_info;
 }
