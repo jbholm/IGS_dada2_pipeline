@@ -302,8 +302,7 @@ if ($inDir && ($r1file || $r2file || $i1file || $i2file))
 }
 if (!$map)
 {
-    print "\n\tPlease provide the path to the project mapping file (-m)\n\n";
-    exit 1;
+    die "\n\tPlease provide the path to the project mapping file (-m)\n\n";
 }
 if ($oneStep && ($i1file || $i2file))
 {
@@ -311,9 +310,8 @@ if ($oneStep && ($i1file || $i2file))
 }
 if (!$var)
 {
-    print "\n\tPlease indicate the targeted variable region (-v V3V4 or -v V4"
+    die "\n\tPlease indicate the targeted variable region (-v V3V4 or -v V4"
       . " or -v ITS)\n\n";
-    exit 1;
 }
 if (!$global_config{wd})
 {
@@ -341,9 +339,8 @@ if (@dbg)
 
 if ($truncLenL && !$truncLenR)
 {
-    print "***\nPlease provide truncation lengths for forward and reverse "
+    die "***\nPlease provide truncation lengths for forward and reverse "
       . "reads\n";
-    die;
 }
 
 # Refine and validate all variables that refer to the filesystem
@@ -2073,7 +2070,7 @@ sub read_json
         local $/;    #Enable 'slurp' mode
         if (-e $file)
         {
-            open (my $FH, $mode, $file);
+            open(my $FH, $mode, $file);
             seek $FH, 0, 0 or die;
             $json = <$FH>;
             close $FH;
@@ -2129,7 +2126,7 @@ sub project_metadata
     }
 }
 
-sub qiime_cmd 
+sub qiime_cmd
 {
     my $script = shift;
     my $config = shift;
@@ -2426,28 +2423,30 @@ sub find_raw_files
             $index2Input = $readsRevInput = $r2s[0];
         } else
         {
+            my $files_found = "";
+            my @file_arrays = (\@r1s, \@r2s);
+            foreach my $file_array_ref (@file_arrays)
+            {
+                my @file_array = @$file_array_ref;
+                if (scalar @file_array)
+                {
+                    $files_found .= (join "\n", @file_array);
+                }
+            }
+
+            my $message =
+                "Could not find a complete and exclusive set of raw files."
+              . " Since --1step given, input directory must have exactly one"
+              . " R1 and R2 file. Files found:\n"
+              . $files_found;
+
             if (defined $log)
             {
-                print $log "Couldn't find input files in $wd.\n";
-                print $log "Files found:\n";
-
-                my $printme = join "\n", @r1s;
-                print $log "$printme\n" if $printme;
-                $printme = join "\n", @r2s;
-                print $log "$printme\n" if $printme;
-
-                die
-                  "Could not find a complete and exclusive set of raw files. Since --1step given, input directory must"
-                  . " have exactly one R1 and R2 file. See pipeline log for a list of the files"
-                  . " found.";
-            } else
-            {
-                die "Could not find a complete and exclusive set of raw files."
-                  . " Since --1step given, input directory must have exactly one"
-                  . " R1 and R2 file. Files found:\n"
-                  . join("\n", @r1s)
-                  . join("\n", @r2s);
+                $log->print($message);
             }
+
+            die $message;
+
         }
     } else
     {
@@ -2482,24 +2481,25 @@ sub find_raw_files
             $readsRevInput = $r4s[0];
         } else
         {
-            print $log "Couldn't find input files.\n";
-            print $log "Files found in $wd:\n";
-            my $printme = join "\n", @i1s;
-            print $log "$printme\n" if $printme;
-            $printme = join "\n", @i2s;
-            print $log "$printme\n" if $printme;
-            $printme = join "\n", @r1s;
-            print $log "$printme\n" if $printme;
-            $printme = join "\n", @r2s;
-            print $log "$printme\n" if $printme;
-            $printme = join "\n", @r3s;
-            print $log "$printme\n" if $printme;
-            $printme = join "\n", @r4s;
-            print $log "$printme\n" if $printme;
-            die
+            my $files_found = "";
+            my @file_arrays = (\@i1s, \@i2s, \@r1s, \@r2s, \@r3s, \@r4s);
+            foreach my $file_array_ref (@file_arrays)
+            {
+                my @file_array = @$file_array_ref;
+                if (scalar @file_array)
+                {
+                    $files_found .= (join "\n", @file_array);
+                }
+            }
+            my $message =
               "Could not find a complete and exclusive set of raw files. Input directory must"
               . " contain exactly one set of I1, I2, R1, and R2, OR R1, R2, R3, and R4.\n"
-              . "See pipeline log for a list of the files found.";
+              . "File found in $wd:\n$files_found";
+            if (defined $log)
+            {
+                $log->print($message);
+            }
+            die $message;
         }
     }
     return ($readsForInput, $readsRevInput, $index1Input, $index2Input);

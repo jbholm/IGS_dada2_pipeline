@@ -1,4 +1,4 @@
-3.0.2-RHEL8_backwards_compatible+3
+3.0.3-RHEL8_backwards_compatible+4
 We use semantic versioning:
 First number: Major version. Incremented for a commit on master that requires a change in how the pipeline is operated.
 Second number: Minor version. Incremented for a commit on master that adds a new feature (usually a new command-line option).
