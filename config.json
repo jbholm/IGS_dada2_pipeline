@@ -1,11 +1,7 @@
 {
     "part1":{
-        "print_qiime_config.py": "/local/projects-t3/MSL/pipelines/bin/print_qiime_config.py",
-        "validate_mapping_file.py": "/local/projects-t3/MSL/pipelines/bin/validate_mapping_file.py",
-        "extract_barcodes.py": "/local/projects-t3/MSL/pipelines/bin/extract_barcodes.py",
-        "split_libraries_fastq.py": "/local/projects-t3/MSL/pipelines/bin/split_libraries_fastq.py",
+        "qiime1/bin": "/autofs/projects-t3/MSL/pipelines/packages/envs/qiime1/bin",
         "fastqc": "/local/projects-t3/MSL/pipelines/bin/fastqc",
-        "split_sequence_file_on_sample_ids.py": "/local/projects-t3/MSL/pipelines/bin/split_sequence_file_on_sample_ids.py",
         "tagcleaner": "/local/projects-t3/MSL/pipelines/bin/tagcleaner.pl",
         "bbduk.sh": "/local/projects-t3/MSL/pipelines/packages/bbmap/bbduk.sh",
         "R": "/usr/local/packages/r-4.0.3/bin/R"
@@ -16,5 +12,5 @@
     "ref_16s_dir": "/local/projects-t3/MSL/pipelines/share/taxonomy",
     "python2": "/usr/local/packages/python-2.7.17/bin/python2",
     "qiime_env": "/local/projects-t3/MSL/pipelines/packages/envs/qiime1",
-    "conda": "/usr/local/packages/miniconda3/etc/profile.d/conda.sh"
+    "conda_init": "/usr/local/packages/miniconda3/etc/profile.d/conda.sh"
 }

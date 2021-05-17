@@ -575,7 +575,7 @@ if (   !@dbg
 {
     ###### BEGIN CHECK OF QIIME CONFIGURATION ###########
     #####################################################
-    my $cmd = $params_hashref->{'print_qiime_config.py'} . " > $qiime";
+    my $cmd = qiime_cmd('print_qiime_config.py', $params_hashref) . " > $qiime";
     execute_and_log($cmd, $logTee, $dryRun,
                     "QIIME CONFIGURATION DETAILS:\nsee $qiime\n");
 
@@ -596,7 +596,7 @@ if (   !@dbg
         ################################################
         print $logTee "MAPPING FILE: $map\n";
 
-        my $cmd = $params_hashref->{'validate_mapping_file.py'}
+        my $cmd = qiime_cmd('validate_mapping_file.py', $params_hashref)
           . " -m $map -s -o $error_log";
         execute_and_log($cmd, $logTee, $dryRun, "Validating map from $map\n");
         my $mappingError = glob("$error_log/*.log");
@@ -985,7 +985,7 @@ sub barcodes
         # Was in original code, but maybe unnecessary?
         my $mapOpt = $oneStep ? "-m $map" : "";
 
-        my $cmd = $params_hashref->{'extract_barcodes.py'}
+        my $cmd = qiime_cmd('extract_barcodes.py', $params_hashref)
           . " -f $localNames{\"index1\"} -r $localNames{\"index2\"} -c barcode_paired_end --bc1_len $bcLen --bc2_len $bcLen $mapOpt -o $wd $oriParams";
 
         execute_and_log($cmd, $logTee, $dryRun,
@@ -1106,16 +1106,16 @@ sub demux
     {
         my $start  = time;
         my $step2  = "split_libraries_fastq.py";
-        my $script = $params_hashref->{$step2};
+        my $script = qiime_cmd($step2, $params_hashref);
 
    # qiime's split_libraries_fastq accepts some keywords too, such as "golay_12"
         my $barcodeType = 2 * $bcLen;
 
         @cmds = ();
         push @cmds,
-          "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $readsForInput -o $fwdProjDir -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
+          "qsub -N $step2 -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $readsForInput -o $fwdProjDir -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
         push @cmds,
-          "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $readsRevInput -o $revProjDir -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
+          "qsub -N $step2 -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $readsRevInput -o $revProjDir -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
 
         execute_and_log(@cmds, $logTee, $dryRun,
                         "Demultiplexing to get the project library...\n");
@@ -1256,14 +1256,14 @@ if (!@dbg || grep(/^splitsamples$/, @dbg))
     if (!$skip)
     {
         my $step3  = "split_sequence_file_on_sample_ids.py";
-        my $script = $params_hashref->{$step3};
+        my $script = qiime_cmd($step3, $params_hashref);
         my @cmds   = ();
         while (!(-e $rForSeqsFq) || !(-e $rRevSeqsFq)) {sleep 1;}
 
         push @cmds,
-          "qsub -cwd -b y -l mem_free=4G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $rForSeqsFq --file_type fastq -o $fwdSampleDir";
+          "qsub -N $step3 -cwd -b y -l mem_free=4G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $rForSeqsFq --file_type fastq -o $fwdSampleDir";
         push @cmds,
-          "qsub -cwd -b y -l mem_free=4G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $rRevSeqsFq --file_type fastq -o $revSampleDir";
+          "qsub -N $step3 -cwd -b y -l mem_free=4G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $rRevSeqsFq --file_type fastq -o $revSampleDir";
         execute_and_log(@cmds, $logTee, $dryRun,
                      "Splitting $project seqs.fastq " . "files by sample ID\n");
 
@@ -2073,7 +2073,7 @@ sub read_json
         local $/;    #Enable 'slurp' mode
         if (-e $file)
         {
-            open my $FH, $mode, $file;
+            open (my $FH, $mode, $file);
             seek $FH, 0, 0 or die;
             $json = <$FH>;
             close $FH;
@@ -2127,6 +2127,16 @@ sub project_metadata
         close $metadataFH;
         return $combined_metadata;
     }
+}
+
+sub qiime_cmd 
+{
+    my $script = shift;
+    my $config = shift;
+
+    my $python = catfile(abs_path($config->{"qiime1/bin"}), "python");
+    $script = catfile(abs_path($config->{"qiime1/bin"}), $script);
+    return "$python -s $script";
 }
 
 #' @_[0] Filenames of inputs to checksum

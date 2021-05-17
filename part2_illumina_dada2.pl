@@ -229,8 +229,20 @@ local $SIG{__WARN__} = sub {
     print STDERR "WARNING: $_[0]";
 };    # Warnings go to log file, stdout, and stderr
 
+my $params_hashref = config();
+
+if (!exists $ENV{"LD_LIBRARY_PATH"})
+{
+    $ENV{"LD_LIBRARY_PATH"} = "";
+}
 $ENV{'LD_LIBRARY_PATH'} =
   $ENV{'LD_LIBRARY_PATH'} . ":/usr/local/packages/gcc/lib64";
+my $output  = `python2 --version 2>&1`;
+if ($? == -1)
+{
+    $ENV{'PATH'} = $ENV{'PATH'} . ":" . dirname($params_hashref->{"python2"});
+}
+$ENV{'PYTHONPATH'} = "";
 
 if ($notVaginal)
 {
@@ -347,8 +359,6 @@ my $pecan;
     }
 }
 
-my $params_hashref = config();
-
 print $logTee "\n";
 ####################################################################
 ##                               MAIN
@@ -398,8 +408,7 @@ if (List::Util::any {!-e $_} ($abundRds, $abund, $fasta, $stats))
 }
 
 # Give ASV's unique and easy-to-look-up IDs
-$cmd =
-  "$params_hashref->{'python2'} $scriptsDir/rename_asvs.py $fasta -p $project";
+$cmd = "$scriptsDir/rename_asvs.py $fasta -p $project";
 execute_and_log($cmd, $logTee, $dryRun,
      "---Renaming ASVs in FASTA, abundance tables, and classification key(s).");
 
@@ -583,7 +592,7 @@ if ($csts && $pecan)
     {
         print $logTee "---Assigning CSTs with Valencia\n";
         my $cmd =
-          "$scriptsDir/valencia_wrapper.py "
+          "python3 -s $scriptsDir/valencia_wrapper.py "
           . catdir($pipelineDir, "ext", "valencia",
                    "CST_profiles_jan28_mean.csv")
           . " $pecanCountTbl";
@@ -623,7 +632,7 @@ sub read_json
         local $/;    #Enable 'slurp' mode
         if (-e $file)
         {
-            open my $FH, $mode, $file;
+            open(my $FH, $mode, $file);
             seek $FH, 0, 0 or die;
             $json = <$FH>;
             close $FH;
@@ -970,5 +979,4 @@ sub rename_temps
     }
 }
 
-exit 0;
 exit 0;
