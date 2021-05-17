@@ -342,18 +342,18 @@ use ()
 
 use sge > /dev/null 2>&1  || true
 module load sge 2>/dev/null || true
-
-if [[ -e "/usr/local/packages/miniconda3/etc/profile.d/conda.sh" ]]; then
-    source /usr/local/packages/miniconda3/etc/profile.d/conda.sh 2>/dev/null
-else
-    source "/local/projects-t3/MSL/pipelines/packages/miniconda3/etc/profile.d/conda.sh" 2>/dev/null
-fi
-conda activate qiime1
-
-# . /usr/local/packages/qiime-1.9.1/activate.sh
+export PYTHONPATH=""
+# if [[ -e "/usr/local/packages/miniconda3/etc/profile.d/conda.sh" ]]; then
+# all this is safe because the environment changes won't persist outside of this
+# shell!
+# conda_init=`cat "$MY_DIR/config.json" | \
+#     python3 -c "import sys, json; print(json.load(sys.stdin)['conda_init'])"`
+# source "$conda_init" 2>/dev/null
+# qiime_env=`cat "$MY_DIR/config.json" | \
+#     python3 -c "import sys, json; print(json.load(sys.stdin)['qiime_env'])"`
+# conda activate "$qiime_env"
 # export PATH=/usr/local/packages/python-2.7/bin:$PATH
 # export LD_LIBRARY_PATH=/usr/local/packages/python-2.7/lib:/usr/local/packages/gcc/lib64:$LD_LIBRARY_PATH
-# . /usr/local/packages/usepackage/share/usepackage/use.bsh 2>/dev/null || true
 
 # # Begin log (will be continued by illumina_dada2.pl)
 log="$SD/${PROJECT}_${RUN}_16S_pipeline_log.txt"
