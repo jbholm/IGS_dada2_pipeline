@@ -229,8 +229,20 @@ local $SIG{__WARN__} = sub {
     print STDERR "WARNING: $_[0]";
 };    # Warnings go to log file, stdout, and stderr
 
+my $params_hashref = config();
+
+if (!exists $ENV{"LD_LIBRARY_PATH"})
+{
+    $ENV{"LD_LIBRARY_PATH"} = "";
+}
 $ENV{'LD_LIBRARY_PATH'} =
   $ENV{'LD_LIBRARY_PATH'} . ":/usr/local/packages/gcc/lib64";
+my $output  = `python2 --version 2>&1`;
+if ($? == -1)
+{
+    $ENV{'PATH'} = $ENV{'PATH'} . ":" . dirname($params_hashref->{"python2"});
+}
+$ENV{'PYTHONPATH'} = "";
 
 if ($notVaginal)
 {
@@ -347,8 +359,6 @@ my $pecan;
     }
 }
 
-my $params_hashref = config();
-
 print $logTee "\n";
 ####################################################################
 ##                               MAIN
@@ -398,8 +408,7 @@ if (List::Util::any {!-e $_} ($abundRds, $abund, $fasta, $stats))
 }
 
 # Give ASV's unique and easy-to-look-up IDs
-$cmd =
-  "$params_hashref->{'python2'} $scriptsDir/rename_asvs.py $fasta -p $project";
+$cmd = "$scriptsDir/rename_asvs.py $fasta -p $project";
 execute_and_log($cmd, $logTee, $dryRun,
      "---Renaming ASVs in FASTA, abundance tables, and classification key(s).");
 
@@ -583,7 +592,7 @@ if ($csts && $pecan)
     {
         print $logTee "---Assigning CSTs with Valencia\n";
         my $cmd =
-          "$scriptsDir/valencia_wrapper.py "
+          "python3 -s $scriptsDir/valencia_wrapper.py "
           . catdir($pipelineDir, "ext", "valencia",
                    "CST_profiles_jan28_mean.csv")
           . " $pecanCountTbl";
@@ -615,27 +624,26 @@ $logTee->close;
 ####################################################################
 sub read_json
 {
-    my $filepath = shift;
+    my $file = shift;
+    my $mode = shift;
 
     my $json;
     {
         local $/;    #Enable 'slurp' mode
-        if (-e -f -r $filepath)
+        if (-e $file)
         {
-            open my $FH, "+<$filepath";
+            open(my $FH, $mode, $file);
             seek $FH, 0, 0 or die;
             $json = <$FH>;
             close $FH;
-        } else
-        {
-            warn
-              "Unable to read $filepath to locate maps. Please concatenate maps to project_map.txt manually.\n";
         }
 
     }
-    my $data = {};
-    eval {$data = decode_json($json);};
-    return $data;
+
+    my $hash = {};
+    eval {$hash = decode_json($json);};
+
+    return $hash;
 }
 
 sub config
@@ -644,7 +652,7 @@ sub config
     my $new_params      = delete $arg{new_params} // {};
     my $orig_param_file = "$pipelineDir/config.json";
 
-    my $params = read_json($orig_param_file);
+    my $params = read_json($orig_param_file, "<");
 
     return $params;
 }
@@ -654,7 +662,7 @@ sub get_run_info
     my %all_run_info;
     foreach my $run (@_)
     {
-        $all_run_info{$run} = read_json(catfile($run, ".meta.json"));
+        $all_run_info{$run} = read_json(catfile($run, ".meta.json"), "+<");
     }
     return \%all_run_info;
 }
@@ -971,5 +979,4 @@ sub rename_temps
     }
 }
 
-exit 0;
 exit 0;

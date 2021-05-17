@@ -1,4 +1,4 @@
-#!/usr/local/packages/python-3.5.2/bin/python
+#!/usr/bin/env python3
 import sys, os, subprocess
 import pandas as pd
 
@@ -9,7 +9,7 @@ df = pd.read_csv(input, header=0, index_col=0, sep=',')
 df.insert(0, 'read_count', df.sum(axis=1))
 df.to_csv(temp)
 
-process = subprocess.run([os.path.join(sys.path[0], "Valencia_v1.py"), sys.argv[1], temp], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+process = subprocess.run(["python3", "-s", os.path.join(sys.path[0], "Valencia_v1.py"), sys.argv[1], temp], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 # if Valencia exited 1, print Valencia's stderr and raise CalledProcessError to parent
 if process.returncode:
