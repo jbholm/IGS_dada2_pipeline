@@ -85,39 +85,39 @@ project_meta <- function(runs = list(), samples = list()) {
 }
 
 # combine maps
-map_filepath <- (function(runs) {
-    # get each map, looking in the path specified by the run's metadata file
-    maps <- lapply(names(runs), function(run_name) {
-        run_info <- jsonlite::read_json(file.path(runs[run_name], ".meta.json"))
-        if ("map" %in% names(run_info[["checkpoints"]])) {
-            map_filepath <- file.path(
-                runs[run_name], names(run_info[["checkpoints"]][["map"]])[1]
-            )
-            tryCatch(
-                {
-                    suppressMessages(
-                        map <- read_tsv(map_filepath, quote = "", na = "", trim_ws = F)
-                    )
-                },
-                error = function(e) {
-                    stop(paste("Unable to find mapping file; supposed to be at", map_filepath))
-                }
-            )
+# map_filepath <- (function(runs) {
+#     # get each map, looking in the path specified by the run's metadata file
+#     maps <- lapply(names(runs), function(run_name) {
+#         run_info <- jsonlite::read_json(file.path(runs[run_name], ".meta.json"))
+#         if ("map" %in% names(run_info[["checkpoints"]])) {
+#             map_filepath <- file.path(
+#                 runs[run_name], names(run_info[["checkpoints"]][["map"]])[1]
+#             )
+#             tryCatch(
+#                 {
+#                     suppressMessages(
+#                         map <- read_tsv(map_filepath, quote = "", na = "", trim_ws = F)
+#                     )
+#                 },
+#                 error = function(e) {
+#                     stop(paste("Unable to find mapping file; supposed to be at", map_filepath))
+#                 }
+#             )
 
-            if (length(runs) > 1) {
-                # add a Run column to the map
-                map <- map %>%
-                    mutate(Run = run_name) %>%
-                    relocate(Run)
-            }
-            return(map)
-        } else {
-            return()
-        }
-    })
-    bind_rows(maps) %>% write_tsv("map.txt")
-    return("map.txt")
-})(runs)
+#             if (length(runs) > 1) {
+#                 # add a Run column to the map
+#                 map <- map %>%
+#                     mutate(Run = run_name) %>%
+#                     relocate(Run)
+#             }
+#             return(map)
+#         } else {
+#             return()
+#         }
+#     })
+#     bind_rows(maps) %>% write_tsv("map.txt")
+#     return("map.txt")
+# })(runs)
 
 ## INPUT
 ## list all of the files matching the pattern
@@ -129,12 +129,12 @@ counts_and_stats <- (function(runs) {
                 pattern = "dada2_abundance_table.rds", full.names = TRUE
             )[[1]]
         )
-        if (length(runs) > 1) {
-            rownames(count_table) <- paste(
-                run_name, rownames(count_table),
-                sep = "_"
-            )
-        }
+        # if (length(runs) > 1) {
+        #     rownames(count_table) <- paste(
+        #         run_name, rownames(count_table),
+        #         sep = "_"
+        #     )
+        # }
 
         return(count_table)
     })
@@ -147,16 +147,16 @@ counts_and_stats <- (function(runs) {
                 )[[1]],
             sep = "", stringsAsFactors = FALSE
         )
-        if (length(runs) > 1) {
-            old_sample_names <- rownames(stat_table)
-            rownames(stat_table) <- paste(
-                run_name, rownames(stat_table),
-                sep = "_"
-            )
-            run_metadata <- project_meta()$runs[[run_name]]
-            names(run_metadata$samples) <- rownames(stat_table)[match(names(run_metadata$samples), old_sample_names)]
-            project_meta(runs = list(run_metadata) %>% set_names(run_name))
-        }
+        # if (length(runs) > 1) {
+        #     old_sample_names <- rownames(stat_table)
+        #     rownames(stat_table) <- paste(
+        #         run_name, rownames(stat_table),
+        #         sep = "_"
+        #     )
+        #     run_metadata <- project_meta()$runs[[run_name]]
+        #     names(run_metadata$samples) <- rownames(stat_table)[match(names(run_metadata$samples), old_sample_names)]
+        #     project_meta(runs = list(run_metadata) %>% set_names(run_name))
+        # }
 
         return(stat_table)
     })

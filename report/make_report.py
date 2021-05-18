@@ -292,7 +292,7 @@ def getMappingFile(pw):
     #             maps.append(obj[0])
     #         except IndexError:  # glob returns empty list if a map wasn't found
     #             pass
-    map_filename = f"{args.project}_map.txt"
+    map_filename = "project_map.txt"
     if Path(map_filename).exists():
         opts["map"] = map_filename
     os.chdir(oldCwd)

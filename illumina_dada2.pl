@@ -225,6 +225,7 @@ use File::Path qw( remove_tree );
 use File::Copy::Recursive qw(dircopy );
 use Data::Dumper;
 use Hash::Merge qw( merge );
+use Path::Tiny qw(path);
 
 $OUTPUT_AUTOFLUSH = 1;
 
@@ -454,9 +455,8 @@ my $stdout_log = "$global_config{wd}/qsub_stdout_logs";
 ## Instead of working directory, give option for provided directory (or current
 #  working directory)
 
-my $localMap =
-  "$error_log/" . File::Basename::basename($map, ".txt") . "_corrected.txt";
-my $mapLog = "$error_log/" . File::Basename::basename($map, ".txt") . ".log";
+my $localMap = catfile($global_config{wd}, File::Basename::basename($map));
+my $mapLog = catfile($error_log, File::Basename::basename($map, ".txt") . ".log");
 
 my @split;
 
@@ -556,6 +556,7 @@ if (@dbg)
     }
     print $logTee "\n";
 }
+
 print $logTee "PROJECT: $project\nVARIABLE REGION: $var\n"
   . "R VERSION: "
   . $params_hashref->{'R'}
@@ -592,13 +593,16 @@ if (   !@dbg
 
     if (!$skip)
     {
+        File::Copy::copy($map, $localMap);
+        preprocess_map($localMap, $run);
+
         ###### BEGIN VALIDATION OF MAPPING FILE ###########
         ################################################
-        print $logTee "MAPPING FILE: $map\n";
+        print $logTee "MAPPING FILE: $localMap\n";
 
         my $cmd = $params_hashref->{'validate_mapping_file.py'}
-          . " -m $map -s -o $error_log";
-        execute_and_log($cmd, $logTee, $dryRun, "Validating map from $map\n");
+          . " -m $localMap -s -o $error_log";
+        execute_and_log($cmd, $logTee, $dryRun, "Validating map from $localMap\n");
         my $mappingError = glob("$error_log/*.log");
         if ($mappingError)
         {
@@ -641,10 +645,12 @@ if (   !@dbg
             die
               "validate_mapping_file.py terminated but did not signal success. Normally a success message is printed in its error file.";
         }
+        File::Copy::move($localMap . "_corrected.txt", $localMap);
+        project_metadata(map => {"file" => $localMap});
 
         ###### BEGIN EVALUATION OF SAMPLES VIA MAPPING FILE ###########
         ###############################################################
-        open MAP, "<$map" or die "Cannot open $map for reading: $OS_ERROR";
+        open MAP, "<$localMap" or die "Cannot open $localMap for reading: $OS_ERROR";
         my $extctrl     = 0;
         my $pcrpos      = 0;
         my $pcrneg      = 0;
@@ -714,9 +720,7 @@ if (   !@dbg
             cacheChecksums(
                            [
                             $mappingError,
-                            "$error_log/"
-                              . File::Basename::basename($map, ".txt")
-                              . "_corrected.txt"
+                            $localMap
                            ],
                            "meta"
                           );
@@ -890,7 +894,7 @@ sub barcodes
                              $index2Input);
 
     my $barcodes = "$wd/barcodes.fastq";
-    my $nSamples = count_samples($map);
+    my $nSamples = count_samples($localMap);
 
     ## change to full path to full barcodes (flag)
     my $count = 0;
@@ -983,7 +987,7 @@ sub barcodes
         }
 
         # Was in original code, but maybe unnecessary?
-        my $mapOpt = $oneStep ? "-m $map" : "";
+        my $mapOpt = $oneStep ? "-m $localMap" : "";
 
         my $cmd = $params_hashref->{'extract_barcodes.py'}
           . " -f $localNames{\"index1\"} -r $localNames{\"index2\"} -c barcode_paired_end --bc1_len $bcLen --bc2_len $bcLen $mapOpt -o $wd $oriParams";
@@ -1056,7 +1060,7 @@ sub demux
     print $logTee "Demuxing in: $wd\n";
 
     my $barcodes = "$wd/barcodes.fastq";    # are we not in $wd???
-    my $nSamples = count_samples($map);
+    my $nSamples = count_samples($localMap);
     my $step2;
     my $step3;
 
@@ -1085,7 +1089,7 @@ sub demux
     if (!$noSkip)
     {
         $skip = skippable(
-                          [$readsForInput, $readsRevInput, $map, $barcodes],
+                          [$readsForInput, $readsRevInput, $localMap, $barcodes],
                           [$rForSeqsFq,    $rRevSeqsFq],
                           {
                            "RF" => $metadata->{"checkpoints"}{"raw"}->{"RF"},
@@ -1096,7 +1100,7 @@ sub demux
                           $metadata->{"checkpoints"}{"library"},
                           "demultiplexing",
                           [
-                           $readsForInput, $readsRevInput, $map,
+                           $readsForInput, $readsRevInput, $localMap,
                            File::Spec->abs2rel($barcodes, $wd)
                           ]
                          );
@@ -1113,9 +1117,9 @@ sub demux
 
         @cmds = ();
         push @cmds,
-          "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $readsForInput -o $fwdProjDir -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
+          "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $readsForInput -o $fwdProjDir -b $barcodes -m $localMap --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
         push @cmds,
-          "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $readsRevInput -o $revProjDir -b $barcodes -m $map --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
+          "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $readsRevInput -o $revProjDir -b $barcodes -m $localMap --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
 
         execute_and_log(@cmds, $logTee, $dryRun,
                         "Demultiplexing to get the project library...\n");
@@ -1202,6 +1206,7 @@ sub demux
         {
             cacheChecksums([$rForSeqsFq, $rRevSeqsFq], "library");
         }
+        project_metadata(map => {"file" => $localMap});
 
     } else
     {
@@ -2067,22 +2072,22 @@ sub read_json
 {
     my $file = pop;
 
-    # get existing metadata on filesystem
-    my $json;
+    my $hash = {};
+
+    if (-e $file) 
     {
-        local $/;    #Enable 'slurp' mode
-        if (-e $file)
+        # get existing metadata on filesystem
+        my $json;
         {
+            local $/;    #Enable 'slurp' mode
             open my $FH, "+<$file";
             seek $FH, 0, 0 or die;
             $json = <$FH>;
             close $FH;
         }
 
+        eval {$hash = decode_json($json);};
     }
-
-    my $hash = {};
-    eval {$hash = decode_json($json);};
 
     return $hash;
 }
@@ -2101,32 +2106,57 @@ sub params
 sub project_metadata
 {
     my %arg          = @_;
-    my $params       = delete $arg{params} // {};
-    my $checkpoints  = delete $arg{checkpoints} // {};
+    # my $params       = delete $arg{params} // {};
+    # my $checkpoints  = delete $arg{checkpoints} // {};
     my $metadataFile = "$global_config{wd}/.meta.json";
 
     my $old_metadata = read_json($metadataFile);
 
     # If no arguments, user wants to GET existing metadata
-    if (!%$params && !%$checkpoints)
+    if (! %arg)
     {
         return
           $old_metadata
           ;    # can we change outside code so we can just return hashref here?
     } else
     {
-
         # If arguments, user wants to UPDATE AND GET existing metadata
-        my $new_meta = {params => $params, checkpoints => $checkpoints,};
-
         # recursively merge params and checkpoints with $project_metadata
-        my $combined_metadata = merge($old_metadata, $new_meta);
+        my $combined_metadata = merge($old_metadata, \%arg);
 
         open my $metadataFH, ">$metadataFile";
         print $metadataFH encode_json($combined_metadata);
         close $metadataFH;
         return $combined_metadata;
     }
+}
+
+sub preprocess_map
+{
+    my $map_filepath = shift;
+    my $run_name     = shift;
+
+    $run_name =~ s/[^a-zA-Z0-9\.]/\./g;
+
+    rename($map_filepath, $map_filepath . '.bak');
+    open(IN, '<' . $map_filepath . '.bak') or die $!;
+    open(OUT, '>' . $map_filepath) or die $!;
+    while(<IN>)
+    {
+        s/^([a-zA-Z0-9\.]+)\t/$run_name\.$1\t/g;
+        print OUT $_;
+    }
+    close(IN);
+    close(OUT);
+    unlink($map_filepath . '.bak');
+    # #open my $map_FH, "<$map_filepath";
+    # my $map_file = path($map_filepath);
+
+    # my $map_data = $map_file->slurp_utf8;
+    # $map_data =~ s/^([a-zA-Z0-9\.]+)\t/$run_name\.$1\t/g;
+    # $map_file->spew_utf8($map_data);
+
+    return;
 }
 
 #' @_[0] Filenames of inputs to checksum

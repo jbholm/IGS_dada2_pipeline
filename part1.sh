@@ -239,6 +239,9 @@ fi
 if [[ ! -n "$RUN" ]]; then
     stop "Run ID (-r) required."
 fi
+# if [[ $RUN =~ "[^a-zA-Z0-9\.]" ]]; then
+#     stop "Run can only contain alphanumeric and '.' characters."
+# fi
 
 # Validate the variable region
 if [[ ! -n "$VAR" ]]; then

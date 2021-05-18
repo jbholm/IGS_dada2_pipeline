@@ -368,6 +368,8 @@ my $projabund;
 # execute_and_log( $cmd, *STDOUT, $dryRun, "" );
 my $cmd;
 
+copy_maps_to_project($run_info_hash, "project_map.txt");
+
 ##loop over array to copy the file to the main current working directory
 ## using the array string to also add a name
 print $logTee "---Combining "
@@ -375,28 +377,27 @@ print $logTee "---Combining "
   . " abundance table(s) and removing bimeras.\n";
 print $logTee "Run(s):\n";
 
-my ($abundRds, $abund, $stats, $fasta, $map) = (
+my ($abundRds, $abund, $stats, $fasta) = (
                                            "all_runs_dada2_abundance_table.rds",
                                            "all_runs_dada2_abundance_table.csv",
                                            "DADA2_stats.txt",
-                                           "all_runs_dada2_ASV.fasta",
-                                           "map.txt"
+                                           "all_runs_dada2_ASV.fasta"
 );
-($abundRds, $abund, $stats, $fasta, $map) =
+($abundRds, $abund, $stats, $fasta) =
   map {move_to_project($project, $_, 1)}
-  ($abundRds, $abund, $stats, $fasta, $map);
+  ($abundRds, $abund, $stats, $fasta);
 
-if (List::Util::any {!-e $_} ($abundRds, $abund, $fasta, $stats, $map))
+if (List::Util::any {!-e $_} ($abundRds, $abund, $fasta, $stats))
 {
     print $logTee "Combining runs and removing bimeras.\n";
-    ($abundRds, $abund, $fasta, $stats, $map) = dada2_combine($pacbio, \@runs);
+    ($abundRds, $abund, $fasta, $stats) = dada2_combine($pacbio, \@runs);
 
-    ($abundRds, $abund, $fasta, $stats, $map) =
+    ($abundRds, $abund, $fasta, $stats) =
       map {move_to_project($project, $$_)}
-      (\$abundRds, \$abund, \$fasta, \$stats, \$map);
+      (\$abundRds, \$abund, \$fasta, \$stats);
 
     $logTee->print("Outputs:\n");
-    foreach (($abundRds, $abund, $fasta, $stats, $map))
+    foreach (($abundRds, $abund, $fasta, $stats))
     {
         print $logTee "$_\n";
     }
@@ -637,8 +638,7 @@ sub read_json
             close $FH;
         } else
         {
-            warn
-              "Unable to read $filepath to locate maps. Please concatenate maps to project_map.txt manually.\n";
+            return undef;
         }
 
     }
@@ -665,6 +665,7 @@ sub combine_run_metadata
     {
         my $run = basename($rundir);
         $all_run_info->{$run} = read_json(catfile($rundir, ".meta.json"));
+        $all_run_info->{$run}->{"path"} = $rundir;
         if (exists $all_run_info->{$run}->{"samples"}
             && ref $all_run_info->{$run}->{"samples"} eq ref {})
         {
@@ -683,14 +684,12 @@ sub combine_run_metadata
                     }
                 } else
                 {
-                    warn
-                      "Malformed metadata: $run: samples: $sample. Part3 won't be able to organize FASTQs.\n";
+                    warn "Malformed metadata: $run: samples: $sample.\n";
                 }
             }
         } else
         {
-            warn
-              "Malformed metadata: $run: samples. Part3 won't be able to organize FASTQs.\n";
+            warn "Malformed metadata: $run: samples.\n";
         }
     }
 
@@ -705,30 +704,32 @@ sub combine_run_metadata
 sub copy_maps_to_project
 {
     my $all_run_info = shift;
-
+    $all_run_info = $all_run_info->{"runs"};
+    my $output = shift;
     my @runs = keys %{$all_run_info};
 
     # the first map goes into project_map.txt nearly verbatim. For the remaining
     # maps, all non-blank lines after the header go in
 
     my @maps;
+    my $projDir = Cwd::cwd();
     foreach my $run (@runs)
     {
-        # I hate perl syntax so much
-        my @recorded_map_filepaths =
-          keys %{$all_run_info->{$run}{"checkpoints"}{"map"}};
-        if (@recorded_map_filepaths)
+        chdir $all_run_info->{$run}->{"path"} or die "cannot chdir: $!";
+        my $map_filepath = $all_run_info->{$run}->{"map"}->{"file"};
+        if ($map_filepath)
         {
-            push @maps, catfile($run, $recorded_map_filepaths[0]);
+            push @maps, File::Spec->abs2rel(abs_path($map_filepath), $projDir);
         }
     }
+    chdir $projDir or die "cannot chdir: $!";
 
     my ($inFH, $outFH);
     if (@maps)
     {
         $logTee->print("Found " . @maps . " maps.\n");
-        open($outFH, '>', 'project_map.txt')
-          or die "Could not open project_map.txt: $!";
+        open($outFH, '>', $output)
+          or die "Could not open $output: $!";
 
         my $first_filepath = shift @maps;
         if (-e -f -r $first_filepath)
@@ -781,6 +782,7 @@ sub copy_maps_to_project
         $logTee->print("No maps found.");
     }
 
+    return($output);
 }
 
 sub readTbl
