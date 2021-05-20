@@ -179,7 +179,9 @@ counts_and_stats <- (function(runs) {
     # Combine count tables
     unqs <- unique(c(sapply(tables, colnames), recursive = TRUE))
     n <- sum(unlist(lapply(X = tables, FUN = nrow)))
-    st <- matrix(0L, nrow = n, ncol = length(unqs)) %>% set_colnames(unqs)
+    st <- matrix(0L, nrow = n, ncol = length(unqs)) %>%
+        set_colnames(unqs) %>%
+        set_rownames(c(sapply(tables, rownames), recursive = TRUE))
     row <- 1
     for (table in tables) {
         st[row:(row + nrow(table) - 1), colnames(table)] <- table
@@ -204,7 +206,6 @@ counts_and_stats <- (function(runs) {
     return(list(counts = st, stats = stats))
 })(runs)
 
-## st.all<-mergeSequenceTables(runs)
 # Remove chimeras
 mfpoa <- if (args$seq == "ILLUMINA") 2 else 3.5
 seqtab <- dada2::removeBimeraDenovo(counts_and_stats$counts, method = "consensus", minFoldParentOverAbundance = mfpoa, multithread = TRUE)
@@ -226,6 +227,6 @@ write.table(project_stats, "DADA2_stats.txt",
     quote = FALSE, append = FALSE,
     sep = "\t", row.names = F, col.names = TRUE
 )
-outputs <- append(outputs, c("DADA2_stats.txt", map_filepath))
+outputs <- append(outputs, "DADA2_stats.txt")
 
 cat(outputs)

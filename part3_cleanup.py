@@ -1,7 +1,7 @@
 #! /local/projects-t3/MSL/pipelines/packages/miniconda3/envs/interactive/bin/python3
 
 import argparse, sys, os, glob, re, shlex, json, shutil, gzip, getpass, stat, tempfile
-from pathlib import Path
+from pathlib import Path # Use of Paths as os.pathlike objects requires Python3.6
 import PyInquirer  # MUST USE PYTHON3.6 FOUND IN interactive TO USE THIS
 import examples
 from subprocess import run, Popen, PIPE
@@ -54,20 +54,20 @@ def main(args):
 
         elif choice == "D":
             run_paths = get_runs(args.project)
-            if not organize_reads(args.project, run_paths): pass
-            if not organize_trimmed(args.project, run_paths): pass
-            if not organize_counts_by_asv(args.project): pass
-            if not organize_counts_by_taxon(args.project): pass
-            if not organize_logs(args.project): pass
-            if not organize_map(args.project): pass
-            if not organize_taxonomies_final(args.project): pass
-            if not organize_taxonomies_intermediates(args.project): pass
-            if not add_index(): pass
-            if not add_references(args.project, run_paths): pass
+            if not organize_reads(args.project, run_paths): continue
+            if not organize_trimmed(args.project, run_paths): continue
+            if not organize_counts_by_asv(args.project): continue
+            if not organize_counts_by_taxon(args.project): continue
+            if not organize_logs(args.project, run_paths): continue
+            if not organize_map(args.project): continue
+            if not organize_taxonomies_final(args.project): continue
+            if not organize_taxonomies_intermediates(args.project): continue
+            if not add_index(): continue
+            if not add_references(args.project, run_paths): continue
 
-            if not remove_trash(args.project, run_paths): pass
+            if not remove_trash(args.project, run_paths): continue
 
-            if not share_unix_perms(args.project): pass
+            if not share_unix_perms(args.project): continue
 
         elif choice == "J":
             upload_to_jira(args.project)
@@ -194,7 +194,9 @@ def share_unix_perms(path):
                     path.chmod(st.st_mode | int(usr_perms / user_to_group_divisor))
                 except PermissionError as e:
                     print(f"Unable to expand permissions to group for: {str(path)}\n{str(e)}")
-                    return False 
+                    # don't ask if the user wants to "continue". this is the last step, 
+                    # so the user's choice doesn't make a difference
+                    return False
             else:
                 print(f"Cannot process {str(path)} without ownership\n")
                 return False 
@@ -645,7 +647,8 @@ def organize_reads(proj_path, run_paths):
             print(f"Skipping creation of {organized_dir} (no demuxed reads found)")
     except Exception as e:
         print(str(e))
-        ask_continue()
+        if not ask_continue():
+            return False
 
     return True
 
@@ -682,7 +685,8 @@ def organize_trimmed(proj_path, run_paths):
 
     except Exception as e:
         print(str(e))
-        ask_continue()
+        if not ask_continue():
+            return False
     
     return True
 
@@ -705,7 +709,8 @@ def organize_counts_by_asv(proj_path):
 
     except Exception as e:
         print(str(e))
-        ask_continue()
+        if not ask_continue():
+            return False
 
     return True
 
@@ -726,7 +731,8 @@ def organize_counts_by_taxon(proj_path):
 
     except Exception as e:
         print(str(e))
-        ask_continue()
+        if not ask_continue():
+            return False
 
     return True
 
@@ -741,27 +747,29 @@ def make_for_contents(dir, silent=False):
     except Exception as e:
         raise e
 
-def organize_logs(proj_path):
+def organize_logs(proj_path, run_paths):
     try:
         organized_dir = "LOGS"
 
         # Part 1 logs found in the run directories. Just copy.
 
         filepaths = glob.glob(str(proj_path / Path("*pipeline_log.txt")))
-        filepaths += glob.glob(str(proj_path / Path("*/*pipeline_log.txt")))
+        for run in run_paths:
+            filepaths += glob.glob(str(proj_path / run / Path("*pipeline_log.txt")))
 
         if len(filepaths) > 0:
             make_for_contents(organized_dir)
             print(f"Moving {len(filepaths)} log files to LOGS/.")
 
             for filepath in filepaths:
-                Path(filepath).rename(Path(organized_dir) / Path(filepath).name)
+                Path(filepath).copy(Path(organized_dir) / Path(filepath).name)
         else:
             print(f"Skipping creation of {organized_dir} (no logs found)")
 
     except Exception as e:
         print(str(e))
-        ask_continue()
+        if not ask_continue():
+            return False
     
     return True
 
@@ -782,7 +790,8 @@ def organize_map(proj_path):
 
     except Exception as e:
         print(str(e))
-        ask_continue()
+        if not ask_continue():
+            return False
     
     return True
 
@@ -804,7 +813,8 @@ def organize_taxonomies_final(proj_path):
 
     except Exception as e:
         print(str(e))
-        ask_continue()
+        if not ask_continue():
+            return False
     return True
 
 
@@ -858,7 +868,8 @@ def organize_taxonomies_intermediates(proj_path):
 
     except Exception as e:
         print(str(e))
-        ask_continue()
+        if not ask_continue():
+            return False
     
     return True
 
@@ -868,7 +879,8 @@ def add_index():
             outfile.write(index_contents)
     except Exception as e:
         print(str(e))
-        ask_continue()
+        if not ask_continue():
+            return False
     return True
 
 def add_references(proj_path, run_paths):
@@ -919,7 +931,8 @@ def add_references(proj_path, run_paths):
 
     except Exception as e:
         print(e)
-        ask_continue()
+        if not ask_continue():
+            return False
     return True
 
 def remove_trash(proj_path, run_paths):
@@ -950,7 +963,7 @@ def remove_trash(proj_path, run_paths):
                 }
             ]
             if not inquire(questions) == "Delete all":
-                return False
+                return True
             
             part2_danger = not (pathfinder['counts-by-taxon'].is_dir() and pathfinder['counts-by-ASV'].is_dir() and pathfinder['intermediate_taxonomies'].is_dir() and pathfinder['final_taxonomies'].is_dir())
             confirm_msg = "Are you sure?"
@@ -965,7 +978,7 @@ def remove_trash(proj_path, run_paths):
                 }
             ]
             if not inquire(questions) == "Delete all":
-                return False
+                return True
             for trash_dir in trash_dirs:
                 shutil.rmtree(trash_dir)
             for trash_file in trash_files:
@@ -974,19 +987,20 @@ def remove_trash(proj_path, run_paths):
         return True
     except Exception as e:
         print(str(e))
-        ask_continue()
+        if not ask_continue():
+            return False
 
     return True
 
-def share_project(proj_path):
-    try:
-        run(["sharedir", "./"])
+# def share_project(proj_path):
+#     try:
+#         run(["sharedir", "./"])
 
-        print("Read and write permissions granted for group.")
-        return
-    except Exception as e:
-        print(str(e))
-        return False
+#         print("Read and write permissions granted for group.")
+#         return
+#     except Exception as e:
+#         print(str(e))
+#         return False
 
 index_contents = """
 *_all_runs_dada2_ASV.fasta: Denoised ASVs (Amplicon Sequence Variants).
