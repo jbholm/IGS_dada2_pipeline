@@ -234,8 +234,20 @@ local $SIG{__WARN__} = sub {
     print STDERR "WARNING: $_[0]";
 };    # Warnings go to log file, stdout, and stderr
 
+my $params_hashref = config();
+
+if (!exists $ENV{"LD_LIBRARY_PATH"})
+{
+    $ENV{"LD_LIBRARY_PATH"} = "";
+}
 $ENV{'LD_LIBRARY_PATH'} =
   $ENV{'LD_LIBRARY_PATH'} . ":/usr/local/packages/gcc/lib64";
+my $output = `python2 --version 2>&1`;
+if ($? == -1)
+{
+    $ENV{'PATH'} = $ENV{'PATH'} . ":" . dirname($params_hashref->{"python2"});
+}
+$ENV{'PYTHONPATH'} = "";
 
 if ($notVaginal)
 {
@@ -352,8 +364,6 @@ my $pecan;
     }
 }
 
-my $params_hashref = config();
-
 print $logTee "\n";
 ####################################################################
 ##                               MAIN
@@ -378,22 +388,20 @@ print $logTee "---Combining "
 print $logTee "Run(s):\n";
 
 my ($abundRds, $abund, $stats, $fasta) = (
-                                           "all_runs_dada2_abundance_table.rds",
-                                           "all_runs_dada2_abundance_table.csv",
-                                           "DADA2_stats.txt",
-                                           "all_runs_dada2_ASV.fasta"
-);
+                                          "all_runs_dada2_abundance_table.rds",
+                                          "all_runs_dada2_abundance_table.csv",
+                                          "DADA2_stats.txt",
+                                          "all_runs_dada2_ASV.fasta"
+                                         );
 ($abundRds, $abund, $stats, $fasta) =
-  map {move_to_project($project, $_, 1)}
-  ($abundRds, $abund, $stats, $fasta);
+  map {move_to_project($project, $_, 1)} ($abundRds, $abund, $stats, $fasta);
 
 if (List::Util::any {!-e $_} ($abundRds, $abund, $fasta, $stats))
 {
     print $logTee "Combining runs and removing bimeras.\n";
     ($abundRds, $abund, $fasta, $stats) = dada2_combine($pacbio, \@runs);
 
-    ($abundRds, $abund, $fasta, $stats) =
-      map {move_to_project($project, $$_)}
+    ($abundRds, $abund, $fasta, $stats) = map {move_to_project($project, $$_)}
       (\$abundRds, \$abund, \$fasta, \$stats);
 
     $logTee->print("Outputs:\n");
@@ -407,8 +415,7 @@ if (List::Util::any {!-e $_} ($abundRds, $abund, $fasta, $stats))
 }
 
 # Give ASV's unique and easy-to-look-up IDs
-$cmd =
-  "$params_hashref->{'python2'} $scriptsDir/rename_asvs.py $fasta -p $project";
+$cmd = "$scriptsDir/rename_asvs.py $fasta -p $project";
 execute_and_log($cmd, $logTee, $dryRun,
      "---Renaming ASVs in FASTA, abundance tables, and classification key(s).");
 
@@ -592,7 +599,7 @@ if ($csts && $pecan)
     {
         print $logTee "---Assigning CSTs with Valencia\n";
         my $cmd =
-          "$scriptsDir/valencia_wrapper.py "
+          "python3 -s $scriptsDir/valencia_wrapper.py "
           . catdir($pipelineDir, "ext", "valencia",
                    "CST_profiles_jan28_mean.csv")
           . " $pecanCountTbl";
@@ -625,14 +632,15 @@ $logTee->close;
 ####################################################################
 sub read_json
 {
-    my $filepath = shift;
+    my $file = shift;
+    my $mode = shift;
 
     my $json;
     {
         local $/;    #Enable 'slurp' mode
-        if (-e -f -r $filepath)
+        if (-e $file)
         {
-            open my $FH, "+<$filepath";
+            open(my $FH, $mode, $file);
             seek $FH, 0, 0 or die;
             $json = <$FH>;
             close $FH;
@@ -642,9 +650,11 @@ sub read_json
         }
 
     }
-    my $data = {};
-    eval {$data = decode_json($json);};
-    return $data;
+
+    my $hash = {};
+    eval {$hash = decode_json($json);};
+
+    return $hash;
 }
 
 sub config
@@ -653,7 +663,7 @@ sub config
     my $new_params      = delete $arg{new_params} // {};
     my $orig_param_file = "$pipelineDir/config.json";
 
-    my $params = read_json($orig_param_file);
+    my $params = read_json($orig_param_file, "<");
 
     return $params;
 }
@@ -706,7 +716,7 @@ sub copy_maps_to_project
     my $all_run_info = shift;
     $all_run_info = $all_run_info->{"runs"};
     my $output = shift;
-    my @runs = keys %{$all_run_info};
+    my @runs   = keys %{$all_run_info};
 
     # the first map goes into project_map.txt nearly verbatim. For the remaining
     # maps, all non-blank lines after the header go in
@@ -728,8 +738,7 @@ sub copy_maps_to_project
     if (@maps)
     {
         $logTee->print("Found " . @maps . " maps.\n");
-        open($outFH, '>', $output)
-          or die "Could not open $output: $!";
+        open($outFH, '>', $output) or die "Could not open $output: $!";
 
         my $first_filepath = shift @maps;
         if (-e -f -r $first_filepath)
@@ -782,7 +791,7 @@ sub copy_maps_to_project
         $logTee->print("No maps found.");
     }
 
-    return($output);
+    return ($output);
 }
 
 sub readTbl

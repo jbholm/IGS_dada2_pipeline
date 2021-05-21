@@ -303,8 +303,7 @@ if ($inDir && ($r1file || $r2file || $i1file || $i2file))
 }
 if (!$map)
 {
-    print "\n\tPlease provide the path to the project mapping file (-m)\n\n";
-    exit 1;
+    die "\n\tPlease provide the path to the project mapping file (-m)\n\n";
 }
 if ($oneStep && ($i1file || $i2file))
 {
@@ -312,9 +311,8 @@ if ($oneStep && ($i1file || $i2file))
 }
 if (!$var)
 {
-    print "\n\tPlease indicate the targeted variable region (-v V3V4 or -v V4"
+    die "\n\tPlease indicate the targeted variable region (-v V3V4 or -v V4"
       . " or -v ITS)\n\n";
-    exit 1;
 }
 if (!$global_config{wd})
 {
@@ -342,9 +340,8 @@ if (@dbg)
 
 if ($truncLenL && !$truncLenR)
 {
-    print "***\nPlease provide truncation lengths for forward and reverse "
+    die "***\nPlease provide truncation lengths for forward and reverse "
       . "reads\n";
-    die;
 }
 
 # Refine and validate all variables that refer to the filesystem
@@ -456,7 +453,8 @@ my $stdout_log = "$global_config{wd}/qsub_stdout_logs";
 #  working directory)
 
 my $localMap = catfile($global_config{wd}, File::Basename::basename($map));
-my $mapLog = catfile($error_log, File::Basename::basename($map, ".txt") . ".log");
+my $mapLog =
+  catfile($error_log, File::Basename::basename($map, ".txt") . ".log");
 
 my @split;
 
@@ -576,7 +574,7 @@ if (   !@dbg
 {
     ###### BEGIN CHECK OF QIIME CONFIGURATION ###########
     #####################################################
-    my $cmd = $params_hashref->{'print_qiime_config.py'} . " > $qiime";
+    my $cmd = qiime_cmd('print_qiime_config.py', $params_hashref) . " > $qiime";
     execute_and_log($cmd, $logTee, $dryRun,
                     "QIIME CONFIGURATION DETAILS:\nsee $qiime\n");
 
@@ -600,9 +598,9 @@ if (   !@dbg
         ################################################
         print $logTee "MAPPING FILE: $localMap\n";
 
-        my $cmd = $params_hashref->{'validate_mapping_file.py'}
+        my $cmd = qiime_cmd('validate_mapping_file.py', $params_hashref)
           . " -m $localMap -s -o $error_log";
-        execute_and_log($cmd, $logTee, $dryRun, "Validating map from $localMap\n");
+        execute_and_log($cmd, $logTee, $dryRun, "Validating map from $map\n");
         my $mappingError = glob("$error_log/*.log");
         if ($mappingError)
         {
@@ -650,7 +648,8 @@ if (   !@dbg
 
         ###### BEGIN EVALUATION OF SAMPLES VIA MAPPING FILE ###########
         ###############################################################
-        open MAP, "<$localMap" or die "Cannot open $localMap for reading: $OS_ERROR";
+        open MAP, "<$localMap"
+          or die "Cannot open $localMap for reading: $OS_ERROR";
         my $extctrl     = 0;
         my $pcrpos      = 0;
         my $pcrneg      = 0;
@@ -717,13 +716,7 @@ if (   !@dbg
         if (!@dbg)
         {
             cacheChecksums([$map], "map");
-            cacheChecksums(
-                           [
-                            $mappingError,
-                            $localMap
-                           ],
-                           "meta"
-                          );
+            cacheChecksums([$mappingError, $localMap], "meta");
         }
     } else
     {
@@ -989,7 +982,7 @@ sub barcodes
         # Was in original code, but maybe unnecessary?
         my $mapOpt = $oneStep ? "-m $localMap" : "";
 
-        my $cmd = $params_hashref->{'extract_barcodes.py'}
+        my $cmd = qiime_cmd('extract_barcodes.py', $params_hashref)
           . " -f $localNames{\"index1\"} -r $localNames{\"index2\"} -c barcode_paired_end --bc1_len $bcLen --bc2_len $bcLen $mapOpt -o $wd $oriParams";
 
         execute_and_log($cmd, $logTee, $dryRun,
@@ -1059,7 +1052,7 @@ sub demux
     my $die_on_fail = shift;
     print $logTee "Demuxing in: $wd\n";
 
-    my $barcodes = "$wd/barcodes.fastq";    # are we not in $wd???
+    my $barcodes = "$wd/barcodes.fastq";       # are we not in $wd???
     my $nSamples = count_samples($localMap);
     my $step2;
     my $step3;
@@ -1089,8 +1082,10 @@ sub demux
     if (!$noSkip)
     {
         $skip = skippable(
-                          [$readsForInput, $readsRevInput, $localMap, $barcodes],
-                          [$rForSeqsFq,    $rRevSeqsFq],
+                          [
+                           $readsForInput, $readsRevInput, $localMap, $barcodes
+                          ],
+                          [$rForSeqsFq, $rRevSeqsFq],
                           {
                            "RF" => $metadata->{"checkpoints"}{"raw"}->{"RF"},
                            "RR" => $metadata->{"checkpoints"}{"raw"}->{"RR"},
@@ -1110,16 +1105,16 @@ sub demux
     {
         my $start  = time;
         my $step2  = "split_libraries_fastq.py";
-        my $script = $params_hashref->{$step2};
+        my $script = qiime_cmd($step2, $params_hashref);
 
    # qiime's split_libraries_fastq accepts some keywords too, such as "golay_12"
         my $barcodeType = 2 * $bcLen;
 
         @cmds = ();
         push @cmds,
-          "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $readsForInput -o $fwdProjDir -b $barcodes -m $localMap --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
+          "qsub -N $step2 -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $readsForInput -o $fwdProjDir -b $barcodes -m $localMap --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
         push @cmds,
-          "qsub -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $readsRevInput -o $revProjDir -b $barcodes -m $localMap --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
+          "qsub -N $step2 -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $readsRevInput -o $revProjDir -b $barcodes -m $localMap --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
 
         execute_and_log(@cmds, $logTee, $dryRun,
                         "Demultiplexing to get the project library...\n");
@@ -1261,14 +1256,14 @@ if (!@dbg || grep(/^splitsamples$/, @dbg))
     if (!$skip)
     {
         my $step3  = "split_sequence_file_on_sample_ids.py";
-        my $script = $params_hashref->{$step3};
+        my $script = qiime_cmd($step3, $params_hashref);
         my @cmds   = ();
         while (!(-e $rForSeqsFq) || !(-e $rRevSeqsFq)) {sleep 1;}
 
         push @cmds,
-          "qsub -cwd -b y -l mem_free=4G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $rForSeqsFq --file_type fastq -o $fwdSampleDir";
+          "qsub -N $step3 -cwd -b y -l mem_free=4G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $rForSeqsFq --file_type fastq -o $fwdSampleDir";
         push @cmds,
-          "qsub -cwd -b y -l mem_free=4G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $rRevSeqsFq --file_type fastq -o $revSampleDir";
+          "qsub -N $step3 -cwd -b y -l mem_free=4G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $rRevSeqsFq --file_type fastq -o $revSampleDir";
         execute_and_log(@cmds, $logTee, $dryRun,
                      "Splitting $project seqs.fastq " . "files by sample ID\n");
 
@@ -2070,17 +2065,18 @@ END
 ####################################################################
 sub read_json
 {
-    my $file = pop;
+    my $file = shift;
+    my $mode = shift;
 
     my $hash = {};
 
-    if (-e $file) 
+    if (-e $file)
     {
         # get existing metadata on filesystem
         my $json;
         {
             local $/;    #Enable 'slurp' mode
-            open my $FH, "+<$file";
+            open(my $FH, $mode, $file);
             seek $FH, 0, 0 or die;
             $json = <$FH>;
             close $FH;
@@ -2098,22 +2094,23 @@ sub params
     my $new_params      = delete $arg{new_params} // {};
     my $orig_param_file = "$pipelineDir/config.json";
 
-    my $params = read_json($orig_param_file);
+    my $params = read_json($orig_param_file, "<");
 
     return $params->{"part1"};
 }
 
 sub project_metadata
 {
-    my %arg          = @_;
+    my %arg = @_;
+
     # my $params       = delete $arg{params} // {};
     # my $checkpoints  = delete $arg{checkpoints} // {};
     my $metadataFile = "$global_config{wd}/.meta.json";
 
-    my $old_metadata = read_json($metadataFile);
+    my $old_metadata = read_json($metadataFile, "+<");
 
     # If no arguments, user wants to GET existing metadata
-    if (! %arg)
+    if (!%arg)
     {
         return
           $old_metadata
@@ -2139,9 +2136,9 @@ sub preprocess_map
     $run_name =~ s/[^a-zA-Z0-9\.]/\./g;
 
     rename($map_filepath, $map_filepath . '.bak');
-    open(IN, '<' . $map_filepath . '.bak') or die $!;
-    open(OUT, '>' . $map_filepath) or die $!;
-    while(<IN>)
+    open(IN,  '<' . $map_filepath . '.bak') or die $!;
+    open(OUT, '>' . $map_filepath)          or die $!;
+    while (<IN>)
     {
         s/^([a-zA-Z0-9\.]+)\t/$run_name\.$1\t/g;
         print OUT $_;
@@ -2149,6 +2146,7 @@ sub preprocess_map
     close(IN);
     close(OUT);
     unlink($map_filepath . '.bak');
+
     # #open my $map_FH, "<$map_filepath";
     # my $map_file = path($map_filepath);
 
@@ -2157,6 +2155,16 @@ sub preprocess_map
     # $map_file->spew_utf8($map_data);
 
     return;
+}
+
+sub qiime_cmd
+{
+    my $script = shift;
+    my $config = shift;
+
+    my $python = catfile(abs_path($config->{"qiime1/bin"}), "python");
+    $script = catfile(abs_path($config->{"qiime1/bin"}), $script);
+    return "$python -s $script";
 }
 
 #' @_[0] Filenames of inputs to checksum
@@ -2446,28 +2454,30 @@ sub find_raw_files
             $index2Input = $readsRevInput = $r2s[0];
         } else
         {
+            my $files_found = "";
+            my @file_arrays = (\@r1s, \@r2s);
+            foreach my $file_array_ref (@file_arrays)
+            {
+                my @file_array = @$file_array_ref;
+                if (scalar @file_array)
+                {
+                    $files_found .= (join "\n", @file_array);
+                }
+            }
+
+            my $message =
+                "Could not find a complete and exclusive set of raw files."
+              . " Since --1step given, input directory must have exactly one"
+              . " R1 and R2 file. Files found:\n"
+              . $files_found;
+
             if (defined $log)
             {
-                print $log "Couldn't find input files in $wd.\n";
-                print $log "Files found:\n";
-
-                my $printme = join "\n", @r1s;
-                print $log "$printme\n" if $printme;
-                $printme = join "\n", @r2s;
-                print $log "$printme\n" if $printme;
-
-                die
-                  "Could not find a complete and exclusive set of raw files. Since --1step given, input directory must"
-                  . " have exactly one R1 and R2 file. See pipeline log for a list of the files"
-                  . " found.";
-            } else
-            {
-                die "Could not find a complete and exclusive set of raw files."
-                  . " Since --1step given, input directory must have exactly one"
-                  . " R1 and R2 file. Files found:\n"
-                  . join("\n", @r1s)
-                  . join("\n", @r2s);
+                $log->print($message);
             }
+
+            die $message;
+
         }
     } else
     {
@@ -2502,24 +2512,25 @@ sub find_raw_files
             $readsRevInput = $r4s[0];
         } else
         {
-            print $log "Couldn't find input files.\n";
-            print $log "Files found in $wd:\n";
-            my $printme = join "\n", @i1s;
-            print $log "$printme\n" if $printme;
-            $printme = join "\n", @i2s;
-            print $log "$printme\n" if $printme;
-            $printme = join "\n", @r1s;
-            print $log "$printme\n" if $printme;
-            $printme = join "\n", @r2s;
-            print $log "$printme\n" if $printme;
-            $printme = join "\n", @r3s;
-            print $log "$printme\n" if $printme;
-            $printme = join "\n", @r4s;
-            print $log "$printme\n" if $printme;
-            die
+            my $files_found = "";
+            my @file_arrays = (\@i1s, \@i2s, \@r1s, \@r2s, \@r3s, \@r4s);
+            foreach my $file_array_ref (@file_arrays)
+            {
+                my @file_array = @$file_array_ref;
+                if (scalar @file_array)
+                {
+                    $files_found .= (join "\n", @file_array);
+                }
+            }
+            my $message =
               "Could not find a complete and exclusive set of raw files. Input directory must"
               . " contain exactly one set of I1, I2, R1, and R2, OR R1, R2, R3, and R4.\n"
-              . "See pipeline log for a list of the files found.";
+              . "File found in $wd:\n$files_found";
+            if (defined $log)
+            {
+                $log->print($message);
+            }
+            die $message;
         }
     }
     return ($readsForInput, $readsRevInput, $index1Input, $index2Input);
