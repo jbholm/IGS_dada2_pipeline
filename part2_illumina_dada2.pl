@@ -674,7 +674,7 @@ sub combine_run_metadata
     foreach my $rundir (@_)
     {
         my $run = basename($rundir);
-        $all_run_info->{$run} = read_json(catfile($rundir, ".meta.json"));
+        $all_run_info->{$run} = read_json(catfile($rundir, ".meta.json"), "<");
         $all_run_info->{$run}->{"path"} = $rundir;
         if (exists $all_run_info->{$run}->{"samples"}
             && ref $all_run_info->{$run}->{"samples"} eq ref {})
