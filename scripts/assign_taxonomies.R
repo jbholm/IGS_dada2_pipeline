@@ -30,9 +30,9 @@ parser$add_argument(
     "--tax",
     metavar = "TAXONOMY",
     type = "character",
-    help = "SILVA128, SILVA132, SILVA138, HOMD, or UNITE",
+    help = "SILVA (SILVA132), SILVA128, SILVA132, SILVA138forPB, HOMD, or UNITE",
     action = "append",
-    choices = c("SILVA128", "SILVA132", "SILVA138", "HOMD", "UNITE")
+    choices = c("SILVA", "SILVA128", "SILVA132", "SILVA138forPB", "HOMD", "UNITE")
 )
 parser$add_argument(
     "--minBoot",
@@ -51,15 +51,14 @@ require("dada2")
 require("Biostrings")
 path <- getwd()
 
-
-
 # seqtab <- readRDS(args$input)
 # Assign taxonomy (requires colnames of seqtab to be ASV sequences)
 taxonomies <-
     c(
+        SILVA = "silva_nr_v132_train_set.fa.gz",
         SILVA128 = "silva_nr_v128_train_set.fa.gz",
         SILVA132 = "silva_nr_v132_train_set.fa.gz",
-        SILVA138 = "silva_nr99_v138_wSpecies_train_set.fa.gz",
+        SILVA138forPB = "silva_nr99_v138_wSpecies_train_set.fa.gz",
         HOMD = "HOMD_v15.1_DADA2_taxonomy_final.txt",
         UNITE = "sh_general_release_dynamic_01.12.2017.fasta"
     )
@@ -81,7 +80,7 @@ dummy <- lapply(args$tax, function(taxonomy) {
             "Genus",
             "Species"
         ) # SILVA doesn't have species, but this is trivial to DADA2
-    } else if (taxonomy %in% c("HOMD", "UNITE", "SILVA132", "SILVA138")) {
+    } else if (taxonomy %in% c("HOMD", "UNITE", "SILVA", "SILVA132", "SILVA138", "SILVA138forPB")) {
         taxLevels <- c(
             "Kingdom",
             "Phylum",
@@ -94,7 +93,7 @@ dummy <- lapply(args$tax, function(taxonomy) {
     } else {
         stop(
             paste(
-                "Runtime error: Unknown taxonomy: ",
+                "Runtime error: Unknown taxonomy:",
                 taxonomy,
                 ". Please specify taxon levels in code."
             )
