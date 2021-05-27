@@ -255,7 +255,7 @@ def askFile(dir, msg="Please choose a file:"):
 
 
 def getMappingFile(pw):
-    opts["map"] = ""
+    opts["map"] = None
     oldCwd = os.getcwd()
     os.chdir(pw.pd)
     # if args.interactive:
@@ -292,8 +292,9 @@ def getMappingFile(pw):
     #             maps.append(obj[0])
     #         except IndexError:  # glob returns empty list if a map wasn't found
     #             pass
-
-    opts["map"] = "project_map.txt" if os.path.exists("project_map.txt") else None
+    map_filename = "project_map.txt"
+    if Path(map_filename).exists():
+        opts["map"] = map_filename
     os.chdir(oldCwd)
     return ()
 
@@ -1468,6 +1469,11 @@ PROJECT
         "--plotly",
         action="store_true",
         help="Use Plotly for heatmaps. Not recommended for HiSeq-size projects.",
+    )
+    parser.add_argument(
+        "--project",
+        metavar="NAME",
+        help="The project name (used to find files that have the project as the prefix."
     )
     args = parser.parse_args()
     np.set_printoptions(threshold=np.inf)
