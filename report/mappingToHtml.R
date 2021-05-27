@@ -15,34 +15,32 @@ options(
     },
     stringsAsFactors = FALSE
     )
-invisible({
-    require(jsonlite)
-
-    initial.options <- commandArgs(trailingOnly = FALSE)
-    wd <- dirname(sub("--file=", "", initial.options[grep("--file=", initial.options)]))
-    
-    config_file <- file.path(dirname(wd), "config.json")
-    config <- jsonlite::read_json(
-        path = file.path(config_file)
+suppressMessages(
+    suppressWarnings(
+        require(jsonlite)
     )
-    .libPaths(config[["r-lib-4.0"]])
+)
 
-    lapply(initial.options, FUN = function(x) {
-        cat(x)
-        cat("\n")
+initial.options <- commandArgs(trailingOnly = FALSE)
+wd <- dirname(sub("--file=", "", initial.options[grep("--file=", initial.options)]))
+
+config_file <- file.path(dirname(wd), "config.json")
+config <- jsonlite::read_json(
+    path = file.path(config_file)
+)
+.libPaths(config[["r-lib-4.0"]])
+
+suppressMessages(
+    suppressWarnings({
+        require("optparse")
+        require("kableExtra")
+        require("stringi")
+        library("magrittr")
+        library(tidyr)
+        library(readr)
     })
+)
 
-    suppressMessages(
-        suppressWarnings(
-            {
-            require("optparse")
-            require("kableExtra")
-            require("stringi")
-            library("magrittr")
-            }
-        )
-    )
-})
 option_list = list(make_option(c("--map", "-m"), type="character", metavar = "MAPPING_FILE_PATH", help = "The mapping file, tab-delimited"),
                    make_option(c("--group_by", "-g"), type = "numeric", metavar = "COLUMN_INDEX", help = "Which column index to group by (optional)")
                    )
@@ -52,19 +50,26 @@ if(is.null(opt$map)) {
     stop("Mapping file must be provided using -m or --map")
 }
 
-mapping <- data.frame(
-                ID = character(),
-                `Barcode 1` = character(),
-                `Barcode 2` = character(),
-                Description = character()
-            ) %>%
-                set_colnames(c("ID", "Barcode 1", "Barcode 2", "Description"))
+mapping <- tibble(
+    ID = character(),
+    `Barcode 1` = character(),
+    `Barcode 2` = character(),
+    Description = character()
+)
+
 tryCatch(
     {
-        mapping <<- read.delim(opt$map, row.names = NULL, header = T, comment.char = "", na.strings = "") %>%
-            set_colnames(c("ID", "Barcode 1", "Barcode 2", "Description"))
+        mapping <<- suppressWarnings(suppressMessages(
+            read_tsv(opt$map, comment = "", na = "", quote = "")
+        ))
+        if(ncol(mapping) == 4) {
+            colnames(mapping) <- c("ID", "Barcode 1", "Barcode 2", "Description")
+        } else if (ncol(mapping) == 5) {
+            colnames(mapping) <- c("Run", "ID", "Barcode 1", "Barcode 2", "Description")
+        }
     },
     error = function(e) {
+        stop(e)
         if(grepl("no lines available in input", e$message, fixed = T)) {
             return()
         } else {

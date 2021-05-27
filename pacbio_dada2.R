@@ -46,6 +46,12 @@ parser$add_argument(
     type = "character",
     help = "Regex pattern that will match all DEMUXED .ccs.fastq.gz files. Use () in place of sample name."
 )
+parser$add_argument(
+    "--run",
+    metavar = "RUN_NAME",
+    type = "character",
+    help = "Run name that will be pre-pended to each sample name."
+)
 args <- parser$parse_args()
 if (any(is.null(args))) {
   stop("Some args missing!")
@@ -54,22 +60,22 @@ if (any(is.null(args))) {
 run_dir <- getwd()
 inPath <- args$input
 
-project_meta <- function(new_params = list(), checkpoints = list()) {
-    info_file <- file.path(run_dir, ".meta.json")
+run_meta <- function(new_params = list(), checkpoints = list(), samples = list()) {
+    info_file <- ".meta.json"
 
     if (!file.exists(info_file)) {
         run_info <- list()
     } else {
         run_info <- jsonlite::read_json(
-    path = file.path(info_file)
+            path = info_file
         )
     }
-    
 
-    new_info <- list(params = new_params, checkpoints = checkpoints)
+    new_info <- list(params = new_params, checkpoints = checkpoints, samples = samples)
     run_info <- utils::modifyList(run_info, new_info)
 
-    info_json <- jsonlite::write_json(run_info, info_file)
+    jsonlite::write_json(run_info, info_file, auto_unbox = T)
+    invisible(run_info)
 }
 cache_checksums <- function(files, name) {
     checksums <- lapply(files, function(f) {
@@ -79,20 +85,32 @@ cache_checksums <- function(files, name) {
     checksums_list <- list()
     checksums_list[[name]] <- checksums
 
-    project_meta(checkpoints = checksums_list)
+    run_meta(checkpoints = checksums_list)
 }
-project_meta(new_params = list(platform = "PACBIO"))
+run_meta(new_params = list(platform = "PACBIO"))
 
 glob_pattern <- gsub("()", "(.*)", args$pattern, fixed = T)
 fastqs <- sort(list.files(inPath, pattern = glob_pattern, full.names = T)) # B01\..+\.css\.fastq\.gz
-
-cache_checksums(fastqs, "samples")
-
 sample.names <- sapply(fastqs, function(filename) {
-    sub(glob_pattern, "\\1", basename(filename), perl = T)
+    paste(args$run, sub(glob_pattern, "\\1", basename(filename), perl = T), sep = ".")
 })
-names(fastqs) <- sample.names
-samples <- data.frame(CCS = fastqs)
+
+# copy to a local directory regardless of original location, and pre-pend the
+# run name while we're at it
+demuxed_path <- file.path("demuxed")
+dir.create(demuxed_path, showWarnings = T)
+demuxed_filepaths <- file.path(
+    demuxed_path, paste(sample.names, "fastq.gz", sep = ".")
+    )
+file.copy(
+    fastqs, demuxed_filepaths,
+    overwrite = T, copy.mode = TRUE, copy.date = FALSE
+)
+cache_checksums(demuxed_filepaths, "samples")
+
+
+names(demuxed_filepaths) <- sample.names
+samples <- data.frame(CCS = demuxed_filepaths)
 
 trim_primers <- function(ins, outs) {
     F27 <- "AGRGTTYGATYMTGGCTCAG" # Pacbio primers given in DADA2 tutorials
@@ -113,12 +131,25 @@ trim_primers <- function(ins, outs) {
     # Remove primers. Discard reads without primers. Write these counts somewhere?
     prims <-
         dada2::removePrimers(
-        ins,
-        outs,
-        primer.fwd = F27,
-        primer.rev = dada2:::rc(R1492),
-        orient = TRUE
+            ins,
+            outs,
+            primer.fwd = F27,
+            primer.rev = dada2:::rc(R1492),
+            orient = TRUE
         )
+    
+    samples <- lapply(seq_along(ins), function(s) {
+        fastq <- basename(ins[s])
+        # filterAndTrim() returns a matrix with rows named by its fwd argument
+        trimmed_file <- if (prims[fastq, "reads.out"] == 0) NULL else outs[[s]]
+        ans <- list(
+            raw = ins[[s]],
+            trimmed = trimmed_file
+        )
+        
+        return(ans)
+    }) %>% setNames(sample.names)
+    run_meta(samples = samples)
 
     return(prims)
 }
@@ -232,6 +263,20 @@ trim_and_filter <- function(ins, outs) {
         verbose = TRUE
     )
     file.remove(quality_trimmed)
+
+    rownames(filter_in_out_counts) <- names(ins)
+    samples <- lapply(seq_along(ins), function(s) {
+        # filterAndTrim() returns a matrix with rows named by its fwd argument
+        filt_file <- if (filter_in_out_counts[names(ins)[s], "reads.out"] == 0) NULL else outs[[s]]
+        ans <- list(
+            trimmed = ins[[s]],
+            filtered = filt_file
+        )
+        
+        return(ans)
+    }) %>% setNames(sample.names)
+    run_meta(samples = samples)
+    
     return(filter_in_out_counts)
 }
 
@@ -261,9 +306,12 @@ denoise <- function(ins) {
     return(dada2::makeSequenceTable(dd))
 }
 
-
-collectStats <- function(in_files = list(), primer_trimmed_files = list(), filtered_files = list(),
-                         denoised_table = data.frame()) {
+collectStats <- function(
+    in_files = list(), 
+    primer_trimmed_files = list(), 
+    filtered_files = list(),
+    denoised_table = data.frame()
+    ) {
     cat("Collecting stats...\n")
 
     in_counts <- sapply(in_files, function(file_name) {
@@ -282,9 +330,9 @@ collectStats <- function(in_files = list(), primer_trimmed_files = list(), filte
 }
 
 tagcleanedpath <- file.path("tagcleaned")
-dir.create(tagcleanedpath, showWarnings = T)
-tcs <- file.path(tagcleanedpath, basename(fastqs))
-names(tcs) <- names(fastqs)
+dir.create(tagcleanedpath, showWarnings = TRUE)
+tcs <- file.path(tagcleanedpath, paste0(sample.names, "_trimmed.fastq.gz"))
+names(tcs) <- sample.names
 samples <- cbind(samples, primer_trimmed = tcs)
 targets <- !tcs %in% list.files(tagcleanedpath, full.names = T)
 # don't process repeats
@@ -294,11 +342,7 @@ primer_trim_output <- trim_primers(
 )
 
 filtpath <- file.path("filtered")
-tryCatch(dir.create(filtpath, showWarnings = TRUE),
-    warn = function(e) {
-        message(e)
-    }
-)
+dir.create(filtpath, showWarnings = TRUE)
 filtereds <- (paste0(sample.names, "_filt.fastq.gz"))
 filtereds_files <- file.path(filtpath, filtereds)
 names(filtereds_files) <- names(tcs)
@@ -306,8 +350,9 @@ samples <- cbind(samples, filtered = filtereds_files)
 targets <- !filtereds_files %in% list.files(filtpath, full.names = T)
 
 trim_and_filter_output <- trim_and_filter(
-  ins = samples$primer_trimmed[targets] %>% setNames(rownames(samples)[targets]),
-  outs = samples$filtered[targets]
+    ins = samples$primer_trimmed[targets] %>% 
+        setNames(rownames(samples)[targets]),
+    outs = samples$filtered[targets]
 )
 
 seq_tab_output <- "dada2_abundance_table.rds"
@@ -322,10 +367,16 @@ stats <- collectStats(
     denoised_table = seq_tab
 )
 colnames(stats) <- c("Input", "Adapter-trimmed", "Filtered", "Denoised")
-write.table(stats, "dada2_part1_stats.txt", quote = FALSE, append = FALSE, sep = , row.names = TRUE, col.names = TRUE)
+write.table(
+    stats, "dada2_part1_stats.txt",
+    quote = FALSE, append = FALSE, sep = , row.names = TRUE, col.names = TRUE
+)
 
 remove_chimeras <- function(args) {
-    bim2 <- dada2::isBimeraDenovo(seqtab, minFoldParentOverAbundance = 3.5, multithread = TRUE)
+    bim2 <- dada2::isBimeraDenovo(
+        seqtab,
+        minFoldParentOverAbundance = 3.5, multithread = TRUE
+    )
     table(bim2) # FALSE: 1794; TRUE: 1290
     sum(seqtab[, bim2]) / sum(seqtab) # 0.04069179
     # Lots of ASVs labeled as bimeras, but only make up 4% of reads

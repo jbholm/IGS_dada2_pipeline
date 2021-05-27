@@ -1,7 +1,7 @@
 #! /local/projects-t3/MSL/pipelines/packages/miniconda3/envs/interactive/bin/python3
 
 import argparse, sys, os, glob, re, shlex, json, shutil, gzip, getpass, stat, tempfile
-from pathlib import Path
+from pathlib import Path # Use of Paths as os.pathlike objects requires Python3.6
 import PyInquirer  # MUST USE PYTHON3.6 FOUND IN interactive TO USE THIS
 import examples
 from subprocess import run, Popen, PIPE
@@ -53,12 +53,17 @@ def main(args):
             upload_to_synology(args.project)
 
         elif choice == "D":
-            run_paths = get_runs(args.project)
+            ans = get_runs(args.project)
+            if ans["status"]:
+                run_paths = ans["runs"]
+            else:
+                continue
+
             if not organize_reads(args.project, run_paths): continue
             if not organize_trimmed(args.project, run_paths): continue
             if not organize_counts_by_asv(args.project): continue
             if not organize_counts_by_taxon(args.project): continue
-            if not organize_logs(args.project): continue
+            if not organize_logs(args.project, run_paths): continue
             if not organize_map(args.project): continue
             if not organize_taxonomies_final(args.project): continue
             if not organize_taxonomies_intermediates(args.project): continue
@@ -79,6 +84,11 @@ def main(args):
 
     return
 
+
+def ask_continue():
+    if not confirm("Continue?"):
+        return False
+    return True
 
 def ask_and_move(dirpath, filepaths):
     if len(filepaths) > 0:
@@ -190,7 +200,9 @@ def share_unix_perms(path):
                     path.chmod(st.st_mode | int(usr_perms / user_to_group_divisor))
                 except PermissionError as e:
                     print(f"Unable to expand permissions to group for: {str(path)}\n{str(e)}")
-                    return False 
+                    # don't ask if the user wants to "continue". this is the last step, 
+                    # so the user's choice doesn't make a difference
+                    return False
             else:
                 print(f"Cannot process {str(path)} without ownership\n")
                 return False 
@@ -504,6 +516,10 @@ def confirm(prompt):
 
 
 def get_runs(proj_path):
+    ans = {
+        "status": True,
+        "runs": []
+    }
     subdirs = [x for x in Path(proj_path).iterdir() if x.is_dir()]
 
     if len(subdirs) == 0:
@@ -512,6 +528,7 @@ def get_runs(proj_path):
         else:
             return ()
     choices = []
+
     for subdir in subdirs:
         choice = {"name": str(subdir.name), "value": subdir}
         if str(subdir) != "REPORT":
@@ -526,7 +543,16 @@ def get_runs(proj_path):
         {"type": "checkbox", "name": "chooser", "message": "", "choices": choices}
     ]
 
-    return inquire(questions, prompt)
+    response = inquire(questions, prompt)
+    if len(response) == 0:
+        if confirm("You selected 0 runs. Continue?"):
+            pass
+        else:
+            ans["status"] = False
+    else:
+        ans["runs"] = response
+
+    return ans
 
 def read_metadata(run_path):
     with (run_path / Path(".meta.json")).open("r") as fh:
@@ -541,117 +567,192 @@ def read_metadata(run_path):
     return run_info
 
 def organize_reads(proj_path, run_paths):
-    organized_dir = "FASTQ"
+    try:
+        organized_dir = "FASTQ"
+        # if the paths are recorded in the project metadata, here's how to organize them
+        # (the exceptions have been tested yet)
+        # filepaths = []
+        # any_files = False
+        # proj_meta = read_metadata()
 
-    filepaths = []
-    any_files = False
-    for run_path in run_paths:
-        ill_fwd_dir = proj_path / run_path / Path("fwdSplit")
-        ill_rev_dir = proj_path / run_path / Path("revSplit")
+        # if not make_for_contents(organized_dir, any_files):
+        #     return False
 
-        # if ill_fwd_dir.is_dir():
-        #     filepaths += glob.glob(str(proj_path / run_path / Path('fwdSplit/split_by_sample_out/*.fastq')))
-        # if ill_rev_dir.is_dir():
-        #     filepaths += glob.glob(str(proj_path / run_path / Path('revSplit/split_by_sample_out/*.fastq')))
+        # count = 0
+        # problem_samples = 0
+        # for sample, sample_files in proj_meta["samples"].items():
+        #     # if type(sample) is dict:
 
-        # if not ill_fwd_dir.is_dir() and not ill_rev_dir.is_dir():
-        try:
-            run_info = read_metadata(proj_path / run_path)
-        except Exception as e:
-            print(str(e))
-            print("WARNING: Can't open run metadata from " + run_path.name + ". Unable to locate raw reads")
-            return True # NOT A SHOWSTOPPER
+        #     # 1. sample_files doen't have raw_fwd or raw_rev -> bad metadata: tell user and continue
+        #     # 2. shutil.copy2 fails with file permission error -> assume nothing else to do, stop and tell user why
+        #     if type(sample_files) is not dict:
+        #         print(f"WARNING: malformed project metadata for {sample}. Unable to copy the raw files to ./FASTQ/.")
+        #         problem_samples += 1
+        #         continue
+            
+        #     problem = False
+        #     for filekey in ["raw_fwd", "raw_rev"]:
+        #         try:
+        #             src = sample_files[filekey]
+        #         except KeyError:
+        #             print(f"WARNING: project metadata doesn't contain filepath for {sample} raw file: {filekey}. Unable to copy the file to ./FASTQ/.")
+        #             problem = True
+        #             continue            
 
-        try:
-            filepaths += [
-                os.path.join(run_path, rel_path) for rel_path in run_info['checkpoints']["samples"].keys()
-            ]
-        except KeyError:
-            print("WARNING: Incompatible with the pipeline version used on this run. Cannot find raw read files.")
-            return True # not a show-stopper
+        #         shutil.copy2(src, Path(organized_dir) / Path(sample + ".fastq"))
+        #         count += 1
 
-        if len(filepaths) > 0:
-            if not make_for_contents(organized_dir, any_files): return False
-            any_files = True
-            subdir_destination = str(Path(organized_dir) / run_path.name)
-            if not make_for_contents(subdir_destination): return False
-            print(f"Copying {len(filepaths)} raw read files to {subdir_destination}.")
-            for filepath in filepaths:
-                shutil.copy2(filepath, Path(subdir_destination) / Path(filepath).name)
+        #     if problem:
+        #         problem_samples += 1
+        # for f in Path(organized_dir).iterdir():
+        #     if f.suffix != ".gz":
+        #         gz(str(f))
 
-            # gzip all if needed
-            for f in Path(subdir_destination).iterdir():
-                if f.suffix != ".gz":
-                    gz(str(f))
+        # if count == 0:
+        #     print(f"Removing {organized_dir} (no demuxed reads found)")
+        #     try:
+        #         os.rmdir(organized_dir)
+        #     except Exception as e:
+        #         print(str(e))
 
-    if not any_files:
-        print(f"Skipping creation of {organized_dir} (no demuxed reads found)")
+        # elif count > 0:
+        #     print(f"Moved {count} demuxed reads to ./{organized_dir}/")
+
+        # if problem_samples > 0:
+        #     print(f"Unable to read metadata and relocate raw reads for {problem_samples} samples. Continuing.")
+        
+        filepaths = []
+        any_files = False
+        for run_path in run_paths:
+            ill_fwd_dir = proj_path / run_path / Path("fwdSplit")
+            ill_rev_dir = proj_path / run_path / Path("revSplit")
+
+            # if ill_fwd_dir.is_dir():
+            #     filepaths += glob.glob(str(proj_path / run_path / Path('fwdSplit/split_by_sample_out/*.fastq')))
+            # if ill_rev_dir.is_dir():
+            #     filepaths += glob.glob(str(proj_path / run_path / Path('revSplit/split_by_sample_out/*.fastq')))
+
+            # if not ill_fwd_dir.is_dir() and not ill_rev_dir.is_dir():
+            try:
+                run_info = read_metadata(proj_path / run_path)
+            except Exception as e:
+                print(str(e))
+                print("WARNING: Can't open run metadata from " + run_path.name + ". Unable to locate raw reads")
+                return True # NOT A SHOWSTOPPER
+
+            try:
+                filepaths += [
+                    os.path.join(run_path, rel_path) for rel_path in run_info['checkpoints']["samples"].keys()
+                ]
+            except KeyError:
+                print("WARNING: Incompatible with the pipeline version used on this run. Cannot find raw read files.")
+                return True # not a show-stopper
+
+            if len(filepaths) > 0:
+                make_for_contents(organized_dir, any_files)
+                any_files = True
+                subdir_destination = str(Path(organized_dir) / run_path.name)
+                make_for_contents(subdir_destination)
+                print(f"Copying {len(filepaths)} raw read files to {subdir_destination}.")
+                for filepath in filepaths:
+                    shutil.copy2(filepath, Path(subdir_destination) / Path(filepath).name)
+
+                # gzip all if needed
+                for f in Path(subdir_destination).iterdir():
+                    if f.suffix != ".gz":
+                        gz(str(f))
+                            
+
+        if not any_files:
+            print(f"Skipping creation of {organized_dir} (no demuxed reads found)")
+    except Exception as e:
+        print(str(e))
+        if not ask_continue():
+            return False
 
     return True
 
 
 def organize_trimmed(proj_path, run_paths):
-    organized_dir = "FASTQ_TRIMMED"
+    try:
+        organized_dir = "FASTQ_TRIMMED"
 
-    filepaths = []
-    any_files = False
-    for run_path in run_paths:
-        filepaths += glob.glob(str(proj_path / run_path / Path("*_tc.fastq*")))
-        filepaths += glob.glob(
-            str(proj_path / run_path / Path("tagcleaned") / Path("*.fastq*"))
-        )
-
-        if len(filepaths) > 0:
-            if not make_for_contents(organized_dir, any_files): return False
-            any_files = True
-            subdir_destination = str(Path(organized_dir) / run_path.name)
-            if not make_for_contents(subdir_destination): return False
-            print(
-                f"Copying {len(filepaths)} adapter-trimmed read files to {subdir_destination}."
+        filepaths = []
+        any_files = False
+        for run_path in run_paths:
+            filepaths += glob.glob(str(proj_path / run_path / Path("*_tc.fastq*")))
+            filepaths += glob.glob(
+                str(proj_path / run_path / Path("tagcleaned") / Path("*.fastq*"))
             )
-            for filepath in filepaths:
-                shutil.copy2(filepath, Path(subdir_destination) / Path(filepath).name)
 
-            for f in Path(subdir_destination).iterdir():  # gzip if necessary
-                if f.suffix != ".gz":
-                    gz(str(f))
+            if len(filepaths) > 0:
+                make_for_contents(organized_dir, any_files)
+                any_files = True
+                subdir_destination = str(Path(organized_dir) / run_path.name)
+                make_for_contents(subdir_destination)
+                print(
+                    f"Copying {len(filepaths)} adapter-trimmed read files to {subdir_destination}."
+                )
+                for filepath in filepaths:
+                    shutil.copy2(filepath, Path(subdir_destination) / Path(filepath).name)
 
-    if not any_files:
-        print(f"Skipping creation of {organized_dir} (no adapter-trimmed reads found)")
+                for f in Path(subdir_destination).iterdir():  # gzip if necessary
+                    if f.suffix != ".gz":
+                        gz(str(f))
 
+        if not any_files:
+            print(f"Skipping creation of {organized_dir} (no adapter-trimmed reads found)")
+
+    except Exception as e:
+        print(str(e))
+        if not ask_continue():
+            return False
+    
     return True
 
 
 def organize_counts_by_asv(proj_path):
-    organized_dir = str(pathfinder['counts-by-ASV'])
+    try:
+        organized_dir = str(pathfinder['counts-by-ASV'])
 
-    filepaths = glob.glob(str(proj_path / Path("*all_runs_dada2_abundance_table.rds")))
-    filepaths += glob.glob(str(proj_path / Path("*all_runs_dada2_abundance_table.csv")))
-    filepaths += glob.glob(str(proj_path / Path("*asvs+taxa.csv")))
+        filepaths = glob.glob(str(proj_path / Path("*all_runs_dada2_abundance_table.rds")))
+        filepaths += glob.glob(str(proj_path / Path("*all_runs_dada2_abundance_table.csv")))
+        filepaths += glob.glob(str(proj_path / Path("*asvs+taxa.csv")))
 
-    if len(filepaths) > 0:
-        if not make_for_contents(organized_dir): return False
-        print(f"Moving {len(filepaths)} sample-ASV count tables to {organized_dir}/.")
-        for filepath in filepaths:
-            Path(filepath).rename(Path(organized_dir) / Path(filepath).name)
-    else:
-        print(f"Skipping creation of {organized_dir} (no count-by-ASV tables found)")
+        if len(filepaths) > 0:
+            make_for_contents(organized_dir)
+            print(f"Moving {len(filepaths)} sample-ASV count tables to {organized_dir}/.")
+            for filepath in filepaths:
+                Path(filepath).rename(Path(organized_dir) / Path(filepath).name)
+        else:
+            print(f"Skipping creation of {organized_dir} (no count-by-ASV tables found)")
+
+    except Exception as e:
+        print(str(e))
+        if not ask_continue():
+            return False
 
     return True
 
 
 def organize_counts_by_taxon(proj_path):
-    organized_dir = str(pathfinder['counts-by-taxon'])
+    try:
+        organized_dir = str(pathfinder['counts-by-taxon'])
 
-    filepaths = glob.glob(str(proj_path / Path("*taxa-merged.csv")))
+        filepaths = glob.glob(str(proj_path / Path("*taxa-merged.csv")))
 
-    if len(filepaths) > 0:
-        if not make_for_contents(organized_dir): return False
-        print(f"Moving {len(filepaths)} sample-taxon count tables to {organized_dir}/.")
-        for filepath in filepaths:
-            Path(filepath).rename(Path(organized_dir) / Path(filepath).name)
-    else:
-        print(f"Skipping creation of {organized_dir} (no count-by-taxon tables found)")
+        if len(filepaths) > 0:
+            make_for_contents(organized_dir)
+            print(f"Moving {len(filepaths)} sample-taxon count tables to {organized_dir}/.")
+            for filepath in filepaths:
+                Path(filepath).rename(Path(organized_dir) / Path(filepath).name)
+        else:
+            print(f"Skipping creation of {organized_dir} (no count-by-taxon tables found)")
+
+    except Exception as e:
+        print(str(e))
+        if not ask_continue():
+            return False
 
     return True
 
@@ -664,112 +765,132 @@ def make_for_contents(dir, silent=False):
         if not silent:
             print(f"Directory ./{dir}/ already exists")
     except Exception as e:
+        raise e
+
+def organize_logs(proj_path, run_paths):
+    try:
+        organized_dir = "LOGS"
+
+        # Part 1 logs found in the run directories. Just copy.
+
+        filepaths = glob.glob(str(proj_path / Path("*pipeline_log.txt")))
+        for run in run_paths:
+            filepaths += glob.glob(str(proj_path / run / Path("*pipeline_log.txt")))
+
+        if len(filepaths) > 0:
+            make_for_contents(organized_dir)
+            print(f"Moving {len(filepaths)} log files to LOGS/.")
+
+            for filepath in filepaths:
+                shutil.copy(Path(filepath), Path(organized_dir) / Path(filepath).name)
+        else:
+            print(f"Skipping creation of {organized_dir} (no logs found)")
+
+    except Exception as e:
         print(str(e))
-        return False
-
+        if not ask_continue():
+            return False
+    
     return True
-
-
-def organize_logs(proj_path):
-    organized_dir = "LOGS"
-
-    # Part 1 logs found in the run directories. Just copy.
-
-    filepaths = glob.glob(str(proj_path / Path("*pipeline_log.txt")))
-    filepaths += glob.glob(str(proj_path / Path("*/*pipeline_log.txt")))
-
-    if len(filepaths) > 0:
-        if not make_for_contents(organized_dir): return
-        print(f"Moving {len(filepaths)} log files to LOGS/.")
-
-        for filepath in filepaths:
-            Path(filepath).rename(Path(organized_dir) / Path(filepath).name)
-    else:
-        print(f"Skipping creation of {organized_dir} (no logs found)")
-
-    return True
-
 
 def organize_map(proj_path):
-    organized_dir = str(Path(pathfinder["map"]).resolve().parent)
+    try:
+        organized_dir = str(Path(pathfinder["map"]).resolve().parent.relative_to(proj_path))
 
-    filepaths = glob.glob(str(proj_path / "project_map.txt"))
+        filepaths = glob.glob(str(proj_path / "project_map.txt"))
 
-    if len(filepaths) > 0:
-        if not make_for_contents(organized_dir): return
-        print(f"Moving {len(filepaths)} mapping file(s) to MAP/.")
+        if len(filepaths) > 0:
+            make_for_contents(organized_dir)
+            print(f"Moving {len(filepaths)} mapping file(s) to ./{organized_dir}/.")
 
-        for filepath in filepaths:
-            Path(filepath).rename(pathfinder["map"])
-    else:
-        print(f"Skipping creation of {organized_dir} (no maps found)")
+            for filepath in filepaths:
+                Path(filepath).rename(pathfinder["map"])
+        else:
+            print(f"Skipping creation of ./{organized_dir}/ (no maps found)")
 
+    except Exception as e:
+        print(str(e))
+        if not ask_continue():
+            return False
+    
     return True
 
 
 def organize_taxonomies_final(proj_path):
-    organized_dir = str(pathfinder['final_taxonomies'])
+    try:
+        organized_dir = str(pathfinder['final_taxonomies'])
 
-    filepaths = glob.glob(str(proj_path / "cmb_tx.txt"))
+        filepaths = glob.glob(str(proj_path / "cmb_tx.txt"))
 
-    if len(filepaths) > 0:
-        if not make_for_contents(organized_dir): return
-        print(f"Moving cmb_tx.txt to {organized_dir}/.")
+        if len(filepaths) > 0:
+            make_for_contents(organized_dir)
+            print(f"Moving cmb_tx.txt to {organized_dir}/.")
 
-        for filepath in filepaths:
-            Path(filepath).rename(Path(organized_dir) / Path("final_taxonomy.txt"))
-    else:
-        print(f"Skipping creation of {organized_dir} (no final taxonomy files found)")
+            for filepath in filepaths:
+                Path(filepath).rename(Path(organized_dir) / Path("final_taxonomy.txt"))
+        else:
+            print(f"Skipping creation of {organized_dir} (no final taxonomy files found)")
 
+    except Exception as e:
+        print(str(e))
+        if not ask_continue():
+            return False
     return True
 
 
 def organize_taxonomies_intermediates(proj_path):
-    organized_dir = str(pathfinder['intermediate_taxonomies'])
-    any_files = False
+    try:
+        organized_dir = str(pathfinder['intermediate_taxonomies'])
+        any_files = False
 
-    filepaths = glob.glob(str(proj_path / Path("MC_order7_results.txt")))
-    if len(filepaths) > 0:
-        any_files = True
-        if not make_for_contents(organized_dir): return
-        print(f"Moving MC_order7_results.txt to {organized_dir}/PECAN_raw.txt.")
+        filepaths = glob.glob(str(proj_path / Path("MC_order7_results.txt")))
+        if len(filepaths) > 0:
+            any_files = True
+            make_for_contents(organized_dir)
+            print(f"Moving MC_order7_results.txt to {organized_dir}/PECAN_raw.txt.")
 
-        for filepath in filepaths:
-            Path(filepath).rename(Path(organized_dir) / Path("PECAN_raw.txt"))
+            for filepath in filepaths:
+                Path(filepath).rename(Path(organized_dir) / Path("PECAN_raw.txt"))
 
-    filepaths = glob.glob(str(proj_path / Path("*SILVA*.classification.csv")))
-    filepaths += glob.glob(str(proj_path / Path("*HOMD*.classification.csv")))
-    filepaths += glob.glob(str(proj_path / Path("*UNITE*.classification.csv")))
+        filepaths = glob.glob(str(proj_path / Path("*SILVA*.classification.csv")))
+        filepaths += glob.glob(str(proj_path / Path("*HOMD*.classification.csv")))
+        filepaths += glob.glob(str(proj_path / Path("*UNITE*.classification.csv")))
 
-    if len(filepaths) > 0:
-        any_files = True
-        if not make_for_contents(organized_dir, any_files): return
-        print(f"Moving {len(filepaths)} raw RDP classifier files to {organized_dir}/")
+        if len(filepaths) > 0:
+            any_files = True
+            make_for_contents(organized_dir, any_files)
+            print(f"Moving {len(filepaths)} raw RDP classifier files to {organized_dir}/")
 
-        for filepath in filepaths:
-            newname = re.sub(
-                r"^.*?([^_]*)\.classification\.csv$", r"\1_raw.csv", Path(filepath).name
+            for filepath in filepaths:
+                newname = re.sub(
+                    r"^.*?([^_]*)\.classification\.csv$", r"\1_raw.csv", Path(filepath).name
+                )
+                Path(filepath).rename(
+                    Path(organized_dir) / Path(newname)
+                )
+
+        filepaths = glob.glob(str(proj_path / Path("silva_condensed.txt")))
+        filepaths += glob.glob(str(proj_path / Path("homd_condensed.txt")))
+        filepaths += glob.glob(str(proj_path / Path("unite_condensed.txt")))
+        if len(filepaths) > 0:
+            make_for_contents(organized_dir, any_files)
+            print(f"Moving {len(filepaths)} condensed taxonomy file to {organized_dir}/.")
+
+            for filepath in filepaths:
+                match = re.match(r"^([^_]*)_condensed\.txt$", Path(filepath).name)
+                tax_name = match.group(1)
+                Path(filepath).rename(Path(organized_dir) / Path(f"{tax_name.upper()}.txt"))
+
+        if not any_files:
+            print(
+                f"Skipping creation of {organized_dir} (no intermediate taxonomy files found)"
             )
-            Path(filepath).rename(
-                Path(organized_dir) / Path(newname)
-            )
 
-    filepaths = glob.glob(str(proj_path / Path("silva_condensed.txt")))
-    filepaths += glob.glob(str(proj_path / Path("homd_condensed.txt")))
-    filepaths += glob.glob(str(proj_path / Path("unite_condensed.txt")))
-    if len(filepaths) > 0:
-        if not make_for_contents(organized_dir, any_files): return
-        print(f"Moving {len(filepaths)} condensed taxonomy file to {organized_dir}/.")
-
-        for filepath in filepaths:
-            match = re.match(r"^([^_]*)_condensed\.txt$", Path(filepath).name)
-            tax_name = match.group(1)
-            Path(filepath).rename(Path(organized_dir) / Path(f"{tax_name.upper()}.txt"))
-
-    if not any_files:
-        print(
-            f"Skipping creation of {organized_dir} (no intermediate taxonomy files found)"
-        )
+    except Exception as e:
+        print(str(e))
+        if not ask_continue():
+            return False
+    
     return True
 
 def add_index():
@@ -778,7 +899,8 @@ def add_index():
             outfile.write(index_contents)
     except Exception as e:
         print(str(e))
-        return False
+        if not ask_continue():
+            return False
     return True
 
 def add_references(proj_path, run_paths):
@@ -829,66 +951,76 @@ def add_references(proj_path, run_paths):
 
     except Exception as e:
         print(e)
-        return False
+        if not ask_continue():
+            return False
     return True
 
 def remove_trash(proj_path, run_paths):
-    trash_files = []
-    trash_dirs = [str(run_path) for run_path in run_paths]
+    try:
+        trash_files = []
+        trash_dirs = [str(run_path) for run_path in run_paths]
 
-    for entry in os.scandir("."):
-        if (
-            entry.name.startswith(".")
-            or entry.name.startswith("rTmp.")
-            or entry.name.startswith("dump.rda")
-            or re.match(".*\.[eo][0-9]+$", entry.name)
-        ) and entry.is_file():
-            trash_files.append(entry.name)
+        for entry in os.scandir("."):
+            if (
+                entry.name.startswith(".") and entry.name != ".meta.json"
+                or entry.name.startswith("rTmp.")
+                or entry.name.startswith("dump.rda")
+                or re.match(".*\.[eo][0-9]+$", entry.name)
+            ) and entry.is_file():
+                trash_files.append(entry.name)
 
-    if len(trash_files) > 0 or len(trash_dirs) > 0:
-        print()
-        print("\n".join(trash_files))
-        print("\n".join(trash_dirs))
+        if len(trash_files) > 0 or len(trash_dirs) > 0:
+            print()
+            print("\n".join(trash_files))
+            print("\n".join(trash_dirs))
 
-        questions = [
-            {
-                "type": "list",
-                "name": "chooser",
-                "message": "The above files/directories will be deleted. Ensure that all important result files have been copied out.",
-                "choices": ["Stop", "Delete all"],
-            }
-        ]
-        if not inquire(questions) == "Delete all":
+            questions = [
+                {
+                    "type": "list",
+                    "name": "chooser",
+                    "message": "The above files/directories will be deleted. Ensure that all important result files have been copied out.",
+                    "choices": ["Keep", "Delete all"],
+                }
+            ]
+            if not inquire(questions) == "Delete all":
+                return True
+            
+            part2_danger = not (pathfinder['counts-by-taxon'].is_dir() and pathfinder['counts-by-ASV'].is_dir() and pathfinder['intermediate_taxonomies'].is_dir() and pathfinder['final_taxonomies'].is_dir())
+            confirm_msg = "Are you sure?"
+            if part2_danger:
+                confirm_msg = "Looks like Part 2 hasn't been run!  " + confirm_msg
+            questions = [
+                {
+                    "type": "list",
+                    "name": "chooser",
+                    "message": confirm_msg,
+                    "choices": ["Keep", "Delete all"],
+                }
+            ]
+            if not inquire(questions) == "Delete all":
+                return True
+            for trash_dir in trash_dirs:
+                shutil.rmtree(trash_dir)
+            for trash_file in trash_files:
+                os.unlink(trash_file)
+
+        return True
+    except Exception as e:
+        print(str(e))
+        if not ask_continue():
             return False
-        
-        part2_danger = not (pathfinder['counts-by-taxon'].is_dir() and pathfinder['counts-by-ASV'].is_dir() and pathfinder['intermediate_taxonomies'].is_dir() and pathfinder['final_taxonomies'].is_dir())
-        confirm_msg = "Are you sure?"
-        if part2_danger:
-            confirm_msg = "Looks like Part 2 hasn't been run!  " + confirm_msg
-        questions = [
-            {
-                "type": "list",
-                "name": "chooser",
-                "message": confirm_msg,
-                "choices": ["Stop", "Delete all"],
-            }
-        ]
-        if not inquire(questions) == "Delete all":
-            return False
-        for trash_dir in trash_dirs:
-            shutil.rmtree(trash_dir)
-        for trash_file in trash_files:
-            os.unlink(trash_file)
 
     return True
 
+# def share_project(proj_path):
+#     try:
+#         run(["sharedir", "./"])
 
-def share_project(proj_path):
-
-    run(["sharedir", "./"])
-
-    print("Read and write permissions granted for group.")
-    return
+#         print("Read and write permissions granted for group.")
+#         return
+#     except Exception as e:
+#         print(str(e))
+#         return False
 
 index_contents = """
 *_all_runs_dada2_ASV.fasta: Denoised ASVs (Amplicon Sequence Variants).
