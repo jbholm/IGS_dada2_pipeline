@@ -55,19 +55,20 @@
   Provide the project ID
 
 =item B<--pacbio> 
-  Sets the B<--tax> default to SILVA138 and uses PacBio-specific chimera removal
+  Sets the B<--tax> default to SILVA138forPB and uses PacBio-specific chimera removal
   parameters.
 
-=item B<--tax, -t> {PECAN-SILVA, SILVA138, PECAN, HOMD, UNITE}
+=item B<--tax, -t> {PECAN-SILVA, SILVA, SILVA138forPB, PECAN, HOMD, UNITE}
   Override the default taxonomic reference(s) used for classifying ASVs. For all 
     references besides PECAN and SPECIES, assignment is done by DADA2's implementation of
     the RDP classifier.
-  PECAN-SILVA - Initially assigns ASVs by SILVAv138. Any ASVs assigned to the 
+  PECAN-SILVA - Initially assigns ASVs by SILVAv132. Any ASVs assigned to the 
     genuses Lactobacillus, Gardnerella,
     Prevotella, Sneathia, Atopobium, Shuttleworthia, or Saccharibacteria are
     classified by PECAN instead. PECAN-only abundance tables are also produced.
   PECAN - PECAN is the only classifier run.
-  SILVA138 - Assignments no deeper than genus level by SILVAv138.
+  SILVA - Assignments from SILVA132 down to genus level.
+  SILVA138forPB - Assignments from the SILVA138 database down to species level. Use for PacBio (full-length) reads only.
   HOMD - Assigns from the Human Oral Microbiome Database, usually to species level.
   UNITE - Assigns from the UNITE database, usually to species level. Appropriate only for the fungal ITS region.
 
@@ -291,7 +292,7 @@ my $pecan;
     {
         if ($pacbio)
         {
-            @strategies = ("SILVA");
+            @strategies = ("SILVA138forPB");
         } elsif ($region eq "V3V4")
         {
             @strategies = ("PECAN-SILVA");
@@ -306,19 +307,20 @@ my $pecan;
     }
 
     my $ps   = grep (/^PECAN-SILVA$/, @strategies);
-    my $s138 = grep(/^SILVA$/, @strategies);
+    my $s    = grep (/^SILVA$/, @strategies);
+    my $s138 = grep(/^SILVA138forPB$/, @strategies);
     my $p    = grep (/^PECAN$/, @strategies);
     my $h    = grep(/^HOMD$/, @strategies);
     my $u    = grep(/^UNITE$/, @strategies);
-    if ($ps + $s138 + $p + $h + $u == scalar @strategies) { }
+    if ($ps + $s + $s138 + $p + $h + $u == scalar @strategies) { }
     else
     {
         die "Illegal taxonomic reference. Legal values for --tax|-t are "
-          . "PECAN-SILVA, SILVA138, PECAN, HOMD, and UNITE.";
+          . "PECAN-SILVA, SILVA, SILVA138forPB, PECAN, HOMD, and UNITE.";
     }
 
 # Which taxonomies need to be assigned from using DADA2? Which need to be assigned by SPINGO?
-    %taxonomy_flags = (SILVA138 => 0, HOMD => 0, UNITE => 0, PECAN => 0);
+    %taxonomy_flags = (SILVA138 => 0, SILVA => 0, HOMD => 0, UNITE => 0, PECAN => 0);
 
     if ($ps)
     {
@@ -332,7 +334,11 @@ my $pecan;
             print $logTee "Skipping CST assignment.\n";
         }
         $taxonomy_flags{PECAN}    = 1;
-        $taxonomy_flags{SILVA138} = 1;
+        $taxonomy_flags{SILVA} = 1;
+    }
+    if ($s) {
+        print $logTee "Using SILVA-only assignment scheme.\n";
+        $taxonomy_flags{SILVA} = 1;
     }
     if ($p)
     {
@@ -349,8 +355,8 @@ my $pecan;
     }
     if ($s138)
     {
-        print $logTee "Using SILVA_v138-only assignment scheme.\n";
-        $taxonomy_flags{SILVA138} = 1;
+        print $logTee "Using SILVA_v138-for-PacBio assignment scheme.\n";
+        $taxonomy_flags{SILVA138forPB} = 1;
     }
     if (grep(/^HOMD$/, @strategies))
     {
@@ -368,7 +374,13 @@ print $logTee "\n";
 ####################################################################
 ##                               MAIN
 ####################################################################
+$logTee->print("Run(s):\n");
+map {$logTee->print("$_\n")} @runs;
+$logTee->print("\n");
+
+print $logTee "---Copying map files to project\n";
 my $run_info_hash = combine_run_metadata(@runs);
+copy_maps_to_project($run_info_hash, "project_map.txt");
 
 my @classifs = ();
 my $projabund;
@@ -378,14 +390,12 @@ my $projabund;
 # execute_and_log( $cmd, *STDOUT, $dryRun, "" );
 my $cmd;
 
-copy_maps_to_project($run_info_hash, "project_map.txt");
 
 ##loop over array to copy the file to the main current working directory
 ## using the array string to also add a name
 print $logTee "---Combining "
   . scalar(@runs)
   . " abundance table(s) and removing bimeras.\n";
-print $logTee "Run(s):\n";
 
 my ($abundRds, $abund, $stats, $fasta) = (
                                           "all_runs_dada2_abundance_table.rds",
@@ -424,13 +434,13 @@ my @full_classif_csvs;
 my @two_col_classifs;
 
 my @dada2_taxonomy_list;
-foreach ("SILVA138", "SILVA-PECAN", "UNITE", "HOMD")
+foreach ("SILVA138forPB", "SILVA", "SILVA-PECAN", "UNITE", "HOMD")
 {
     if ($taxonomy_flags{$_})
     {
         if ($_ eq "SILVA_PECAN")
         {
-            push @dada2_taxonomy_list, "SILVA138";
+            push @dada2_taxonomy_list, "SILVA";
         } else
         {
             push @dada2_taxonomy_list, $_;
@@ -441,13 +451,14 @@ if (scalar @dada2_taxonomy_list > 0)
 {
     my @output =
       map {"$project" . "_$_.classification.csv"} @dada2_taxonomy_list;
+    my @dada2Output;
     if (List::Util::any {!-e $_} @output)
     {
         print $logTee
-          "Using DADA2's RDP implementation to classify amplicon sequence variants (ASVs) with taxonomies:\n";
+          "Using DADA2's RDP Classifier implementation to classify amplicon sequence variants (ASVs) with taxonomies:\n";
         print $logTee join(",", @dada2_taxonomy_list) . "\n";
 
-        my @dada2Output =
+        @dada2Output =
           dada2_classify($fasta, \@dada2_taxonomy_list);    # assignment
 
         ### @dada2Output now has every file that needs to be renamed
@@ -460,7 +471,7 @@ if (scalar @dada2_taxonomy_list > 0)
         print $logTee join(",", @dada2_taxonomy_list) . "\n";
         print $logTee "Skipping.\n";
     }
-    push(@full_classif_csvs, @output);
+    push(@full_classif_csvs, @dada2Output);
 
 }
 
@@ -506,10 +517,15 @@ foreach (@full_classif_csvs)
  # formats from the previous step. We reply on the filenames to tell us what the
  # file format is, then take the appropriate action.
     my $db;
-    if ($_ =~ /SILVA138/)
+    if ($_ =~ /SILVA138forPB/)
     {
-        $db  = "SILVA138";
+        $db  = "SILVA138forPB";
         $cmd = "$scriptsDir/combine_tx_for_ASV.pl -s $_ -c $abund $vopt";
+    } elsif ($_ =~ /SILVA\./)
+    {
+        $db = "SILVA";
+        $cmd =
+          "$scriptsDir/combine_tx_for_ASV.pl --s $_ -c $abund $vopt";
     } elsif ($_ =~ /HOMD/)
     {
         $db = "HOMD";
@@ -577,7 +593,7 @@ if (grep (/^PECAN-SILVA$/, @strategies))
     my $silvaFile = "";
     foreach (@full_classif_csvs)
     {
-        if ($_ =~ /SILVA138/)
+        if ($_ =~ /SILVA\./)
         {
             $silvaFile = $_;
         }
