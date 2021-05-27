@@ -540,7 +540,7 @@ if (!-e $stdout_log)
 }
 
 my $metadata = project_metadata();
-$metadata = project_metadata(params => {"platform" => "ILLUMINA"});
+$metadata = project_metadata(metadata => {"params" => {"platform" => "ILLUMINA"}});
 
 my $qiime =
   "$global_config{wd}/$project" . "_" . $run . "_" . "qiime_config.txt";
@@ -644,7 +644,7 @@ if (   !@dbg
               "validate_mapping_file.py terminated but did not signal success. Normally a success message is printed in its error file.";
         }
         File::Copy::move($localMap . "_corrected.txt", $localMap);
-        project_metadata(map => {"file" => $localMap});
+        project_metadata(metadata => {"map" => {"file" => $localMap}});
 
         ###### BEGIN EVALUATION OF SAMPLES VIA MAPPING FILE ###########
         ###############################################################
@@ -1201,7 +1201,7 @@ sub demux
         {
             cacheChecksums([$rForSeqsFq, $rRevSeqsFq], "library");
         }
-        project_metadata(map => {"file" => $localMap});
+        project_metadata(metadata => {"map" => {"file" => $localMap}});
 
     } else
     {
@@ -1261,9 +1261,9 @@ if (!@dbg || grep(/^splitsamples$/, @dbg))
         while (!(-e $rForSeqsFq) || !(-e $rRevSeqsFq)) {sleep 1;}
 
         push @cmds,
-          "qsub -N $step3 -cwd -b y -l mem_free=4G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $rForSeqsFq --file_type fastq -o $fwdSampleDir";
+          "qsub -N $step3 -cwd -b y -l mem_free=5G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $rForSeqsFq --file_type fastq -o $fwdSampleDir";
         push @cmds,
-          "qsub -N $step3 -cwd -b y -l mem_free=4G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $rRevSeqsFq --file_type fastq -o $revSampleDir";
+          "qsub -N $step3 -cwd -b y -l mem_free=5G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $rRevSeqsFq --file_type fastq -o $revSampleDir";
         execute_and_log(@cmds, $logTee, $dryRun,
                      "Splitting $project seqs.fastq " . "files by sample ID\n");
 
@@ -1359,6 +1359,28 @@ if (!@dbg || grep(/^splitsamples$/, @dbg))
                 }
             }
             check_error_log($error_log, $step3);
+        }
+
+        # Append _R1 or _R2 to each filename
+        {
+            $logTee->print(
+                      "Appending _R1 or _R2 to each demuxed FASTQ filename.\n");
+            foreach my $oldname (@fwdOutput)
+            {
+                my ($name, $path, $suffix) =
+                  File::Basename::fileparse($oldname, ".fastq");
+                my $newname = catfile($path, "${name}_R1.fastq");
+                File::Copy::move($oldname, $newname);
+                $oldname = $newname;
+            }
+            foreach my $oldname (@revOutput)
+            {
+                my ($name, $path, $suffix) =
+                  File::Basename::fileparse($oldname, ".fastq");
+                my $newname = catfile($path, "${name}_R2.fastq");
+                File::Copy::move($oldname, $newname);
+                $oldname = $newname;
+            }
         }
 
         if (!@dbg)
@@ -1458,7 +1480,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                         my @suffixes = (".fastq", ".fq");
                         my $Prefix =
                           File::Basename::basename($filename, @suffixes);
-                        my $tc = "$global_config{wd}/$Prefix" . "_R1_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_tc";
                         $cmd =
                           "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
                           . $params_hashref->{"tagcleaner"}
@@ -1478,7 +1500,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                         my @suffixes = (".fastq", ".fq");
                         my $Prefix =
                           File::Basename::basename($filename, @suffixes);
-                        my $tc = "$global_config{wd}/$Prefix" . "_R2_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_tc";
                         $cmd =
                           "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
                           . $params_hashref->{"tagcleaner"}
@@ -1501,7 +1523,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                         my @suffixes = (".fastq", ".fq");
                         my $Prefix =
                           File::Basename::basename($filename, @suffixes);
-                        my $tc = "$global_config{wd}/$Prefix" . "_R1_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_tc";
                         $cmd =
                           "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
                           . $params_hashref->{"tagcleaner"}
@@ -1521,7 +1543,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                         my @suffixes = (".fastq", ".fq");
                         my $Prefix =
                           File::Basename::basename($filename, @suffixes);
-                        my $tc = "$global_config{wd}/$Prefix" . "_R2_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_tc";
                         $cmd =
                           "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
                           . $params_hashref->{"tagcleaner"}
@@ -1545,7 +1567,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                         my @suffixes = (".fastq", ".fq");
                         my $Prefix =
                           File::Basename::basename($filename, @suffixes);
-                        my $tc = "$global_config{wd}/$Prefix" . "_R1_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_tc";
 
                         $cmd =
                           "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
@@ -1565,7 +1587,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                         my @suffixes = (".fastq", ".fq");
                         my $Prefix =
                           File::Basename::basename($filename, @suffixes);
-                        my $tc = "$global_config{wd}/$Prefix" . "_R2_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_tc";
 
                         $cmd =
                           "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
@@ -1588,7 +1610,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                         my @suffixes = (".fastq", ".fq");
                         my $Prefix =
                           File::Basename::basename($filename, @suffixes);
-                        my $tc = "$global_config{wd}/$Prefix" . "_R1_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_tc";
                         $cmd =
                           "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
                           . $params_hashref->{"tagcleaner"}
@@ -1609,7 +1631,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                         my @suffixes = (".fastq", ".fq");
                         my $Prefix =
                           File::Basename::basename($filename, @suffixes);
-                        my $tc = "$global_config{wd}/$Prefix" . "_R2_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_tc";
                         $cmd =
                           "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
                           . $params_hashref->{"tagcleaner"}
@@ -1631,7 +1653,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                         my @suffixes = (".fastq", ".fq");
                         my $Prefix =
                           File::Basename::basename($filename, @suffixes);
-                        my $tc = "$global_config{wd}/$Prefix" . "_R1_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_tc";
                         $cmd =
                           "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
                           . $params_hashref->{"tagcleaner"}
@@ -1651,7 +1673,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                         my @suffixes = (".fastq", ".fq");
                         my $Prefix =
                           File::Basename::basename($filename, @suffixes);
-                        my $tc = "$global_config{wd}/$Prefix" . "_R2_tc";
+                        my $tc = "$global_config{wd}/$Prefix" . "_tc";
                         $cmd =
                           "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
                           . $params_hashref->{"tagcleaner"}
@@ -1677,8 +1699,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
             $equalLns = 1;
             foreach my $file (@fwdFiles)
             {
-                my $basename =
-                  File::Basename::basename($file, ("_R1_tc.fastq"));
+                my $basename = File::Basename::basename($file, ("_tc.fastq"));
                 if (count_lines($file) !=
                     count_lines("$fwdSampleDir/$basename.fastq"))
                 {
@@ -1702,8 +1723,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
             $equalLns = 1;
             foreach my $file (@revFiles)
             {
-                my $basename =
-                  File::Basename::basename($file, ("_R2_tc.fastq"));
+                my $basename = File::Basename::basename($file, ("_tc.fastq"));
                 if (count_lines($file) !=
                     count_lines("$revSampleDir/$basename.fastq"))
                 {
@@ -2101,25 +2121,37 @@ sub params
 
 sub project_metadata
 {
-    my %arg = @_;
+    my %arg          = @_;
+    my $any_args = scalar %arg;
+    my $new_metadata = delete %arg{"metadata"} // {};
+    my $replace      = delete $arg{"replace"} // 0;
 
-    # my $params       = delete $arg{params} // {};
-    # my $checkpoints  = delete $arg{checkpoints} // {};
     my $metadataFile = "$global_config{wd}/.meta.json";
-
     my $old_metadata = read_json($metadataFile, "+<");
 
     # If no arguments, user wants to GET existing metadata
-    if (!%arg)
+    if (!$any_args)
     {
-        return
-          $old_metadata
-          ;    # can we change outside code so we can just return hashref here?
+        return $old_metadata;
     } else
     {
         # If arguments, user wants to UPDATE AND GET existing metadata
-        # recursively merge params and checkpoints with $project_metadata
-        my $combined_metadata = merge($old_metadata, \%arg);
+        my $combined_metadata;
+
+        if (!$replace)
+        {
+            # recursively merge params and checkpoints with $project_metadata
+            $combined_metadata = merge($old_metadata, $new_metadata);
+        } else
+        {
+            # replace each present element of new_metadata
+            $combined_metadata = $old_metadata;
+            foreach my $step (keys %$new_metadata)
+            {
+                $logTee->print("Replacing $step\n");
+                $combined_metadata->{$step} = $new_metadata->{$step};
+            }
+        }
 
         open my $metadataFH, ">$metadataFile";
         print $metadataFH encode_json($combined_metadata);
@@ -2146,13 +2178,6 @@ sub preprocess_map
     close(IN);
     close(OUT);
     unlink($map_filepath . '.bak');
-
-    # #open my $map_FH, "<$map_filepath";
-    # my $map_file = path($map_filepath);
-
-    # my $map_data = $map_file->slurp_utf8;
-    # $map_data =~ s/^([a-zA-Z0-9\.]+)\t/$run_name\.$1\t/g;
-    # $map_file->spew_utf8($map_data);
 
     return;
 }
@@ -2351,7 +2376,6 @@ sub cacheChecksums
     my $step  = shift;
     my $names = shift;
     my $wd    = $global_config{wd};    # This is a file-level $my variable
-
     if (!defined $names)
     {
         $names = [map {File::Spec->abs2rel($_, $wd)} @$files];
@@ -2381,7 +2405,11 @@ sub cacheChecksums
 
     for my $i (0 .. scalar @$files - 1)
     {
-        my $file     = $files->[$i];
+        my $file = $files->[$i];
+        if (!-e -f $file)
+        {
+            die "Non-existant file passed to cacheChecksums(): $file\n";
+        }
         my $name     = $names->[$i];
         my @output   = split(/\s/, `sha512sum $file`);
         my $checksum = $output[0];
@@ -2396,11 +2424,11 @@ sub cacheChecksums
         # Store the checksum of the files just produced.
         $newChecksums{$name} = $checksum;
     }
+    
     $metadata->{"checkpoints"}{$step} = \%newChecksums;
-
     if (List::Util::all {defined $_} $metadata->{"checkpoints"})
     {
-        project_metadata(checkpoints => $metadata->{"checkpoints"});
+        project_metadata(metadata => {"checkpoints" => $metadata->{"checkpoints"}}, replace => 1);
     }
 }
 

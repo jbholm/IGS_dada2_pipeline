@@ -53,7 +53,12 @@ def main(args):
             upload_to_synology(args.project)
 
         elif choice == "D":
-            run_paths = get_runs(args.project)
+            ans = get_runs(args.project)
+            if ans["status"]:
+                run_paths = ans["runs"]
+            else:
+                continue
+
             if not organize_reads(args.project, run_paths): continue
             if not organize_trimmed(args.project, run_paths): continue
             if not organize_counts_by_asv(args.project): continue
@@ -82,7 +87,8 @@ def main(args):
 
 def ask_continue():
     if not confirm("Continue?"):
-        sys.exit(0)
+        return False
+    return True
 
 def ask_and_move(dirpath, filepaths):
     if len(filepaths) > 0:
@@ -510,6 +516,10 @@ def confirm(prompt):
 
 
 def get_runs(proj_path):
+    ans = {
+        "status": True,
+        "runs": []
+    }
     subdirs = [x for x in Path(proj_path).iterdir() if x.is_dir()]
 
     if len(subdirs) == 0:
@@ -518,6 +528,7 @@ def get_runs(proj_path):
         else:
             return ()
     choices = []
+
     for subdir in subdirs:
         choice = {"name": str(subdir.name), "value": subdir}
         if str(subdir) != "REPORT":
@@ -532,7 +543,16 @@ def get_runs(proj_path):
         {"type": "checkbox", "name": "chooser", "message": "", "choices": choices}
     ]
 
-    return inquire(questions, prompt)
+    response = inquire(questions, prompt)
+    if len(response) == 0:
+        if confirm("You selected 0 runs. Continue?"):
+            pass
+        else:
+            ans["status"] = False
+    else:
+        ans["runs"] = response
+
+    return ans
 
 def read_metadata(run_path):
     with (run_path / Path(".meta.json")).open("r") as fh:
@@ -762,7 +782,7 @@ def organize_logs(proj_path, run_paths):
             print(f"Moving {len(filepaths)} log files to LOGS/.")
 
             for filepath in filepaths:
-                Path(filepath).copy(Path(organized_dir) / Path(filepath).name)
+                shutil.copy(Path(filepath), Path(organized_dir) / Path(filepath).name)
         else:
             print(f"Skipping creation of {organized_dir} (no logs found)")
 
@@ -775,18 +795,18 @@ def organize_logs(proj_path, run_paths):
 
 def organize_map(proj_path):
     try:
-        organized_dir = str(Path(pathfinder["map"]).resolve().parent)
+        organized_dir = str(Path(pathfinder["map"]).resolve().parent.relative_to(proj_path))
 
         filepaths = glob.glob(str(proj_path / "project_map.txt"))
 
         if len(filepaths) > 0:
             make_for_contents(organized_dir)
-            print(f"Moving {len(filepaths)} mapping file(s) to MAP/.")
+            print(f"Moving {len(filepaths)} mapping file(s) to ./{organized_dir}/.")
 
             for filepath in filepaths:
                 Path(filepath).rename(pathfinder["map"])
         else:
-            print(f"Skipping creation of {organized_dir} (no maps found)")
+            print(f"Skipping creation of ./{organized_dir}/ (no maps found)")
 
     except Exception as e:
         print(str(e))
