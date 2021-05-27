@@ -425,9 +425,11 @@ sub readFullTaxonomyTbl {
             @levelHints = split( /,/, $_ ); # contains full taxonomic levels
             @levelHints = @levelHints[1..$#levelHints];
             @speciesCols = grep { $levelHints[$_] =~ /^species$/i } 0..$#levelHints;
-                            # Create taxon level hints that
-            foreach (@levelHints) {  # consist of the first leter of the level
-                $_ = substr $_, 0, 1; # plus an underscore
+            
+            # Create taxon level hints that consist of the first leter of the 
+            # level, lowercase, plus an underscore
+            foreach (@levelHints) {
+                $_ = lc(substr $_, 0, 1); 
                 $_ = $_ . "_";
             }
             next;
