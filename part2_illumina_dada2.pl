@@ -189,7 +189,8 @@ if (!$inRuns)
 ##split the list of runs to an array
 my @runs = split(",", $inRuns);
 
-# Refine and validate all variables that refer to the filesystem
+# Refine and validate the run paths (no duplicates, must exist on filesystem)
+my %seen;
 foreach (@runs)
 {
     if ($_)
@@ -206,6 +207,10 @@ foreach (@runs)
               . " not found.\n"
               . "Current working directory: "
               . getcwd() . "\n";
+        }
+        if ($seen{basename($copy)}++)
+        {
+            die "$_ is a duplicate run name and not allowed\n";
         }
         $_ = $copy;  # external variable referenced by path has now been edited.
     }
@@ -237,7 +242,7 @@ if (!exists $ENV{"LD_LIBRARY_PATH"})
 }
 $ENV{'LD_LIBRARY_PATH'} =
   $ENV{'LD_LIBRARY_PATH'} . ":/usr/local/packages/gcc/lib64";
-my $output  = `python2 --version 2>&1`;
+my $output = `python2 --version 2>&1`;
 if ($? == -1)
 {
     $ENV{'PATH'} = $ENV{'PATH'} . ":" . dirname($params_hashref->{"python2"});
@@ -363,9 +368,7 @@ print $logTee "\n";
 ####################################################################
 ##                               MAIN
 ####################################################################
-my $run_info_hash = get_run_info(@runs);
-print $logTee "---Copying map files to project\n";
-copy_maps_to_project($run_info_hash);
+my $run_info_hash = combine_run_metadata(@runs);
 
 my @classifs = ();
 my $projabund;
@@ -374,6 +377,8 @@ my $projabund;
 # my $cmd = "rm -f *-dada2_abundance_table.rds";
 # execute_and_log( $cmd, *STDOUT, $dryRun, "" );
 my $cmd;
+
+copy_maps_to_project($run_info_hash, "project_map.txt");
 
 ##loop over array to copy the file to the main current working directory
 ## using the array string to also add a name
@@ -398,6 +403,8 @@ if (List::Util::any {!-e $_} ($abundRds, $abund, $fasta, $stats))
 
     ($abundRds, $abund, $fasta, $stats) = map {move_to_project($project, $$_)}
       (\$abundRds, \$abund, \$fasta, \$stats);
+
+    $logTee->print("Outputs:\n");
     foreach (($abundRds, $abund, $fasta, $stats))
     {
         print $logTee "$_\n";
@@ -611,7 +618,8 @@ my $final_merge = glob("*.taxa-merged.csv");
 unlink glob "*.taxa.csv";
 my $final_ASV_taxa = glob("*.asvs+taxa.csv");
 
-$cmd = "$pipelineDir/report/report16s.sh '$projDir' --runs @runs";
+$cmd =
+  "$pipelineDir/report/report16s.sh '$projDir' --runs @runs --project $project";
 execute_and_log($cmd, $logTee, $dryRun, "Creating report...");
 print $logTee "---Final files succesfully produced!\n";
 print $logTee
@@ -636,6 +644,9 @@ sub read_json
             seek $FH, 0, 0 or die;
             $json = <$FH>;
             close $FH;
+        } else
+        {
+            return undef;
         }
 
     }
@@ -657,43 +668,77 @@ sub config
     return $params;
 }
 
-sub get_run_info
+sub combine_run_metadata
 {
-    my %all_run_info;
-    foreach my $run (@_)
+    my $all_run_info = {};
+    foreach my $rundir (@_)
     {
-        $all_run_info{$run} = read_json(catfile($run, ".meta.json"), "+<");
+        my $run = basename($rundir);
+        $all_run_info->{$run} = read_json(catfile($rundir, ".meta.json"), "<");
+        $all_run_info->{$run}->{"path"} = $rundir;
+        if (exists $all_run_info->{$run}->{"samples"}
+            && ref $all_run_info->{$run}->{"samples"} eq ref {})
+        {
+            foreach my $sample (keys %{$all_run_info->{$run}->{"samples"}})
+            {
+                if (ref $all_run_info->{$run}->{"samples"}->{$sample} eq ref {})
+                {
+                    foreach my $filepath (
+                        values %{$all_run_info->{$run}->{"samples"}->{$sample}})
+                    {
+  # an absent file will be decoded from JSON to either an empty hashref or undef
+                        if (!ref($filepath) && defined $filepath)
+                        {
+                            $filepath = catfile($rundir, $filepath);
+                        }
+                    }
+                } else
+                {
+                    warn "Malformed metadata: $run: samples: $sample.\n";
+                }
+            }
+        } else
+        {
+            warn "Malformed metadata: $run: samples.\n";
+        }
     }
-    return \%all_run_info;
+
+    my $metadata = {runs => $all_run_info};
+    open my $metadataFH, ">.meta.json";
+    print $metadataFH encode_json($metadata);
+    close $metadataFH;
+
+    return $metadata;
 }
 
 sub copy_maps_to_project
 {
     my $all_run_info = shift;
-
-    my @runs = keys %{$all_run_info};
+    $all_run_info = $all_run_info->{"runs"};
+    my $output = shift;
+    my @runs   = keys %{$all_run_info};
 
     # the first map goes into project_map.txt nearly verbatim. For the remaining
     # maps, all non-blank lines after the header go in
 
-    # I hate perl syntax so much
     my @maps;
+    my $projDir = Cwd::cwd();
     foreach my $run (@runs)
     {
-        my @recorded_map_filepaths =
-          keys %{$all_run_info->{$run}{"checkpoints"}{"map"}};
-        if (@recorded_map_filepaths)
+        chdir $all_run_info->{$run}->{"path"} or die "cannot chdir: $!";
+        my $map_filepath = $all_run_info->{$run}->{"map"}->{"file"};
+        if ($map_filepath)
         {
-            push @maps, catfile($run, $recorded_map_filepaths[0]);
+            push @maps, File::Spec->abs2rel(abs_path($map_filepath), $projDir);
         }
     }
+    chdir $projDir or die "cannot chdir: $!";
 
     my ($inFH, $outFH);
     if (@maps)
     {
         $logTee->print("Found " . @maps . " maps.\n");
-        open($outFH, '>', 'project_map.txt')
-          or die "Could not open project_map.txt: $!";
+        open($outFH, '>', $output) or die "Could not open $output: $!";
 
         my $first_filepath = shift @maps;
         if (-e -f -r $first_filepath)
@@ -746,6 +791,7 @@ sub copy_maps_to_project
         $logTee->print("No maps found.");
     }
 
+    return ($output);
 }
 
 sub readTbl
