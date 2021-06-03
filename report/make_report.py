@@ -292,7 +292,7 @@ def getMappingFile(pw):
     #             maps.append(obj[0])
     #         except IndexError:  # glob returns empty list if a map wasn't found
     #             pass
-    map_filename = "project_map.txt"
+    map_filename = args.map
     if Path(map_filename).exists():
         opts["map"] = map_filename
     os.chdir(oldCwd)
@@ -1195,7 +1195,7 @@ def getCtrlPlots(pw, pars):
 
     # Get control samples
     try:
-        mapping = pd.read_csv(opts["map"], sep="\t", header=0, index_col=3)
+        mapping = pd.read_csv(opts["map"], sep="\t", header=0, index_col="sampleID")
     except ValueError:
         return ans
     ctrls = list(mapping.filter(regex=pars.patt, axis=0).iloc[:, 0])
@@ -1474,6 +1474,12 @@ PROJECT
         "--project",
         metavar="NAME",
         help="The project name (used to find files that have the project as the prefix."
+    )
+    parser.add_argument(
+        "--map",
+        metavar="MAP",
+        help="the project map, which must be a tab-delimited file. Default: project_map.txt",
+        default="project_map.txt"
     )
     args = parser.parse_args()
     np.set_printoptions(threshold=np.inf)

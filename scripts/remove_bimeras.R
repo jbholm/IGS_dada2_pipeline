@@ -226,7 +226,14 @@ seqtab <- seqtab.df %>%
     merge(map) %>%
     set_rownames(.$sampleID) %>%
     select(-c(RUN.PLATEPOSITION, sampleID)) %>%
+    select_if(~ !is.numeric(.) || sum(.) != 0) %>%
     as.matrix()
+
+stats <- counts_and_stats$stats %>%
+    mutate(RUN.PLATEPOSITION = rownames(counts_and_stats$stats)) %>%
+    merge(map) %>%
+    set_rownames(.$sampleID) %>%
+    select(-c(RUN.PLATEPOSITION, sampleID))
 
 # Write to disk
 saveRDS(seqtab, "all_runs_dada2_abundance_table.rds") # CHANGE ME to where you want sequence table saved
@@ -238,10 +245,12 @@ fasta <- "all_runs_dada2_ASV.fasta"
 writeXStringSet(DNAStringSet(colnames(seqtab)), fasta, format = "fasta")
 outputs <- append(outputs, fasta)
 
-nonchimerics <- rowSums(seqtab)[rownames(counts_and_stats$stats)] %>%
+nonchimerics <- rowSums(seqtab)[rownames(stats)] %>%
     replace_na(0) %>%
-    setNames(rownames(counts_and_stats$stats))
-project_stats <- cbind(Sample = rownames(counts_and_stats$stats), counts_and_stats$stats, Nonchimeric = nonchimerics)
+    setNames(rownames(stats))
+    
+project_stats <- cbind(Sample = rownames(stats), stats, Nonchimeric = nonchimerics)
+
 write.table(project_stats, "DADA2_stats.txt",
     quote = FALSE, append = FALSE,
     sep = "\t", row.names = F, col.names = TRUE

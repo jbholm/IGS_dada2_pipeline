@@ -147,9 +147,9 @@ $OUTPUT_AUTOFLUSH = 1;
 ##                             OPTIONS
 ####################################################################
 
-my $csts   = 1;
-my $pacbio = 0;
-my $report = 1;
+my $csts     = 1;
+my $pacbio   = 0;
+my $report   = 1;
 my $map_file = "project_map.txt";
 
 # this is the way it is only to preserve the interface of --notVaginal. In the future, please change to --no-vaginal
@@ -200,7 +200,7 @@ my @runs = split(",", $inRuns);
 
 # Refine and validate the run paths (no duplicates, must exist on filesystem)
 my %seen;
-foreach (@runs)
+foreach (@runs, $map_file)
 {
     if ($_)
     {    # If the variable is a non-empty string...
@@ -314,8 +314,8 @@ my $pecan;
         }
     }
 
-    my $ps   = grep (/^PECAN-SILVA$/, @strategies);
-    my $s    = grep (/^SILVA$/, @strategies);
+    my $ps = grep (/^PECAN-SILVA$/, @strategies);
+    my $s  = grep (/^SILVA$/,       @strategies);
     my $s138 = grep(/^SILVA138forPB$/, @strategies);
     my $p    = grep (/^PECAN$/, @strategies);
     my $h    = grep(/^HOMD$/, @strategies);
@@ -328,7 +328,8 @@ my $pecan;
     }
 
 # Which taxonomies need to be assigned from using DADA2? Which need to be assigned by SPINGO?
-    %taxonomy_flags = (SILVA138 => 0, SILVA => 0, HOMD => 0, UNITE => 0, PECAN => 0);
+    %taxonomy_flags =
+      (SILVA138 => 0, SILVA => 0, HOMD => 0, UNITE => 0, PECAN => 0);
 
     if ($ps)
     {
@@ -341,10 +342,11 @@ my $pecan;
         {
             print $logTee "Skipping CST assignment.\n";
         }
-        $taxonomy_flags{PECAN}    = 1;
+        $taxonomy_flags{PECAN} = 1;
         $taxonomy_flags{SILVA} = 1;
     }
-    if ($s) {
+    if ($s)
+    {
         print $logTee "Using SILVA-only assignment scheme.\n";
         $taxonomy_flags{SILVA} = 1;
     }
@@ -388,7 +390,6 @@ $logTee->print("\n");
 
 print $logTee "---Copying map files to project\n";
 my $run_info_hash = combine_run_metadata(@runs);
-copy_maps_to_project($run_info_hash, "qiime_maps.txt");
 
 my @classifs = ();
 my $projabund;
@@ -397,7 +398,6 @@ my $projabund;
 # my $cmd = "rm -f *-dada2_abundance_table.rds";
 # execute_and_log( $cmd, *STDOUT, $dryRun, "" );
 my $cmd;
-
 
 ##loop over array to copy the file to the main current working directory
 ## using the array string to also add a name
@@ -531,9 +531,8 @@ foreach (@full_classif_csvs)
         $cmd = "$scriptsDir/combine_tx_for_ASV.pl -s $_ -c $abund $vopt";
     } elsif ($_ =~ /SILVA\./)
     {
-        $db = "SILVA";
-        $cmd =
-          "$scriptsDir/combine_tx_for_ASV.pl --s $_ -c $abund $vopt";
+        $db  = "SILVA";
+        $cmd = "$scriptsDir/combine_tx_for_ASV.pl --s $_ -c $abund $vopt";
     } elsif ($_ =~ /HOMD/)
     {
         $db = "HOMD";
@@ -733,89 +732,6 @@ sub combine_run_metadata
     close $metadataFH;
 
     return $metadata;
-}
-
-sub copy_maps_to_project
-{
-    my $all_run_info = shift;
-    $all_run_info = $all_run_info->{"runs"};
-    my $output = shift;
-    my @runs   = keys %{$all_run_info};
-
-    # the first map goes into the output file nearly verbatim. For the remaining
-    # maps, all non-blank lines after the header go in
-
-    my @maps;
-    my $projDir = Cwd::cwd();
-    foreach my $run (@runs)
-    {
-        chdir $all_run_info->{$run}->{"path"} or die "cannot chdir: $!";
-        my $map_filepath = $all_run_info->{$run}->{"map"}->{"file"};
-        if ($map_filepath)
-        {
-            push @maps, File::Spec->abs2rel(abs_path($map_filepath), $projDir);
-        }
-    }
-    chdir $projDir or die "cannot chdir: $!";
-
-    my ($inFH, $outFH);
-    if (@maps)
-    {
-        $logTee->print("Found " . @maps . " maps.\n");
-        open($outFH, '>', $output) or die "Could not open $output: $!";
-
-        my $first_filepath = shift @maps;
-        if (-e -f -r $first_filepath)
-        {
-            open($inFH, '<', $first_filepath)
-              or die "Could not open $first_filepath: $!";
-            while (<$inFH>)
-            {
-                if ($_ =~ /^\S+/)
-                {
-                    $outFH->print($_);
-                }
-            }
-            close $inFH;
-        } else
-        {
-            warn
-              "Pipeline version compatibility error. Please manually create your project map by concatenating the maps from individual runs.\n";
-        }
-
-        while (my $run_map_filepath = shift @maps)
-        {
-            if (-e -f -r $run_map_filepath)
-            {
-                open($inFH, '<', $run_map_filepath)
-                  or die "Could not open $run_map_filepath: $!";
-                my $line = 0;
-                while (<$inFH>)
-                {
-                    if ($line != 0 && $_ =~ /^\S+/)
-                    {
-                        $outFH->print($_);
-                    }
-                    $line += 1;
-                }
-                close $inFH;
-            } else
-            {
-                warn
-                  "Pipeline version compatibility error. Please manually create your project map by concatenating the maps from individual runs.\n";
-            }
-        }
-
-        if ($outFH)
-        {
-            close $outFH;
-        }
-    } else
-    {
-        $logTee->print("No maps found.");
-    }
-
-    return ($output);
 }
 
 sub readTbl
