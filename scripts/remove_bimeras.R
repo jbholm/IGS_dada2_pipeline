@@ -37,6 +37,10 @@ parser$add_argument("--seq",
     metavar = "SEQUENCING_MACHINE", type = "character",
     help = "ILLUMINA or PACBIO"
 )
+parser$add_argument("--map",
+    metavar = "PROJECT_MAP", type = "character",
+    help = "Tab-delimited file with two columns: RUN.PLATEPOSITION and sampleID"
+)
 parser$add_argument("runs",
     metavar = "RUN_ID", type = "character",
     nargs = "+",
@@ -209,6 +213,21 @@ counts_and_stats <- (function(runs) {
 # Remove chimeras
 mfpoa <- if (args$seq == "ILLUMINA") 2 else 3.5
 seqtab <- dada2::removeBimeraDenovo(counts_and_stats$counts, method = "consensus", minFoldParentOverAbundance = mfpoa, multithread = TRUE)
+
+# Apply new sample names
+# trim_ws=T trims whitespace to avoid user errors in map
+map <- suppressMessages(
+    read_tsv(args$map, quote = "", na = "", trim_ws = T)
+)
+seqtab.df <- as.data.frame(seqtab)
+seqtab.df$RUN.PLATEPOSITION <- rownames(seqtab.df)
+
+seqtab <- seqtab.df %>%
+    merge(map) %>%
+    set_rownames(.$sampleID) %>%
+    select(-c(RUN.PLATEPOSITION, sampleID)) %>%
+    as.matrix()
+
 # Write to disk
 saveRDS(seqtab, "all_runs_dada2_abundance_table.rds") # CHANGE ME to where you want sequence table saved
 write.csv(seqtab, "all_runs_dada2_abundance_table.csv", quote = FALSE)

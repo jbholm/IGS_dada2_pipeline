@@ -54,6 +54,12 @@
 =item B<--project-ID, -p>
   Provide the project ID
 
+=item B<--map, -m>
+  A tab-delimited file listing the samples to add to this project. The file must
+  have two columns named RUN.PLATEPOSITION and sampleID. RUN.PLATEPOSITION
+  must be identical to the sample names in the "corrected" map created by Part 1.
+  Default: project_map.txt.
+
 =item B<--pacbio> 
   Sets the B<--tax> default to SILVA138forPB and uses PacBio-specific chimera removal
   parameters.
@@ -144,6 +150,7 @@ $OUTPUT_AUTOFLUSH = 1;
 my $csts   = 1;
 my $pacbio = 0;
 my $report = 1;
+my $map_file = "project_map.txt";
 
 # this is the way it is only to preserve the interface of --notVaginal. In the future, please change to --no-vaginal
 my $vaginal    = 1;
@@ -153,6 +160,7 @@ GetOptions(
            "input-runs|i=s"      => \my $inRuns,
            "variable-region|v=s" => \my $region,
            "project-ID|p=s"      => \my $project,
+           "map|m=s"             => \$map_file,
            "overwrite|o=s"       => \my $overwrite,
            "help|h!"             => \my $help,
            "debug"               => \my $debug,
@@ -380,7 +388,7 @@ $logTee->print("\n");
 
 print $logTee "---Copying map files to project\n";
 my $run_info_hash = combine_run_metadata(@runs);
-copy_maps_to_project($run_info_hash, "project_map.txt");
+copy_maps_to_project($run_info_hash, "qiime_maps.txt");
 
 my @classifs = ();
 my $projabund;
@@ -734,7 +742,7 @@ sub copy_maps_to_project
     my $output = shift;
     my @runs   = keys %{$all_run_info};
 
-    # the first map goes into project_map.txt nearly verbatim. For the remaining
+    # the first map goes into the output file nearly verbatim. For the remaining
     # maps, all non-blank lines after the header go in
 
     my @maps;
@@ -869,7 +877,7 @@ sub dada2_combine
     my $sequencer = $pacbio ? "PACBIO" : "ILLUMINA";
 
     my $script = catfile($pipelineDir, "scripts", "remove_bimeras.R");
-    my $args   = "--seq=$sequencer " . join(" ", @rundirs);
+    my $args   = "--seq=$sequencer --map=$map_file " . join(" ", @rundirs);
 
     return (split(/\s/, R($script, $args)));
 }
