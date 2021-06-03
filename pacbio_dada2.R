@@ -31,6 +31,8 @@ packageVersion("dada2") # 1.12.1  cwd<-getwd()
 require("argparse")
 require("autothresholdr")
 require("ShortRead")
+library(dplyr)
+library(magrittr)
 library(tidyr)
 
 parser <- ArgumentParser(description = "Assign taxa")
@@ -44,7 +46,7 @@ parser$add_argument(
     "--pattern",
     metavar = "GLOB",
     type = "character",
-    help = "Regex pattern that will match all DEMUXED .ccs.fastq.gz files. Use () in place of sample name."
+    help = "Regex pattern that will match all DEMUXED .ccs.fastq.gz files. Use () in place of sample name. Remember to escape regex special characters. For correct bash syntax, enclose the pattern in double quotes."
 )
 parser$add_argument(
     "--run",
@@ -53,7 +55,7 @@ parser$add_argument(
     help = "Run name that will be pre-pended to each sample name."
 )
 args <- parser$parse_args()
-if (any(is.null(args))) {
+if (any(is.null(args))) {ls
   stop("Some args missing!")
 }
 
@@ -86,6 +88,7 @@ cache_checksums <- function(files, name) {
     checksums_list[[name]] <- checksums
 
     run_meta(checkpoints = checksums_list)
+    return()
 }
 run_meta(new_params = list(platform = "PACBIO"))
 
@@ -129,17 +132,32 @@ trim_primers <- function(ins, outs) {
     }
 
     # Remove primers. Discard reads without primers. Write these counts somewhere?
-    prims <-
-        dada2::removePrimers(
-            ins,
-            outs,
-            primer.fwd = F27,
-            primer.rev = dada2:::rc(R1492),
-            orient = TRUE
+    prims <- t(mapply(function(ins, outs, name) {
+        stats <- tryCatch(
+            {
+                dada2::removePrimers(
+                    ins,
+                    outs,
+                    primer.fwd = F27,
+                    primer.rev = dada2:::rc(R1492),
+                    orient = TRUE
+                )
+            },
+            error = function(e) {
+                fq <- readFastq(ins)
+                inseqs <- length(fq)
+                ans <- data.frame(reads.in = inseqs, reads.out = 0)
+                rownames(ans) <- name
+                return(ans)
+            }
         )
+        print(stats)
+        return(stats)
+    }, ins = ins, outs = outs, names(ins)))
+    
     
     samples <- lapply(seq_along(ins), function(s) {
-        fastq <- basename(ins[s])
+        fastq <- names(ins)[s]
         # filterAndTrim() returns a matrix with rows named by its fwd argument
         trimmed_file <- if (prims[fastq, "reads.out"] == 0) NULL else outs[[s]]
         ans <- list(
@@ -148,7 +166,7 @@ trim_primers <- function(ins, outs) {
         )
         
         return(ans)
-    }) %>% setNames(sample.names)
+    }) %>% setNames(names(ins))
     run_meta(samples = samples)
 
     return(prims)
@@ -194,8 +212,7 @@ trim_and_filter <- function(ins, outs) {
         verbose = TRUE
     )
 
-
-    lens.fn <- lapply(quality_trimmed, function(fn) {
+    lens.fn <- lapply(quality_trimmed[file.exists(quality_trimmed)], function(fn) {
         nchar(dada2::getSequences(fn))
     })
     lens <- do.call(c, lens.fn)
@@ -249,7 +266,7 @@ trim_and_filter <- function(ins, outs) {
 
     # redo filter and trim, but this time we know the ideal minimum length
     filter_in_out_counts <- dada2::filterAndTrim(
-        fwd = quality_trimmed,
+        fwd = ins,
         filt = outs,
         minQ = 3,
         maxN = 0,
@@ -262,21 +279,25 @@ trim_and_filter <- function(ins, outs) {
         multithread = T,
         verbose = TRUE
     )
-    file.remove(quality_trimmed)
-
-    rownames(filter_in_out_counts) <- names(ins)
+    
     samples <- lapply(seq_along(ins), function(s) {
         # filterAndTrim() returns a matrix with rows named by its fwd argument
-        filt_file <- if (filter_in_out_counts[names(ins)[s], "reads.out"] == 0) NULL else outs[[s]]
+        if(! names(ins)[s] %in% rownames(filter_in_out_counts) || filter_in_out_counts[names(ins)[s], "reads.out"] == 0) {
+            filt_file <- NULL
+        } else {
+            filt_file <- outs[[s]]
+        }
         ans <- list(
             trimmed = ins[[s]],
             filtered = filt_file
         )
         
         return(ans)
-    }) %>% setNames(sample.names)
+    }) %>% setNames(names(ins))
     run_meta(samples = samples)
     
+    
+    file.remove(quality_trimmed)
     return(filter_in_out_counts)
 }
 
@@ -285,7 +306,7 @@ denoise <- function(ins) {
 
     set.seed(100)
     # dereplicate
-    drp <- dada2::derepFastq(ins, verbose = TRUE)
+    drp <- dada2::derepFastq(ins, verbose = TRUE, qualityType = "FastqQuality")
     # Learn error rates
     err <- dada2::learnErrors(drp,
         BAND_SIZE = 32, multithread = TRUE,
@@ -311,21 +332,30 @@ collectStats <- function(
     primer_trimmed_files = list(), 
     filtered_files = list(),
     denoised_table = data.frame()
-    ) {
+) {
     cat("Collecting stats...\n")
 
-    in_counts <- sapply(in_files, function(file_name) {
-        ShortRead::countLines(file_name) / 4
-    })
-    primer_trimmed_counts <- sapply(primer_trimmed_files, function(file_name) {
-        ShortRead::countLines(file_name) / 4
-    })
-    filtered_counts <- sapply(filtered_files, function(file_name) {
-        ShortRead::countLines(file_name) / 4
-    })
-    denoised_counts <- rowSums(denoised_table)
-    stats <- cbind(in_counts, primer_trimmed_counts, filtered_counts, denoised_counts)
-    rownames(stats) <- rownames(denoised_table)
+    count_reads <- function(file_name) {
+        if(file.exists(file_name)) {
+            ShortRead::countLines(file_name) / 4
+        } else {
+            return(0)
+        }
+    }
+    in_counts <- sapply(in_files, count_reads)
+    primer_trimmed_counts <- sapply(primer_trimmed_files, count_reads)
+    filtered_counts <- sapply(filtered_files, count_reads)
+    
+    denoised_counts <- data.frame(denoised = rowSums(denoised_table), sample_name = rownames(denoised_table))
+
+    stats <- cbind.data.frame(in_counts, primer_trimmed_counts, filtered_counts)
+    stats$sample_name <- names(in_files)
+    stats <- stats %>% 
+        merge(denoised_counts, all.x = T) %>%
+        select(-sample_name) %>%
+        replace(is.na(.), 0) %>%
+        set_rownames(names(in_files))
+
     return(stats)
 }
 
@@ -347,7 +377,7 @@ filtereds <- (paste0(sample.names, "_filt.fastq.gz"))
 filtereds_files <- file.path(filtpath, filtereds)
 names(filtereds_files) <- names(tcs)
 samples <- cbind(samples, filtered = filtereds_files)
-targets <- !filtereds_files %in% list.files(filtpath, full.names = T)
+targets <- !filtereds_files %in% list.files(filtpath, full.names = T) & file.exists(samples$primer_trimmed)
 
 trim_and_filter_output <- trim_and_filter(
     ins = samples$primer_trimmed[targets] %>% 
@@ -356,14 +386,14 @@ trim_and_filter_output <- trim_and_filter(
 )
 
 seq_tab_output <- "dada2_abundance_table.rds"
-seq_tab <- denoise(filtereds_files)
+seq_tab <- denoise(filtereds_files[file.exists(filtereds_files)])
 saveRDS(seq_tab, seq_tab_output)
 
 seq_tab <- readRDS(seq_tab_output)
 stats <- collectStats(
-    in_files = fastqs,
-    primer_trimmed_files = tcs,
-    filtered_files = filtereds_files,
+    in_files = samples$CCS %>% setNames(rownames(samples)),
+    primer_trimmed_files = samples$primer_trimmed,
+    filtered_files = samples$filtered,
     denoised_table = seq_tab
 )
 colnames(stats) <- c("Input", "Adapter-trimmed", "Filtered", "Denoised")

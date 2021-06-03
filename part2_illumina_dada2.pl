@@ -295,7 +295,11 @@ my $pecan;
             @strategies = ("SILVA138forPB");
         } elsif ($region eq "V3V4")
         {
-            @strategies = ("PECAN-SILVA");
+            if ($vaginal) {
+                @strategies = ("PECAN-SILVA");
+            } else {
+                @strategies = ("SILVA");
+            }
         } elsif ($region eq "V4")
         {
             @strategies = ("SILVA");
