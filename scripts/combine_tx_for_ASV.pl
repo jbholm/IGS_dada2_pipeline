@@ -218,6 +218,10 @@ if ( $silvaFile || $homdFile ) {
         $cmbTx{$x} = $tx;
 
         if ($pecanFile) {
+            # If the SILVA annotation is one of these genuses, use PECAN
+            # NB: The annotations, as they are parsed from the file, may look
+            # like 'g_Prevotella_7', which is why we simply search the string
+            # for the genus name.
             if (   $tx && $tx =~ /Lactobacillus/
                 || $tx && $tx =~ /Shuttleworthia/
                 || $tx && $tx =~ /Saccharibacteria/
@@ -435,7 +439,7 @@ sub readFullTaxonomyTbl {
             next;
         }
         
-        my ( $asv, @taxa ) = split( /[\s+,]/, $_ );
+        my ( $asv, @taxa ) = split( /,\s*/, $_ );
         my $t;
         if (@speciesCols && $taxa[$speciesCols[0]] ne "NA") {
             my $s = $taxa[$speciesCols[0]];
