@@ -150,7 +150,7 @@ $OUTPUT_AUTOFLUSH = 1;
 my $csts     = 1;
 my $pacbio   = 0;
 my $report   = 1;
-my $map_file = "project_map.txt";
+my $map_file = "";
 
 # this is the way it is only to preserve the interface of --notVaginal. In the future, please change to --no-vaginal
 my $vaginal    = 1;
@@ -210,7 +210,7 @@ foreach (@runs, $map_file)
         $copy = abs_path($relPath);    # get abs path
             # At the same time, abs_path returns undef if the path doesn't exist
             # so we can verify the existence of each file and directory
-        if (!defined $copy or !-d $copy)
+        if (!defined $copy)
         {
             print die $_
               . " not found.\n"
@@ -388,7 +388,6 @@ $logTee->print("Run(s):\n");
 map {$logTee->print("$_\n")} @runs;
 $logTee->print("\n");
 
-print $logTee "---Copying map files to project\n";
 my $run_info_hash = combine_run_metadata(@runs);
 
 my @classifs = ();
@@ -793,7 +792,7 @@ sub dada2_combine
     my $sequencer = $pacbio ? "PACBIO" : "ILLUMINA";
 
     my $script = catfile($pipelineDir, "scripts", "remove_bimeras.R");
-    my $args   = "--seq=$sequencer --map=$map_file " . join(" ", @rundirs);
+    my $args   = "--seq=$sequencer --map $map_file -- " . join(" ", @rundirs);
 
     return (split(/\s/, R($script, $args)));
 }

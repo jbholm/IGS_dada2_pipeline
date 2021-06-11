@@ -125,7 +125,7 @@ def main(pw, args):
     opts["lookup"] = TemplateLookup(directories=[scriptDir], strict_undefined=True)
     mytemplate = opts["lookup"].get_template("MSL_REPORT.html")
 
-    map_table = getMapHTML(pw)
+    map_table = getMapHTML(pw) if args.map is not None else None
     date = datetime.date.today().isoformat()
     dada2stats = getDada2Stats(pw)
     getAsvTables(pw)
@@ -142,11 +142,14 @@ def main(pw, args):
 
     # Get content on controls.
     # returns list. Order matters bc the toc is ordered!
-    ctrlPars = initControlsParams()
     ctrlContent = {}
+    ctrlPars = initControlsParams()
     for pars in ctrlPars:
         # If this project contained controls, getCtrlPlots returns html and js
-        content = getCtrlPlots(pw, pars)
+        content = (
+            getCtrlPlots(pw, pars) if args.map is not None else {"html": "", "js": ""}
+        )
+
         ctrlContent[pars.title] = content
         if len(content["js"]) > 0:
             toc.append(
@@ -327,7 +330,7 @@ def getMapHTML(pw):
         getMappingFile(pw)
         rscript = config["R"] + "script"
         try:
-            cmd = ' '.join(
+            cmd = " ".join(
                 [
                     rscript,
                     os.path.join(scriptDir, "mappingToHtml.R"),
@@ -835,7 +838,7 @@ def df_to_js(df, float_format=None):
             formatted = float_format.format(val) if isinstance(val, float) else val
             items.append(str(formatted) + ",")
         items.append("],\n[")
-    if(len(df.index) > 0):
+    if len(df.index) > 0:
         items.pop()
     items.append("]]\n")
     return "".join(items)
@@ -1473,13 +1476,13 @@ PROJECT
     parser.add_argument(
         "--project",
         metavar="NAME",
-        help="The project name (used to find files that have the project as the prefix."
+        help="The project name (used to find files that have the project as the prefix.",
     )
     parser.add_argument(
         "--map",
         metavar="MAP",
+        nargs="?",
         help="the project map, which must be a tab-delimited file. Default: project_map.txt",
-        default="project_map.txt"
     )
     args = parser.parse_args()
     np.set_printoptions(threshold=np.inf)

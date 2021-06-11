@@ -37,7 +37,7 @@ parser$add_argument("--seq",
     metavar = "SEQUENCING_MACHINE", type = "character",
     help = "ILLUMINA or PACBIO"
 )
-parser$add_argument("--map",
+parser$add_argument("--map", nargs = "?",
     metavar = "PROJECT_MAP", type = "character",
     help = "Tab-delimited file with two columns: RUN.PLATEPOSITION and sampleID"
 )
@@ -213,27 +213,55 @@ counts_and_stats <- (function(runs) {
 # Remove chimeras
 mfpoa <- if (args$seq == "ILLUMINA") 2 else 3.5
 seqtab <- dada2::removeBimeraDenovo(counts_and_stats$counts, method = "consensus", minFoldParentOverAbundance = mfpoa, multithread = TRUE)
+stats <- counts_and_stats$stats
 
-# Apply new sample names
+# If given a project map, apply new sample names and remove samples not in map
 # trim_ws=T trims whitespace to avoid user errors in map
-map <- suppressMessages(
-    read_tsv(args$map, quote = "", na = "", trim_ws = T)
-)
-seqtab.df <- as.data.frame(seqtab)
-seqtab.df$RUN.PLATEPOSITION <- rownames(seqtab.df)
+if(! is.null(args$map)) {
+    map <- suppressMessages(
+        read_tsv(args$map, quote = "", na = "", trim_ws = T)
+    )
+    plates <- c("A", "B", "C", "D")
+    control_positions <- suppressMessages(
+        read_csv(file.path(pipelineDir, "share", "controls_platepositions.csv"), quote = "", na = "", trim_ws = T)
+    )
+    for(plate in plates) {
+        matches <- regexpr(text = map$RUN.PLATEPOSITION, pattern = paste0("UDI", plate, "\\.[A-H]\\.[1-9]{1,2}$"), perl=T)
+        if(any(matches > -1)) {
+            first_in_run <- which(matches > -1)[1]
+            one_RUN.PLATEPOSITION <- map$RUN.PLATEPOSITION[first_in_run]
+            run <- substr(one_RUN.PLATEPOSITION, start=1, stop = matches[first_in_run] - 2
+                )
+            controls <- control_positions %>%
+                filter(Plate == plate) %>%
+                mutate(RUN.PLATEPOSITION = paste(run, PLATEPOSITION, sep = ".")) %>%
+                select(RUN.PLATEPOSITION, sampleID)
+            map <- map %>%
+                rows_insert(controls[! controls$RUN.PLATEPOSITION %in% map$RUN.PLATEPOSITION, ], by = "RUN.PLATEPOSITION")
+        }
+    }
 
-seqtab <- seqtab.df %>%
-    merge(map) %>%
-    set_rownames(.$sampleID) %>%
-    select(-c(RUN.PLATEPOSITION, sampleID)) %>%
-    select_if(~ !is.numeric(.) || sum(.) != 0) %>%
-    as.matrix()
+    merge_with_map <- function(df) {
+        return(
+            df %>%
+                mutate(RUN.PLATEPOSITION = rownames(df)) %>%
+                merge(map) %>%
+                mutate(sampleID = make.names(sampleID, unique = T)) %>%
+                set_rownames(.$sampleID)
+        )
+    }
 
-stats <- counts_and_stats$stats %>%
-    mutate(RUN.PLATEPOSITION = rownames(counts_and_stats$stats)) %>%
-    merge(map) %>%
-    set_rownames(.$sampleID) %>%
-    select(-c(RUN.PLATEPOSITION, sampleID))
+    seqtab.df <- as.data.frame(seqtab)
+    seqtab <- seqtab.df %>%
+        merge_with_map() %>%
+        select(-c(RUN.PLATEPOSITION, sampleID)) %>%
+        select_if(~ !is.numeric(.) || sum(.) != 0) %>% # remove now-absent ASVs
+        as.matrix()
+    
+    stats <- counts_and_stats$stats %>%
+        merge_with_map() %>%
+        select(-c(RUN.PLATEPOSITION, sampleID))
+}
 
 # Write to disk
 saveRDS(seqtab, "all_runs_dada2_abundance_table.rds") # CHANGE ME to where you want sequence table saved
