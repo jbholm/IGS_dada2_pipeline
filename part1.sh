@@ -490,7 +490,7 @@ Indicate an existing directory in which to place the project directory.
 The length of forward and reverse barcodes. This many bases is removed from the
 index 1 and index 2 of each read, concatenated, and used to demultiplex the
 reads according to the provided map. (In our current pipeline, the indexes ARE
-exactly this length.)
+exactly this length.) Default: 10.
 
 =item B<--troubleshoot_barcodes>
 
