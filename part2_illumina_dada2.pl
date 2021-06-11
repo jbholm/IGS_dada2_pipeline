@@ -295,9 +295,11 @@ my $pecan;
             @strategies = ("SILVA138forPB");
         } elsif ($region eq "V3V4")
         {
-            if ($vaginal) {
+            if ($vaginal)
+            {
                 @strategies = ("PECAN-SILVA");
-            } else {
+            } else
+            {
                 @strategies = ("SILVA");
             }
         } elsif ($region eq "V4")
@@ -310,8 +312,8 @@ my $pecan;
         }
     }
 
-    my $ps   = grep (/^PECAN-SILVA$/, @strategies);
-    my $s    = grep (/^SILVA$/, @strategies);
+    my $ps = grep (/^PECAN-SILVA$/, @strategies);
+    my $s  = grep (/^SILVA$/,       @strategies);
     my $s138 = grep(/^SILVA138forPB$/, @strategies);
     my $p    = grep (/^PECAN$/, @strategies);
     my $h    = grep(/^HOMD$/, @strategies);
@@ -324,7 +326,8 @@ my $pecan;
     }
 
 # Which taxonomies need to be assigned from using DADA2? Which need to be assigned by SPINGO?
-    %taxonomy_flags = (SILVA138 => 0, SILVA => 0, HOMD => 0, UNITE => 0, PECAN => 0);
+    %taxonomy_flags =
+      (SILVA138 => 0, SILVA => 0, HOMD => 0, UNITE => 0, PECAN => 0);
 
     if ($ps)
     {
@@ -337,10 +340,11 @@ my $pecan;
         {
             print $logTee "Skipping CST assignment.\n";
         }
-        $taxonomy_flags{PECAN}    = 1;
+        $taxonomy_flags{PECAN} = 1;
         $taxonomy_flags{SILVA} = 1;
     }
-    if ($s) {
+    if ($s)
+    {
         print $logTee "Using SILVA-only assignment scheme.\n";
         $taxonomy_flags{SILVA} = 1;
     }
@@ -393,7 +397,6 @@ my $projabund;
 # my $cmd = "rm -f *-dada2_abundance_table.rds";
 # execute_and_log( $cmd, *STDOUT, $dryRun, "" );
 my $cmd;
-
 
 ##loop over array to copy the file to the main current working directory
 ## using the array string to also add a name
@@ -453,10 +456,9 @@ foreach ("SILVA138forPB", "SILVA", "SILVA-PECAN", "UNITE", "HOMD")
 }
 if (scalar @dada2_taxonomy_list > 0)
 {
-    my @output =
+    my @dada2Output =
       map {"$project" . "_$_.classification.csv"} @dada2_taxonomy_list;
-    my @dada2Output;
-    if (List::Util::any {!-e $_} @output)
+    if (List::Util::any {!-e $_} @dada2Output)
     {
         print $logTee
           "Using DADA2's RDP Classifier implementation to classify amplicon sequence variants (ASVs) with taxonomies:\n";
@@ -527,9 +529,8 @@ foreach (@full_classif_csvs)
         $cmd = "$scriptsDir/combine_tx_for_ASV.pl -s $_ -c $abund $vopt";
     } elsif ($_ =~ /SILVA\./)
     {
-        $db = "SILVA";
-        $cmd =
-          "$scriptsDir/combine_tx_for_ASV.pl --s $_ -c $abund $vopt";
+        $db  = "SILVA";
+        $cmd = "$scriptsDir/combine_tx_for_ASV.pl --s $_ -c $abund $vopt";
     } elsif ($_ =~ /HOMD/)
     {
         $db = "HOMD";
