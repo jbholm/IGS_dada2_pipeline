@@ -88,41 +88,6 @@ project_meta <- function(runs = list(), samples = list()) {
     return(proj_info)
 }
 
-# combine maps
-# map_filepath <- (function(runs) {
-#     # get each map, looking in the path specified by the run's metadata file
-#     maps <- lapply(names(runs), function(run_name) {
-#         run_info <- jsonlite::read_json(file.path(runs[run_name], ".meta.json"))
-#         if ("map" %in% names(run_info[["checkpoints"]])) {
-#             map_filepath <- file.path(
-#                 runs[run_name], names(run_info[["checkpoints"]][["map"]])[1]
-#             )
-#             tryCatch(
-#                 {
-#                     suppressMessages(
-#                         map <- read_tsv(map_filepath, quote = "", na = "", trim_ws = F)
-#                     )
-#                 },
-#                 error = function(e) {
-#                     stop(paste("Unable to find mapping file; supposed to be at", map_filepath))
-#                 }
-#             )
-
-#             if (length(runs) > 1) {
-#                 # add a Run column to the map
-#                 map <- map %>%
-#                     mutate(Run = run_name) %>%
-#                     relocate(Run)
-#             }
-#             return(map)
-#         } else {
-#             return()
-#         }
-#     })
-#     bind_rows(maps) %>% write_tsv("map.txt")
-#     return("map.txt")
-# })(runs)
-
 ## INPUT
 ## list all of the files matching the pattern
 counts_and_stats <- (function(runs) {
@@ -133,15 +98,10 @@ counts_and_stats <- (function(runs) {
                 pattern = "dada2_abundance_table.rds", full.names = TRUE
             )[[1]]
         )
-        # if (length(runs) > 1) {
-        #     rownames(count_table) <- paste(
-        #         run_name, rownames(count_table),
-        #         sep = "_"
-        #     )
-        # }
 
         return(count_table)
     })
+
     stats <- lapply(names(runs), function(run_name) {
         stat_table <- read.csv(
             list.files(
@@ -151,33 +111,16 @@ counts_and_stats <- (function(runs) {
                 )[[1]],
             sep = "", stringsAsFactors = FALSE
         )
-        # if (length(runs) > 1) {
-        #     old_sample_names <- rownames(stat_table)
-        #     rownames(stat_table) <- paste(
-        #         run_name, rownames(stat_table),
-        #         sep = "_"
-        #     )
-        #     run_metadata <- project_meta()$runs[[run_name]]
-        #     names(run_metadata$samples) <- rownames(stat_table)[match(names(run_metadata$samples), old_sample_names)]
-        #     project_meta(runs = list(run_metadata) %>% set_names(run_name))
-        # }
 
         return(stat_table)
     })
-    # basically, this code is here solely to accommodate when two runs have the
-    # same name, or a run with two samples of the same name (if that's even possible)
-    # old_stats_sample_names <- do.call(c, lapply(stats, rownames))
-    # old_count_table_sample_names <- do.call(c, lapply(tables, rownames))
 
-    # new_sample_names <- make.names(old_stats_sample_names, unique = T)
     stats <- bind_rows(stats)
-    # stats <- stats %>% set_rownames(new_sample_names)
 
     samples <- do.call(c, lapply(names(runs), function(run_name) {
         run_metadata <- project_meta()$runs[[run_name]]
         return(run_metadata$samples)
     }))
-    # names(samples) <- rownames(stats)[match(names(samples), old_stats_sample_names)]
     project_meta(samples = samples)
 
     # Combine count tables
@@ -192,27 +135,12 @@ counts_and_stats <- (function(runs) {
         row <- row + nrow(table)
     }
 
-    # Make count table sample names unique (and matching up with stat sample names)
-    # stats_i <- 1
-    # rownames(st) <- lapply(
-    #     seq_along(old_count_table_sample_names),
-    #     function(count_table_i) {
-    #         while (old_count_table_sample_names[count_table_i] != old_stats_sample_names[stats_i]) {
-    #             stats_i <<- stats_i + 1
-    #         }
-    #         return(new_sample_names[stats_i])
-    #     }
-    # ) %>%
-    #     unlist()
-
     # sort ASVs by total frequency
     st <- st[, order(colSums(st), decreasing = TRUE)]
     return(list(counts = st, stats = stats))
 })(runs)
 
-# Remove chimeras
-mfpoa <- if (args$seq == "ILLUMINA") 2 else 3.5
-seqtab <- dada2::removeBimeraDenovo(counts_and_stats$counts, method = "consensus", minFoldParentOverAbundance = mfpoa, multithread = TRUE)
+seqtab <- counts_and_stats$counts
 stats <- counts_and_stats$stats
 
 # If given a project map, apply new sample names and remove samples not in map
@@ -261,7 +189,18 @@ if(! is.null(args$map)) {
     stats <- counts_and_stats$stats %>%
         merge_with_map() %>%
         select(-c(RUN.PLATEPOSITION, sampleID))
+    if(nrow(stats) == 0) {
+        stop("Provided map did not match any samples in runs")
+    }
+    if(nrow(seqtab) == 0) {
+        stop("None of the samples in the project map passed denoising.")
+    }
 }
+
+
+# Remove chimeras
+mfpoa <- if (args$seq == "ILLUMINA") 2 else 3.5
+seqtab <- dada2::removeBimeraDenovo(seqtab, method = "consensus", minFoldParentOverAbundance = mfpoa, multithread = TRUE)
 
 # Write to disk
 saveRDS(seqtab, "all_runs_dada2_abundance_table.rds") # CHANGE ME to where you want sequence table saved

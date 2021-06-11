@@ -204,19 +204,17 @@ foreach (@runs, $map_file)
 {
     if ($_)
     {    # If the variable is a non-empty string...
-        my $copy = $_;
-        $copy =~ s/\/$//;    # remove any trailing slash
+        my $copy    = $_;
         my $relPath = $copy;
         $copy = abs_path($relPath);    # get abs path
-            # At the same time, abs_path returns undef if the path doesn't exist
-            # so we can verify the existence of each file and directory
-        if (!defined $copy)
+        if (!defined $copy || !-e $copy)
         {
-            print die $_
+            die $_
               . " not found.\n"
               . "Current working directory: "
               . getcwd() . "\n";
         }
+        $copy =~ s/\/$//;              # remove any trailing slash
         if ($seen{basename($copy)}++)
         {
             die "$_ is a duplicate run name and not allowed\n";
@@ -303,7 +301,13 @@ my $pecan;
             @strategies = ("SILVA138forPB");
         } elsif ($region eq "V3V4")
         {
-            @strategies = ("PECAN-SILVA");
+            if ($vaginal)
+            {
+                @strategies = ("PECAN-SILVA");
+            } else
+            {
+                @strategies = ("SILVA");
+            }
         } elsif ($region eq "V4")
         {
             @strategies = ("SILVA");
@@ -456,10 +460,9 @@ foreach ("SILVA138forPB", "SILVA", "SILVA-PECAN", "UNITE", "HOMD")
 }
 if (scalar @dada2_taxonomy_list > 0)
 {
-    my @output =
+    my @dada2Output =
       map {"$project" . "_$_.classification.csv"} @dada2_taxonomy_list;
-    my @dada2Output;
-    if (List::Util::any {!-e $_} @output)
+    if (List::Util::any {!-e $_} @dada2Output)
     {
         print $logTee
           "Using DADA2's RDP Classifier implementation to classify amplicon sequence variants (ASVs) with taxonomies:\n";
