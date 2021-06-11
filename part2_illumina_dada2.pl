@@ -534,7 +534,7 @@ foreach (@full_classif_csvs)
     } elsif ($_ =~ /SILVA\./)
     {
         $db  = "SILVA";
-        $cmd = "$scriptsDir/combine_tx_for_ASV.pl --s $_ -c $abund $vopt";
+        $cmd = "$scriptsDir/combine_tx_for_ASV.pl -s $_ -c $abund $vopt";
     } elsif ($_ =~ /HOMD/)
     {
         $db = "HOMD";
