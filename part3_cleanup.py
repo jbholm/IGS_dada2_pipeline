@@ -11,7 +11,6 @@ from jira import JIRA
 from jira.exceptions import JIRAError
 
 pathfinder = {
-    "map": Path("MAP") / Path("project_map.txt"),
     "intermediate_taxonomies": Path("TAXONOMY_INTERMEDIATES"),
     "final_taxonomies": Path("TAXONOMY_FINAL"),
     "counts-by-taxon": Path("COUNTS_BY_TAXON"),
@@ -64,7 +63,6 @@ def main(args):
             if not organize_counts_by_asv(args.project): continue
             if not organize_counts_by_taxon(args.project): continue
             if not organize_logs(args.project, run_paths): continue
-            if not organize_map(args.project): continue
             if not organize_taxonomies_final(args.project): continue
             if not organize_taxonomies_intermediates(args.project): continue
             if not add_index(): continue
@@ -280,13 +278,21 @@ def upload_to_jira(proj):
             return
 
     # UPLOAD ###########################################################################
-    if Path(pathfinder["map"]).is_file():
-        try:
-            attach_to_issue(j_connection, issue_name, pathfinder["map"])
-        except Exception as e:
-            print(str(e))
-    else:
-        print(f"Map not found at: {pathfinder['map']}\n")
+    files = sorted([str(child) for child in Path(".").iterdir() if child.is_file()])
+    questions = [
+        {
+            "type": "checkbox",
+            "name": "chooser",
+            "message": "",
+            "choices": [{"name": file} for file in files],
+        }
+    ]
+    choices = inquire(questions, "Choose map(s) to upload:")
+
+    for choice in choices:
+        filepath = str(proj / Path(choice))
+        if not attach_to_issue(j_connection, issue_name, filepath):
+            return
 
     process = Popen(
         ["ls", "-al", str(proj / pathfinder["counts-by-taxon"])],
@@ -785,28 +791,6 @@ def organize_logs(proj_path, run_paths):
                 shutil.copy(Path(filepath), Path(organized_dir) / Path(filepath).name)
         else:
             print(f"Skipping creation of {organized_dir} (no logs found)")
-
-    except Exception as e:
-        print(str(e))
-        if not ask_continue():
-            return False
-    
-    return True
-
-def organize_map(proj_path):
-    try:
-        organized_dir = str(Path(pathfinder["map"]).resolve().parent.relative_to(proj_path))
-
-        filepaths = glob.glob(str(proj_path / "project_map.txt"))
-
-        if len(filepaths) > 0:
-            make_for_contents(organized_dir)
-            print(f"Moving {len(filepaths)} mapping file(s) to ./{organized_dir}/.")
-
-            for filepath in filepaths:
-                Path(filepath).rename(pathfinder["map"])
-        else:
-            print(f"Skipping creation of ./{organized_dir}/ (no maps found)")
 
     except Exception as e:
         print(str(e))
