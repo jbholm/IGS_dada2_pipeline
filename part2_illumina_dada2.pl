@@ -54,6 +54,12 @@
 =item B<--project-ID, -p>
   Provide the project ID
 
+=item B<--map, -m>
+  A tab-delimited file listing the samples to add to this project. The file must
+  have two columns named RUN.PLATEPOSITION and sampleID. RUN.PLATEPOSITION
+  must be identical to the sample names in the "corrected" map created by Part 1.
+  Default: project_map.txt.
+
 =item B<--pacbio> 
   Sets the B<--tax> default to SILVA138forPB and uses PacBio-specific chimera removal
   parameters.
@@ -141,9 +147,10 @@ $OUTPUT_AUTOFLUSH = 1;
 ##                             OPTIONS
 ####################################################################
 
-my $csts   = 1;
-my $pacbio = 0;
-my $report = 1;
+my $csts     = 1;
+my $pacbio   = 0;
+my $report   = 1;
+my $map_file = "";
 
 # this is the way it is only to preserve the interface of --notVaginal. In the future, please change to --no-vaginal
 my $vaginal    = 1;
@@ -153,6 +160,7 @@ GetOptions(
            "input-runs|i=s"      => \my $inRuns,
            "variable-region|v=s" => \my $region,
            "project-ID|p=s"      => \my $project,
+           "map|m=s"             => \$map_file,
            "overwrite|o=s"       => \my $overwrite,
            "help|h!"             => \my $help,
            "debug"               => \my $debug,
@@ -192,23 +200,21 @@ my @runs = split(",", $inRuns);
 
 # Refine and validate the run paths (no duplicates, must exist on filesystem)
 my %seen;
-foreach (@runs)
+foreach (@runs, $map_file)
 {
     if ($_)
     {    # If the variable is a non-empty string...
-        my $copy = $_;
-        $copy =~ s/\/$//;    # remove any trailing slash
+        my $copy    = $_;
         my $relPath = $copy;
         $copy = abs_path($relPath);    # get abs path
-            # At the same time, abs_path returns undef if the path doesn't exist
-            # so we can verify the existence of each file and directory
-        if (!defined $copy or !-d $copy)
+        if (!defined $copy || !-e $copy)
         {
-            print die $_
+            die $_
               . " not found.\n"
               . "Current working directory: "
               . getcwd() . "\n";
         }
+        $copy =~ s/\/$//;              # remove any trailing slash
         if ($seen{basename($copy)}++)
         {
             die "$_ is a duplicate run name and not allowed\n";
@@ -386,9 +392,7 @@ $logTee->print("Run(s):\n");
 map {$logTee->print("$_\n")} @runs;
 $logTee->print("\n");
 
-print $logTee "---Copying map files to project\n";
 my $run_info_hash = combine_run_metadata(@runs);
-copy_maps_to_project($run_info_hash, "project_map.txt");
 
 my @classifs = ();
 my $projabund;
@@ -732,89 +736,6 @@ sub combine_run_metadata
     return $metadata;
 }
 
-sub copy_maps_to_project
-{
-    my $all_run_info = shift;
-    $all_run_info = $all_run_info->{"runs"};
-    my $output = shift;
-    my @runs   = keys %{$all_run_info};
-
-    # the first map goes into project_map.txt nearly verbatim. For the remaining
-    # maps, all non-blank lines after the header go in
-
-    my @maps;
-    my $projDir = Cwd::cwd();
-    foreach my $run (@runs)
-    {
-        chdir $all_run_info->{$run}->{"path"} or die "cannot chdir: $!";
-        my $map_filepath = $all_run_info->{$run}->{"map"}->{"file"};
-        if ($map_filepath)
-        {
-            push @maps, File::Spec->abs2rel(abs_path($map_filepath), $projDir);
-        }
-    }
-    chdir $projDir or die "cannot chdir: $!";
-
-    my ($inFH, $outFH);
-    if (@maps)
-    {
-        $logTee->print("Found " . @maps . " maps.\n");
-        open($outFH, '>', $output) or die "Could not open $output: $!";
-
-        my $first_filepath = shift @maps;
-        if (-e -f -r $first_filepath)
-        {
-            open($inFH, '<', $first_filepath)
-              or die "Could not open $first_filepath: $!";
-            while (<$inFH>)
-            {
-                if ($_ =~ /^\S+/)
-                {
-                    $outFH->print($_);
-                }
-            }
-            close $inFH;
-        } else
-        {
-            warn
-              "Pipeline version compatibility error. Please manually create your project map by concatenating the maps from individual runs.\n";
-        }
-
-        while (my $run_map_filepath = shift @maps)
-        {
-            if (-e -f -r $run_map_filepath)
-            {
-                open($inFH, '<', $run_map_filepath)
-                  or die "Could not open $run_map_filepath: $!";
-                my $line = 0;
-                while (<$inFH>)
-                {
-                    if ($line != 0 && $_ =~ /^\S+/)
-                    {
-                        $outFH->print($_);
-                    }
-                    $line += 1;
-                }
-                close $inFH;
-            } else
-            {
-                warn
-                  "Pipeline version compatibility error. Please manually create your project map by concatenating the maps from individual runs.\n";
-            }
-        }
-
-        if ($outFH)
-        {
-            close $outFH;
-        }
-    } else
-    {
-        $logTee->print("No maps found.");
-    }
-
-    return ($output);
-}
-
 sub readTbl
 {
 
@@ -874,7 +795,7 @@ sub dada2_combine
     my $sequencer = $pacbio ? "PACBIO" : "ILLUMINA";
 
     my $script = catfile($pipelineDir, "scripts", "remove_bimeras.R");
-    my $args   = "--seq=$sequencer " . join(" ", @rundirs);
+    my $args   = "--seq=$sequencer --map $map_file -- " . join(" ", @rundirs);
 
     return (split(/\s/, R($script, $args)));
 }
