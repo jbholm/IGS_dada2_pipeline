@@ -644,7 +644,7 @@ unlink glob "*.taxa.csv";
 my $final_ASV_taxa = glob("*.asvs+taxa.csv");
 
 $cmd =
-  "$pipelineDir/report/report16s.sh '$projDir' --runs @runs --project $project";
+  "$pipelineDir/report/report16s.sh '$projDir' --map $map_file --runs @runs --project $project";
 execute_and_log($cmd, $logTee, $dryRun, "Creating report...");
 print $logTee "---Final files succesfully produced!\n";
 print $logTee

@@ -168,6 +168,7 @@ if(! is.null(args$map)) {
                 rows_insert(controls[! controls$RUN.PLATEPOSITION %in% map$RUN.PLATEPOSITION, ], by = "RUN.PLATEPOSITION")
         }
     }
+    write_tsv(map, file = args$map)
 
     merge_with_map <- function(df) {
         return(
