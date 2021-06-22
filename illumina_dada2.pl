@@ -123,9 +123,8 @@ available)
 =item B<--working-dir>=PATH, B<-wd> PATH
 
 Indicate an existing directory in which to place output, and from which the
-project and run names will be parsed. The last directory on PATH should be named
-after the run, and the second-to-last directory on PATH should be named after
-the project.
+run name will be parsed. The last directory on PATH must be named after the run.
+(Many of the result files will be named after the run.)
 
 =item B<--bclen> LENGTH
 
@@ -303,7 +302,7 @@ if ($inDir && ($r1file || $r2file || $i1file || $i2file))
 }
 if (!$map)
 {
-    die "\n\tPlease provide the path to the project mapping file (-m)\n\n";
+    die "\n\tPlease provide the path to the run mapping file (-m)\n\n";
 }
 if ($oneStep && ($i1file || $i2file))
 {
@@ -396,14 +395,12 @@ if (!@dbg || grep(/^barcodes$/, @dbg) || grep(/^demux$/, @dbg))
                             );
 }
 
-if (
-    # Check if there are at least two directories in $global_config{wd}
-    scalar(
-         File::Spec->splitdir((File::Spec->splitpath("$global_config{wd}/"))[1])
-    ) - 2 < 2
-   )
+# After shaving off potential trailing slash,
+# Split on the last path separator, then check if the last string is a word
+$global_config{wd} =~ s/\/$//;
+if ((File::Spec->splitpath("$global_config{wd}"))[2] !~ /[^\/]/)
 {
-    die "Working directory (-wd) must have the pattern */PROJECT/RUN";
+    die "Working directory (-wd) must be a path to a directory";
 }
 
 my $params_hashref = params();
@@ -416,11 +413,9 @@ chdir $global_config{wd};
 
 # Initialize log file
 my $run     = File::Basename::basename($global_config{wd});
-my $pd      = (File::Basename::fileparse($global_config{wd}))[1];
-my $project = File::Basename::basename($pd);
 
 my $time = strftime("%Y-%m-%d %H:%M:%S", localtime(time));
-my $log  = "$global_config{wd}/$project" . "_" . $run . "_16S_pipeline_log.txt";
+my $log  = "$global_config{wd}/${run}_16S_pipeline_log.txt";
 open my $logFH, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
 my $logTee = new IO::Tee(\*STDOUT, $logFH);
 
@@ -540,10 +535,11 @@ if (!-e $stdout_log)
 }
 
 my $metadata = project_metadata();
-$metadata = project_metadata(metadata => {"params" => {"platform" => "ILLUMINA"}});
+$metadata =
+  project_metadata(metadata => {"params" => {"platform" => "ILLUMINA"}});
 
 my $qiime =
-  "$global_config{wd}/$project" . "_" . $run . "_" . "qiime_config.txt";
+  "$global_config{wd}/${run}_qiime_config.txt";
 
 if (@dbg)
 {
@@ -555,7 +551,7 @@ if (@dbg)
     print $logTee "\n";
 }
 
-print $logTee "PROJECT: $project\nVARIABLE REGION: $var\n"
+print $logTee "RUN: $run\nVARIABLE REGION: $var\n"
   . "R VERSION: "
   . $params_hashref->{'R'}
   . "\nPECAN MODELS: $models\n";
@@ -936,12 +932,12 @@ sub barcodes
             # if the index files aren't .gz, just read in place.
         } else
         {    # Otherwise...
-                # decompress to our project/run directory
+                # decompress to our run directory
             push(@cmds,
                  "gzip --decompress --force < $index1Input > $localNames{\"index1\"}"
                 );
             print $logTee
-              "---Decompressing $project barcode and index file from $index1Input to $localNames{\"index1\"}\n";
+              "---Decompressing $run barcode and index file from $index1Input to $localNames{\"index1\"}\n";
         }
         if ($index2Input !~ /.gz$/)
         {       # same for reverse reads
@@ -951,7 +947,7 @@ sub barcodes
                  "gzip --decompress --force < $index2Input > $localNames{\"index2\"}"
                 );
             print $logTee
-              "---Decompressing $project barcode and index file from $index2Input to $localNames{\"index2\"}\n";
+              "---Decompressing $run barcode and index file from $index2Input to $localNames{\"index2\"}\n";
         }
 
         # Execute the commands queued above
@@ -1117,7 +1113,7 @@ sub demux
           "qsub -N $step2 -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $readsRevInput -o $revProjDir -b $barcodes -m $localMap --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
 
         execute_and_log(@cmds, $logTee, $dryRun,
-                        "Demultiplexing to get the project library...\n");
+                        "Demultiplexing to get the run library...\n");
 
         print "---Waiting for fwd and rev seqs.fastq to complete....\n";
         print "---Monitoring $step2 error logs....\n";
@@ -1265,7 +1261,7 @@ if (!@dbg || grep(/^splitsamples$/, @dbg))
         push @cmds,
           "qsub -N $step3 -cwd -b y -l mem_free=5G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $rRevSeqsFq --file_type fastq -o $revSampleDir";
         execute_and_log(@cmds, $logTee, $dryRun,
-                     "Splitting $project seqs.fastq " . "files by sample ID\n");
+                     "Splitting $run seqs.fastq " . "files by sample ID\n");
 
         ## the $nSamples needs to be altered if a sample has 0 reads, because the sample-specific fastq won't be produced
         my $n_fq   = 0;
@@ -1769,7 +1765,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
 if ((!@dbg) || grep(/^dada2$/, @dbg))
 {
     my $projrtout =
-      "$global_config{wd}/$project" . "_" . $run . "_dada2_part1_rTmp.Rout";
+      "$global_config{wd}/${run}_dada2_part1_rTmp.Rout";
     my $stats_file  = catfile($global_config{wd}, "dada2_part1_stats.txt");
     my $counts_file = catfile($global_config{wd}, "dada2_abundance_table.rds");
 
@@ -1791,7 +1787,6 @@ if ((!@dbg) || grep(/^dada2$/, @dbg))
     {
         my $truncLen;
 
-        chdir $pd;
         if ($oneStep)
         {
             if ($var eq "V3V4")
@@ -2042,7 +2037,7 @@ if ((!@dbg) || grep(/^dada2$/, @dbg))
             # "dada2 completed successfully" is a key phrase that causes
             # an appropriate message printed to STDOUT
             print $logTee "dada2 completed successfully!\nAbundance table for "
-              . "$project run $run located at $global_config{wd}/dada2_abundance_table.rds\n";
+              . "run $run located at $global_config{wd}/dada2_abundance_table.rds\n";
             print $logTee
               "See $outputs[0] for dada2 table of reads surviving by "
               . "step\n\n";
@@ -2122,7 +2117,7 @@ sub params
 sub project_metadata
 {
     my %arg          = @_;
-    my $any_args = scalar %arg;
+    my $any_args     = scalar %arg;
     my $new_metadata = delete %arg{"metadata"} // {};
     my $replace      = delete $arg{"replace"} // 0;
 
@@ -2424,11 +2419,13 @@ sub cacheChecksums
         # Store the checksum of the files just produced.
         $newChecksums{$name} = $checksum;
     }
-    
+
     $metadata->{"checkpoints"}{$step} = \%newChecksums;
     if (List::Util::all {defined $_} $metadata->{"checkpoints"})
     {
-        project_metadata(metadata => {"checkpoints" => $metadata->{"checkpoints"}}, replace => 1);
+        project_metadata(
+                      metadata => {"checkpoints" => $metadata->{"checkpoints"}},
+                      replace  => 1);
     }
 }
 
@@ -2566,7 +2563,7 @@ sub find_raw_files
 
 # Given *R1.fastq(.gz), if it's .gz, then removes the extension and gives a
 # filepath in the local directory
-# @param 0 The project/run directory
+# @param 0 The run directory
 # @params 1... The full path to the original file
 sub convert_to_local_if_gz
 {
@@ -2578,16 +2575,16 @@ sub convert_to_local_if_gz
         if ($file =~ /.gz$/)
         {
 
-            # Rename *[R|I][1|2].fastq.gz to <WD>/<PROJ>_<RUN>_[R|I][1|2].fastq
+            # Rename *[R|I][1|2].fastq.gz to <WD>/<RUN>_[R|I][1|2].fastq
             my $dest = File::Basename::basename($file);
 
             my $suffix =
               substr($dest, (length($dest) - 11), 8);    # get suffix (sans .gz)
 
+            $wd =~ s/\/$//; # remove any trailing slash
             my @dirs = File::Spec->splitdir($wd);
             $file =
-                "$wd/$dirs[scalar(@dirs) - 2]" . "_"
-              . "$dirs[scalar(@dirs) - 1]"
+                "$wd/$dirs[scalar(@dirs) - 1]"
               . "_$suffix";
         }
         push(@ans, $file);

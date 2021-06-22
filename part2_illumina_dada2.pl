@@ -146,18 +146,21 @@ $OUTPUT_AUTOFLUSH = 1;
 ####################################################################
 ##                             OPTIONS
 ####################################################################
+my $params_hashref = config();
 
 my $csts     = 1;
 my $pacbio   = 0;
 my $report   = 1;
 my $map_file = "";
+my $run_path = $params_hashref->{"run_storage_path"};
 
 # this is the way it is only to preserve the interface of --notVaginal. In the future, please change to --no-vaginal
 my $vaginal    = 1;
 my $notVaginal = 0;
 my @strategies = ();
 GetOptions(
-           "input-runs|i=s"      => \my $inRuns,
+           "run|r=s"      => \my @runs,
+           "run-storage=s"      => \$run_path,
            "variable-region|v=s" => \my $region,
            "project-ID|p=s"      => \my $project,
            "map|m=s"             => \$map_file,
@@ -188,15 +191,24 @@ if (!$project)
     die "Please provide a project name\n\n";
 }
 
+chdir File::Spec->catdir(File::Spec->rootdir(), "local", "scratch", $project);
 my $projDir = Cwd::cwd;
 
-if (!$inRuns)
+if (!@runs)
 {
     die "Please provide (a) run ID(s)\n\n";
 }
 
-##split the list of runs to an array
-my @runs = split(",", $inRuns);
+##Compute the absolute path to each run
+foreach (@runs) {
+    my $pathsep = File::Spec->catfile('', '');
+    if($_ =~ qr/$pathsep/) {
+        die 
+"$_ contains a path separator, and is not a valid run ID. Run IDs are the names"
+. " of directories found by default in:\n$run_path\n";
+    }
+    $_ = catdir($run_path, $_);
+}
 
 # Refine and validate the run paths (no duplicates, must exist on filesystem)
 my %seen;
@@ -241,7 +253,6 @@ local $SIG{__WARN__} = sub {
     print STDERR "WARNING: $_[0]";
 };    # Warnings go to log file, stdout, and stderr
 
-my $params_hashref = config();
 
 if (!exists $ENV{"LD_LIBRARY_PATH"})
 {

@@ -12,5 +12,6 @@
     "ref_16s_dir": "/local/projects-t3/MSL/pipelines/share/taxonomy",
     "python2": "/usr/local/packages/python-2.7.17/bin/python2",
     "qiime_env": "/local/projects-t3/MSL/pipelines/packages/envs/qiime1",
-    "conda_init": "/usr/local/packages/miniconda3/etc/profile.d/conda.sh"
+    "conda_init": "/usr/local/packages/miniconda3/etc/profile.d/conda.sh",
+    "run_storage_path": "/local/projects-t3/MSL/runs"
 }
