@@ -190,7 +190,14 @@ def share_unix_perms(path):
     pathlist = Path(str(path)).rglob("*")
     user_to_group_divisor = int(stat.S_IRUSR / stat.S_IRGRP)
     for path in pathlist:
-        st = path.stat()
+        try:
+            st = path.stat()
+        except Exception as e:
+            print(str(e))
+            if not ask_continue():
+                return False
+            else:
+                continue
         usr_perms = st.st_mode & stat.S_IRWXU
         if usr_perms > 0:
             if os.geteuid() == st.st_uid:
@@ -555,7 +562,7 @@ def get_runs(proj_path):
         else:
             ans["status"] = False
     else:
-        ans["runs"] = [Path(subdir).resolve() for subdir in response]
+        ans["runs"] = [proj_path / Path(subdir) for subdir in response]
 
     return ans
 
@@ -951,7 +958,12 @@ def add_references(proj_path, run_paths):
 def remove_trash(proj_path, run_paths):
     try:
         trash_files = []
-        trash_dirs = [str(run_path) for run_path in run_paths]
+        trash_dirs = []
+        for run_path in run_paths:
+            if run_path.is_symlink():
+                trash_files.append(str(run_path))
+            else:
+                trash_dirs.append(str(run_path))
 
         for entry in os.scandir("."):
             if (
