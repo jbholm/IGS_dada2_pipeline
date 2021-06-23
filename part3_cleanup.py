@@ -520,7 +520,6 @@ def confirm(prompt):
     ]
     return inquire(questions)
 
-
 def get_runs(proj_path):
     ans = {
         "status": True,
@@ -536,15 +535,15 @@ def get_runs(proj_path):
     choices = []
 
     for subdir in subdirs:
-        choice = {"name": str(subdir.name), "value": subdir}
-        if str(subdir) != "REPORT":
+        choice = {"name": subdir.name}
+        if subdir.name in list(project_metadata()['runs'].keys()):
             choice["checked"] = True
         else:
             choice["checked"] = False
         choices.append(choice)
     choices.sort(key=(lambda choice: choice["name"]))
 
-    prompt = "Choose subdirectories that contain runs to be processed:"
+    prompt = "Use <SPACE> to choose runs. Press <ENTER> to confirm."
     questions = [
         {"type": "checkbox", "name": "chooser", "message": "", "choices": choices}
     ]
@@ -556,9 +555,17 @@ def get_runs(proj_path):
         else:
             ans["status"] = False
     else:
-        ans["runs"] = response
+        ans["runs"] = [Path(subdir).resolve() for subdir in response]
 
     return ans
+
+def project_metadata():
+    with Path(".meta.json").open("r") as fh:
+        metadata = json.load(fh)
+    if not type(metadata) is dict:
+        raise Exception("Project metadata not a JSON dictionary")
+
+    return metadata
 
 def read_metadata(run_path):
     with (run_path / Path(".meta.json")).open("r") as fh:
@@ -655,10 +662,12 @@ def organize_reads(proj_path, run_paths):
                 return True # not a show-stopper
 
             if len(filepaths) > 0:
-                make_for_contents(organized_dir, any_files)
                 any_files = True
-                subdir_destination = str(Path(organized_dir) / run_path.name)
+                
+                make_for_contents(organized_dir, any_files)
+                subdir_destination = str(Path(organized_dir) / Path(run_path.name))
                 make_for_contents(subdir_destination)
+
                 print(f"Copying {len(filepaths)} raw read files to {subdir_destination}.")
                 for filepath in filepaths:
                     shutil.copy2(filepath, Path(subdir_destination) / Path(filepath).name)

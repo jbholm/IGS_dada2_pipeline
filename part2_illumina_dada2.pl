@@ -159,8 +159,8 @@ my $vaginal    = 1;
 my $notVaginal = 0;
 my @strategies = ();
 GetOptions(
-           "run|r=s"      => \my @runs,
-           "run-storage=s"      => \$run_path,
+           "run|r=s"             => \my @runs,
+           "run-storage=s"       => \$run_path,
            "variable-region|v=s" => \my $region,
            "project-ID|p=s"      => \my $project,
            "map|m=s"             => \$map_file,
@@ -191,8 +191,10 @@ if (!$project)
     die "Please provide a project name\n\n";
 }
 
-chdir File::Spec->catdir(File::Spec->rootdir(), "local", "scratch", $project);
+chdir catdir(File::Spec->rootdir(), "local", "scratch", $project);
 my $projDir = Cwd::cwd;
+
+$run_path = abs_path($run_path) or die "Can't find run storage path.\n$!";
 
 if (!@runs)
 {
@@ -200,12 +202,14 @@ if (!@runs)
 }
 
 ##Compute the absolute path to each run
-foreach (@runs) {
+foreach (@runs)
+{
     my $pathsep = File::Spec->catfile('', '');
-    if($_ =~ qr/$pathsep/) {
-        die 
-"$_ contains a path separator, and is not a valid run ID. Run IDs are the names"
-. " of directories found by default in:\n$run_path\n";
+    if ($_ =~ qr/$pathsep/)
+    {
+        die
+          "$_ contains a path separator, and is not a valid run ID. Run IDs are the names"
+          . " of directories found by default in:\n$run_path\n";
     }
     $_ = catdir($run_path, $_);
 }
@@ -252,7 +256,6 @@ local $SIG{__WARN__} = sub {
     print "WARNING: $_[0]";
     print STDERR "WARNING: $_[0]";
 };    # Warnings go to log file, stdout, and stderr
-
 
 if (!exists $ENV{"LD_LIBRARY_PATH"})
 {
@@ -403,8 +406,6 @@ $logTee->print("Run(s):\n");
 map {$logTee->print("$_\n")} @runs;
 $logTee->print("\n");
 
-my $run_info_hash = combine_run_metadata(@runs);
-
 my @classifs = ();
 my $projabund;
 
@@ -445,6 +446,9 @@ if (List::Util::any {!-e $_} ($abundRds, $abund, $fasta, $stats))
 {
     print $logTee "Chimeras already removed. Skipping...\n";
 }
+
+# log original run paths
+my $run_info_hash = combine_run_metadata(@runs);
 
 # Give ASV's unique and easy-to-look-up IDs
 $cmd = "$scriptsDir/rename_asvs.py $fasta -p $project";
@@ -744,6 +748,17 @@ sub combine_run_metadata
     print $metadataFH encode_json($metadata);
     close $metadataFH;
 
+    # symlink runs into project directory for part 3
+    foreach my $rundir (@_)
+    {
+        #my $temp = qr/$projDir/;
+
+        # my $rundir2 = ;
+        if ($rundir . catdir('', '') !~ /^${projDir}/)
+        {
+            symlink($rundir, catdir($projDir, basename($rundir))) or die $!;
+        }
+    }
     return $metadata;
 }
 
