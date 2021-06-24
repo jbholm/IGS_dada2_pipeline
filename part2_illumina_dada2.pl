@@ -467,6 +467,9 @@ foreach ("SILVA138forPB", "SILVA", "SILVA-PECAN", "UNITE", "HOMD")
         if ($_ eq "SILVA_PECAN")
         {
             push @dada2_taxonomy_list, "SILVA";
+        } elsif ($_ eq "SILVA")
+        {
+            push @dada2_taxonomy_list, "SILVA132";
         } else
         {
             push @dada2_taxonomy_list, $_;
@@ -546,9 +549,9 @@ foreach (@full_classif_csvs)
     {
         $db  = "SILVA138forPB";
         $cmd = "$scriptsDir/combine_tx_for_ASV.pl -s $_ -c $abund $vopt";
-    } elsif ($_ =~ /SILVA\./)
+    } elsif ($_ =~ /(SILVA[^\.]*)\.classification/)
     {
-        $db  = "SILVA";
+        $db  = $1;
         $cmd = "$scriptsDir/combine_tx_for_ASV.pl -s $_ -c $abund $vopt";
     } elsif ($_ =~ /HOMD/)
     {
