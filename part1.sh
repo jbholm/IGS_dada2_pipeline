@@ -45,13 +45,18 @@ assign_default()
 while [[ ! "$1" == "--" && "$#" != 0 ]]; do
   case "$1" in
     --qsub*)
-        QSUB_ARGS="${1#*=}"
-        if [[ ! -n "$QSUB_ARGS" || ! $1 =~ "=" ]]; then  
-            MSG="--qsub missing value."
-            MSG+=" --qsub=\"\" and --qsub= are not accepted."
-            stop "$MSG"
+        if [[ $1 =~ "--qsub=" ]]; then 
+            QSUB_ARGS="${1#*=}"
+            if [[ ! -n "$QSUB_ARGS" || ! $1 =~ "=" ]]; then  
+                MSG="--qsub missing value."
+                MSG+=" --qsub=\"\" and --qsub= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--qsub" ]]; then
+            try_assign QSUB_ARGS "$1" "$2"
+            shift 2
         fi
-        shift 1
         ;;
     -i) # update the Perl and bash documentation!!!
         try_assign RAW_PATH "$1" "$2"
@@ -81,11 +86,17 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         try_assign MAP "$1" "$2"
         shift 2
         ;;
-    --bclen)
-        if [[ "$2" =~ ^- || ! -n "$2" ]]; then
-            stop "--bclen missing its value. Unable to continue."
-        else 
-            BCLENGTH="--bclen $2"
+    --bclen*)
+        if [[ $1 =~ "--bclen=" ]]; then 
+            BCLENGTH="${1#*=}"
+            if [[ ! -n "$BCLENGTH" || ! $1 =~ "=" ]]; then  
+                MSG="--bclen missing value."
+                MSG+=" --bclen=\"\" and --bclen= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--bclen" ]]; then
+            try_assign BCLENGTH "$1" "$2"
             shift 2
         fi
         ;;
@@ -117,34 +128,65 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         VERBOSE=$1
         shift 1
         ;;
-    --dada2-mem)
-        if [[ "$2" =~ ^- || ! -n "$2" ]]; then
-            stop "--debug missing its value. Unable to continue."
-        else 
-            DADA2MEM="--dada2-mem $2"
+    --dada2-mem*)
+        if [[ $1 =~ "--dada2-mem=" ]]; then 
+            DADA2MEM="${1#*=}"
+            if [[ ! -n "$DADA2MEM" || ! $1 =~ "=" ]]; then  
+                MSG="--dada2-mem missing value."
+                MSG+=" --dada2-mem=\"\" and --dada2-mem= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--dada2-mem" ]]; then
+            try_assign DADA2MEM "$1" "$2"
             shift 2
         fi
         ;;
     --dada2*)
-        DADA2="$1"
-        if [[ ! -n "${DADA2#*--dada2}" || ! $DADA2 =~ "=" ]]; then  
-            MSG="--dada2 missing value."
-            MSG+=" --dada2=\"\" and --dada2= are not accepted."
-            stop "$MSG"
+        if [[ $1 =~ "--dada2=" ]]; then 
+            DADA2="${1#*=}"
+            if [[ ! -n "$DADA2" || ! $1 =~ "=" ]]; then  
+                MSG="--dada2 missing value."
+                MSG+=" --dada2=\"\" and --dada2= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--dada2" ]]; then
+            try_assign DADA2 "$1" "$2"
+            shift 2
         fi
-        shift 1
         ;;
     --1Step)
         ONESTEP=$1
         shift 1
         ;;
-    --run-storage)
-        try_assign SD "$1" "$2"
-        shift 2
+    --run-storage*)
+        if [[ $1 =~ "--run-storage=" ]]; then 
+            SD="${1#*=}"
+            if [[ ! -n "$SD" || ! $1 =~ "=" ]]; then  
+                MSG="--run-storage missing value."
+                MSG+=" --run-storage=\"\" and --run-storage= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--run-storage" ]]; then
+            try_assign SD "$1" "$2"
+            shift 2
+        fi
         ;;
-    -qp|--qsub-project)
-        try_assign QP "$1" "$2"
-        shift 2
+    -qp|--qsub-project*)
+        if [[ $1 =~ "--qsub-project=" ]]; then 
+            QP="${1#*=}"
+            if [[ ! -n "$QP" || ! $1 =~ "=" ]]; then  
+                MSG="--qsub-project missing value."
+                MSG+=" --qsub-project=\"\" and --qsub-project= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--qsub-project" || $1 == "-qp" ]]; then
+            try_assign QP "$1" "$2"
+            shift 2
+        fi
         ;;
     --email)
         EMAIL="-m ea"

@@ -45,12 +45,6 @@
 =item B<--input-run-names, -i>
   Comma-separated list of input run names (directories)
 
-=item B<--variable-region>|B<-v> {V3V4, V4, ITS, FULL-LENGTH}
-  The targeted variable region. V3V4 sets the default B<--tax> to PECAN-SILVA. 
-  V4 sets the default B<--tax> to SILVA. ITS sequences are taxonomically assigned 
-  from UNITE (overriding B<--tax> and B<--oral>). To reiterate,
-  B<-v> ITS causes B<--tax> to be ignored.
-
 =item B<--project-ID, -p>
   Provide the project ID
 
@@ -60,26 +54,47 @@
   must be identical to the sample names in the "corrected" map created by Part 1.
   Default: project_map.txt.
 
-=item B<--pacbio> 
-  Sets the B<--tax> default to SILVA138forPB and uses PacBio-specific chimera removal
-  parameters.
+=item B<--variable-region>|B<-v> {V3V4, V4, ITS, FULL-LENGTH}
+  The targeted variable region, V3V4 by default. The variable region determines 
+  the base taxonomic annotation scheme. --tax can be given to perform other 
+  annotation schemes. See the mapping below:
+  
+  Variable region       Annotation scheme
+  V3V4                  PECAN-SILVA
+  V4                    SILVA
+  ITS                   UNITE
+  FULL-LENGTH           SILVA138forPB
 
 =item B<--tax, -t> {PECAN-SILVA, SILVA, SILVA138forPB, PECAN, HOMD, UNITE}
-  Override the default taxonomic reference(s) used for classifying ASVs. For all 
-    references besides PECAN and SPECIES, assignment is done by DADA2's implementation of
-    the RDP classifier.
-  PECAN-SILVA - Initially assigns ASVs by SILVAv132. Any ASVs assigned to the 
-    genuses Lactobacillus, Gardnerella,
-    Prevotella, Sneathia, Atopobium, Shuttleworthia, or Saccharibacteria are
-    classified by PECAN instead. PECAN-only abundance tables are also produced.
+  Perform additional taxonomic annotation schemes. For all references 
+  besides PECAN, annotation is done by DADA2's implementation of the RDP 
+  classifier.
+  
+  PECAN-SILVA - Initially assigns ASVs by the default SILVA database. Any ASVs assigned to the 
+    genuses Lactobacillus, Gardnerella, Prevotella, Sneathia, Atopobium, 
+    Shuttleworthia, or Saccharibacteria are classified by PECAN instead. 
+    PECAN-only abundance tables are also produced.
   PECAN - PECAN is the only classifier run.
-  SILVA - Assignments from SILVA132 down to genus level.
-  SILVA138forPB - Assignments from the SILVA138 database down to species level. Use for PacBio (full-length) reads only.
-  HOMD - Assigns from the Human Oral Microbiome Database, usually to species level.
-  UNITE - Assigns from the UNITE database, usually to species level. Appropriate only for the fungal ITS region.
+  SILVA - Assignments from the default SILVA database down to genus level.
+  SILVA138forPB - Assignments from the SILVA138 database down to species level. 
+    Use for PacBio (full-length) reads only.
+  HOMD - Assigns from the Human Oral Microbiome Database, usually to species 
+    level.
+  UNITE - Assigns from the UNITE database, usually to species level. Use only 
+    for the fungal ITS region.
+
+=item B<--pacbio> 
+  Use this flag for PacBio runs. Sets B<--variable-region> to "FULL-LENGTH" and 
+  uses PacBio-specific chimera removal parameters.
 
 =item B<--oral>
-  Overrides B<-v>, B<--tax> and B<--pacbio>, using HOMD for all taxonomic assignment
+  Changes the base taxonomic annotation scheme to "HOMD", regardless of
+  --variable-region, and silently adds B<--notVaginal>. This can be used in 
+  combination with B<--pacbio>, or other B<--tax> parameters. To get both 
+  SILVA138forPB and HOMD annotations for a PacBio run, use the following 
+  parameters in any order:
+
+  B<--pacbio --oral --tax=SILVA138forPB>
 
 =item B<--nocsts>
   Flag to skip CST assignment. By default, CSTs are assigned if the V3V4 variable region is being analyzed and samples are non-oral. Assignment data are written to *_PECAN_taxa-merged_StR_CST.csv.
@@ -146,22 +161,23 @@ $OUTPUT_AUTOFLUSH = 1;
 ####################################################################
 ##                             OPTIONS
 ####################################################################
-my $params_hashref = config();
+my $config_hashref = config();
 
+my $region   = "V3V4";
 my $csts     = 1;
 my $pacbio   = 0;
 my $report   = 1;
 my $map_file = "";
-my $run_path = $params_hashref->{"run_storage_path"};
+my $run_path = $config_hashref->{"run_storage_path"};
 
 # this is the way it is only to preserve the interface of --notVaginal. In the future, please change to --no-vaginal
 my $vaginal    = 1;
 my $notVaginal = 0;
-my @strategies = ();
+my @schemes    = ();
 GetOptions(
            "run|r=s"             => \my @runs,
            "run-storage=s"       => \$run_path,
-           "variable-region|v=s" => \my $region,
+           "variable-region|v=s" => \$region,
            "project-ID|p=s"      => \my $project,
            "map|m=s"             => \$map_file,
            "overwrite|o=s"       => \my $overwrite,
@@ -171,7 +187,7 @@ GetOptions(
            "dry-run"             => \my $dryRun,
            "skip-err-thld"       => \my $skipErrThldStr,
            "notVaginal"          => \$notVaginal,
-           "tax|t=s"             => \@strategies,
+           "tax|t=s"             => \@schemes,
            "oral"                => \my $oral,
            "csts!"               => \$csts,
            "pacbio!"             => \$pacbio,
@@ -252,7 +268,7 @@ my $time = POSIX::strftime("%Y-%m-%d %H:%M:%S", localtime(time));
 print $logTee "$time\n\n";
 
 local $SIG{__WARN__} = sub {
-    print $logFH "WARNING: $_[0]";
+    print $logTee "WARNING: $_[0]";
     print "WARNING: $_[0]";
     print STDERR "WARNING: $_[0]";
 };    # Warnings go to log file, stdout, and stderr
@@ -266,23 +282,43 @@ $ENV{'LD_LIBRARY_PATH'} =
 my $output = `python2 --version 2>&1`;
 if ($? == -1)
 {
-    $ENV{'PATH'} = $ENV{'PATH'} . ":" . dirname($params_hashref->{"python2"});
+    $ENV{'PATH'} = $ENV{'PATH'} . ":" . dirname($config_hashref->{"python2"});
 }
 $ENV{'PYTHONPATH'} = "";
 
+$map_file = copy_to_project($project, $map_file);
+$logTee->print("MAP: $map_file\n");
+
+$logTee->print("\n");
+$logTee->print("RUN(s):\n");
+map {$logTee->print("$_\n")} @runs;
+$logTee->print("\n");
+
+if ($oral)
+{
+    $notVaginal = 1;
+}
 if ($notVaginal)
 {
+    $logTee->print("VAGINAL: NO\n");
     $vaginal = 0;
+} else
+{
+    $logTee->print("VAGINAL: YES\n");
 }
-
-if ($pacbio && !$region)
+if ($pacbio)
 {
     $region = "FULL-LENGTH";
+    $logTee->print(
+           "Targeting FULL-LENGTH 16S because the run uses PacBio platform.\n");
 }
 if (!$region)
 {
     die
       "Please provide a variable region (-v), V3V4, V4, ITS, or FULL-LENGTH\n";
+} else
+{
+    $logTee->print("REGION: $region\n");
 }
 if (
     List::Util::none {$_ eq $region}
@@ -296,116 +332,108 @@ if (
 my $models;
 my %taxonomy_flags;
 my $pecan;
+
+my $base_scheme;
+my %region_to_scheme = (
+                        V3V4          => "PECAN-SILVA",
+                        V4            => "SILVA",
+                        ITS           => "UNITE",
+                        "FULL-LENGTH" => "SILVA138forPB"
+                       );
+
+my $vaginal_adj = "vaginal";
+if (!$vaginal)
 {
+    $vaginal_adj = "non-vaginal";
+    $region_to_scheme{"V3V4"} = "SILVA";
+}
 
-    if ($region eq "ITS")
+if ($oral)
+{
+    $base_scheme = "HOMD";
+    $logTee->print(
+        "Using $base_scheme as the base annotation scheme because the samples were oral.\n"
+    );
+} else
+{
+    $base_scheme = $region_to_scheme{$region};
+    my $message =
+      "Using $base_scheme as the base annotation scheme because $region was targeted";
+    if ($region eq "V3V4")
     {
-        @strategies = ("UNITE");
-        print $logTee
-          "Using the UNITE reference database because ITS region was targeted.\n";
-    } elsif ($oral)
-    {
-        @strategies = ("HOMD");
-        print $logTee
-          "Using the HOMD reference database because samples are oral.\n";
-    } elsif (scalar @strategies == 0)
-    {
-        if ($pacbio)
-        {
-            @strategies = ("SILVA138forPB");
-        } elsif ($region eq "V3V4")
-        {
-            if ($vaginal)
-            {
-                @strategies = ("PECAN-SILVA");
-            } else
-            {
-                @strategies = ("SILVA");
-            }
-        } elsif ($region eq "V4")
-        {
-            @strategies = ("SILVA");
-        } else
-        {
-            die
-              "Unsure what taxonomic reference to use because known values of --tax, --region not given, and --oral and --pacbio absent.";
-        }
+        $message .= " and the samples were $vaginal_adj";
     }
+    $logTee->print("$message.\n");
+}
+unshift(@schemes, $base_scheme);
 
-    my $ps = grep (/^PECAN-SILVA$/, @strategies);
-    my $s  = grep (/^SILVA$/,       @strategies);
-    my $s138 = grep(/^SILVA138forPB$/, @strategies);
-    my $p    = grep (/^PECAN$/, @strategies);
-    my $h    = grep(/^HOMD$/, @strategies);
-    my $u    = grep(/^UNITE$/, @strategies);
-    if ($ps + $s + $s138 + $p + $h + $u == scalar @strategies) { }
-    else
-    {
-        die "Illegal taxonomic reference. Legal values for --tax|-t are "
-          . "PECAN-SILVA, SILVA, SILVA138forPB, PECAN, HOMD, and UNITE.";
-    }
+my $ps = grep (/^PECAN-SILVA$/, @schemes);
+my $s  = grep (/^SILVA$/,       @schemes);
+my $s138 = grep(/^SILVA138forPB$/, @schemes);
+my $p    = grep (/^PECAN$/, @schemes);
+my $h    = grep(/^HOMD$/, @schemes);
+my $u    = grep(/^UNITE$/, @schemes);
+if ($ps + $s + $s138 + $p + $h + $u == scalar @schemes) { }
+else
+{
+    die
+      "Illegal taxonomic annotation scheme given by --tax. Legal values for --tax|-t are "
+      . "PECAN-SILVA, SILVA, SILVA138forPB, PECAN, HOMD, and UNITE.";
+}
 
-# Which taxonomies need to be assigned from using DADA2? Which need to be assigned by SPINGO?
-    %taxonomy_flags =
-      (SILVA138 => 0, SILVA => 0, HOMD => 0, UNITE => 0, PECAN => 0);
+$logTee->print("Annotation schemes: ");
+$logTee->print(join(" ", @schemes) . "\n");
 
-    if ($ps)
+# Which taxonomies need to be assigned from? (this is necessary bc PECAN-SILVA
+# specifies two taxonomies)
+%taxonomy_flags =
+  (SILVA138 => 0, SILVA => 0, HOMD => 0, UNITE => 0, PECAN => 0);
+if ($ps)
+{
+    $models = "/local/projects-t2/jholm/PECAN/v1.0/V3V4/merged_models/";
+    if ($csts)
     {
-        print $logTee "Using the PECAN-SILVA assignment scheme.\n";
-        $models = "/local/projects-t2/jholm/PECAN/v1.0/V3V4/merged_models/";
-        if ($csts)
-        {
-            print $logTee "Using Valencia to assign samples to CSTs\n";
-        } else
-        {
-            print $logTee "Skipping CST assignment.\n";
-        }
-        $taxonomy_flags{PECAN} = 1;
-        $taxonomy_flags{SILVA} = 1;
-    }
-    if ($s)
+        print $logTee "Using Valencia to assign samples to CSTs\n";
+    } else
     {
-        print $logTee "Using SILVA-only assignment scheme.\n";
-        $taxonomy_flags{SILVA} = 1;
+        print $logTee "Skipping CST assignment.\n";
     }
-    if ($p)
+    $taxonomy_flags{PECAN} = 1;
+    $taxonomy_flags{SILVA} = 1;
+}
+if ($s)
+{
+    $taxonomy_flags{SILVA} = 1;
+}
+if ($p)
+{
+    $models = "/local/projects-t2/jholm/PECAN/v1.0/V3V4/merged_models/";
+    if ($csts)
     {
-        print $logTee "Using the PECAN-only assignment scheme.\n";
-        $models = "/local/projects-t2/jholm/PECAN/v1.0/V3V4/merged_models/";
-        if ($csts)
-        {
-            print $logTee "Using Valencia to assign samples to CSTs\n";
-        } else
-        {
-            print $logTee "Skipping CST assignment.\n";
-        }
-        $taxonomy_flags{PECAN} = 1;
-    }
-    if ($s138)
+        print $logTee "Using Valencia to assign samples to CSTs\n";
+    } else
     {
-        print $logTee "Using SILVA_v138-for-PacBio assignment scheme.\n";
-        $taxonomy_flags{SILVA138forPB} = 1;
+        print $logTee "Skipping CST assignment.\n";
     }
-    if (grep(/^HOMD$/, @strategies))
-    {
-        print $logTee "Using HOMD taxonomy\n";
-        $taxonomy_flags{HOMD} = 1;
-    }
-    if (grep(/^UNITE$/, @strategies))
-    {
-        print $logTee "Using UNITE taxonomy\n";
-        $taxonomy_flags{UNITE} = 1;
-    }
+    $taxonomy_flags{PECAN} = 1;
+}
+if ($s138)
+{
+    $taxonomy_flags{SILVA138forPB} = 1;
+}
+if ($h)
+{
+    $taxonomy_flags{HOMD} = 1;
+}
+if ($u)
+{
+    $taxonomy_flags{UNITE} = 1;
 }
 
 print $logTee "\n";
 ####################################################################
 ##                               MAIN
 ####################################################################
-$logTee->print("Run(s):\n");
-map {$logTee->print("$_\n")} @runs;
-$logTee->print("\n");
-
 my @classifs = ();
 my $projabund;
 
@@ -442,6 +470,7 @@ if (List::Util::any {!-e $_} ($abundRds, $abund, $fasta, $stats))
     {
         print $logTee "$_\n";
     }
+    $logTee->print("\n");
 } else
 {
     print $logTee "Chimeras already removed. Skipping...\n";
@@ -452,8 +481,12 @@ my $run_info_hash = combine_run_metadata(@runs);
 
 # Give ASV's unique and easy-to-look-up IDs
 $cmd = "$scriptsDir/rename_asvs.py $fasta -p $project";
-execute_and_log($cmd, $logTee, $dryRun,
-     "---Renaming ASVs in FASTA, abundance tables, and classification key(s).");
+execute_and_log(
+     $cmd,
+     $logTee,
+     $dryRun,
+     "\n---Renaming ASVs in FASTA, abundance tables, and classification key(s)."
+);
 
 my $species_file;
 my @full_classif_csvs;
@@ -469,7 +502,7 @@ foreach ("SILVA138forPB", "SILVA", "SILVA-PECAN", "UNITE", "HOMD")
             push @dada2_taxonomy_list, "SILVA";
         } elsif ($_ eq "SILVA")
         {
-            push @dada2_taxonomy_list, "SILVA132";
+            push @dada2_taxonomy_list, $config_hashref->{"SILVA_default"};
         } else
         {
             push @dada2_taxonomy_list, $_;
@@ -488,10 +521,9 @@ if (scalar @dada2_taxonomy_list > 0)
 
         @dada2Output =
           dada2_classify($fasta, \@dada2_taxonomy_list);    # assignment
-
         ### @dada2Output now has every file that needs to be renamed
         print $logTee "---Renaming dada2 output files for project...\n";
-        @dada2Output = move_to_project($project, @dada2Output);
+        @dada2Output = map {move_to_project($project, $_)} @dada2Output;
     } else
     {
         print $logTee
@@ -533,7 +565,7 @@ if ($taxonomy_flags{PECAN})
 #################################################################
 
 my $vopt = "";
-if ($vaginal && !$oral)
+if ($vaginal)
 {
     $vopt = "--vaginal";
 }
@@ -572,7 +604,7 @@ foreach (@full_classif_csvs)
                       );
     if (!-e $outfile)
     {
-        my $msg = "---Labeling count table with $db taxa.";
+        my $msg = "\n---Labeling count table with $db taxa.";
         execute_and_log($cmd, $logTee, $dryRun, $msg);
     }
 
@@ -604,7 +636,7 @@ foreach (@two_col_classifs)
     }
 
 }
-if (grep (/^PECAN-SILVA$/, @strategies))
+if (grep (/^PECAN-SILVA$/, @schemes))
 {
     ### APPLY PECAN+SILVA CLASSIFICATIONS TO COUNT TABLE (V3V4) ####
     #################################################################
@@ -620,10 +652,15 @@ if (grep (/^PECAN-SILVA$/, @strategies))
     my $silvaFile = "";
     foreach (@full_classif_csvs)
     {
-        if ($_ =~ /SILVA\./)
+        if ($_ =~ /SILVA[^\.]*\.classification/)
         {
             $silvaFile = $_;
         }
+    }
+    if (!$silvaFile)
+    {
+        die "Can't find SILVA classification table from among:\n"
+          . join("\n", @full_classif_csvs) . "\n";
     }
     $cmd =
       "$scriptsDir/combine_tx_for_ASV.pl -p $pecanFile -s $silvaFile -c $abund $vopt";
@@ -754,11 +791,23 @@ sub combine_run_metadata
     # symlink runs into project directory for part 3
     foreach my $rundir (@_)
     {
-        #my $temp = qr/$projDir/;
-
-        # my $rundir2 = ;
-        if ($rundir . catdir('', '') !~ /^${projDir}/)
+        # symlink if the run directory is not already a subdirectory of the
+        # project directory (runs are external, by default)
+        if ($rundir !~ /^${projDir}/)
         {
+            my $symlink = catdir($projDir, basename($rundir));
+            if (-e $symlink && -l $symlink)
+            {
+                unlink $symlink;
+                $logTee->print(  "Relinking "
+                               . basename($rundir)
+                               . " into the project directory.\n");
+            } else
+            {
+                $logTee->print(  "Linking "
+                               . basename($rundir)
+                               . " into the project directory.\n");
+            }
             symlink($rundir, catdir($projDir, basename($rundir))) or die $!;
         }
     }
@@ -804,7 +853,7 @@ sub R
     # my $outR    = catfile( $projDir, basename($script) . "out" );
 
     my $cmd = "$shebang --verbose $script $args";
-    my ($stdout) = execute_and_log($cmd, undef, 0, "");
+    my ($stdout) = execute_and_log($cmd, $logTee, 0, "");
 
     # check_R_for_error(\$stdout); execute_and_log should die on error
     return ($stdout);
@@ -864,30 +913,26 @@ sub check_R_for_error
 }
 ################################################################################
 # Execute the given commands;
-# the second to last argument must evaluate false to prevent loggin to log file.
-# the last argument is 1 if this is a dry run
+# The third to last argument is a user-readable message.
+# the second to last argument is for dry run
+# the last argument is the filehandle where messages should be logged (undef silences logging)
 sub execute_and_log
 {
     my $cuteMsg   = pop @_;
     my $dryRun    = pop @_;
     my $lexicalFH = pop @_;
 
-    # Print to STDOUT if filehandle was not provided
-    if (!$lexicalFH)
-    {
-        $lexicalFH = *STDOUT;
-    }
-
     my @ans = ();
-    $cuteMsg =~ s/^\n+|\n+$//g;    # remove leading and trailing newlines
-    print $lexicalFH "$cuteMsg\n";
+
+    #$cuteMsg =~ s/^\n+|\n+$//g;    # remove leading and trailing newlines
+    print $lexicalFH "$cuteMsg\n" if $lexicalFH;
 
     # CAREFUL, $cmd holds a reference to a variable in the caller!
     foreach my $cmd (@_)
     {
 
         # print each command
-        print $lexicalFH "> $cmd\n";
+        print $lexicalFH "> $cmd\n" if $lexicalFH;
 
         if (!$dryRun)
         {
@@ -909,7 +954,7 @@ sub execute_and_log
             read $fh, $out, $filesize;
             if ($verbose)
             {
-                print $out;
+                $logTee->print("STDOUT: $out\n");
                 open(my $fh, '<', '.perlstderr');
                 my $filesize = -s '.perlstderr';
                 my $err;
@@ -921,7 +966,7 @@ sub execute_and_log
         }
 
     }
-    print $lexicalFH "\n";
+    print $lexicalFH "\n" if $lexicalFH;
 
     # unlink ".perlstdout", ".perlstderr";
     return (@ans);
@@ -938,9 +983,12 @@ sub move_to_project
 
     my $base = fileparse($file);
     my $dest = File::Spec->catfile($projDir, $proj . "_$base");
+
+    my $cmd = "mv $file $dest";
+    $logTee->print($cmd) if $verbose;
+
     if (!$dryRun)
     {
-        my $cmd = "mv $file $dest";
         execute_and_log($cmd, undef, 0, "");
     }
 

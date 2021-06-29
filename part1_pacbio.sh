@@ -30,17 +30,47 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
     #     fi
     #     shift 1
     #     ;;
-    --pattern) 
-        try_assign PATTERN "$1" "$2"
-        shift 2
+    --pattern*) 
+        if [[ $1 =~ "--pattern=" ]]; then 
+            PATTERN="${1#*=}"
+            if [[ ! -n "$PATTERN" || ! $1 =~ "=" ]]; then  
+                MSG="--pattern missing value."
+                MSG+=" --pattern=\"\" and --pattern= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--pattern" ]]; then
+            try_assign PATTERN "$1" "$2"
+            shift 2
+        fi
         ;;
     --run|-r)
-        try_assign RUN "$1" "$2"
-        shift 2
+        if [[ $1 =~ "--run=" ]]; then 
+            RUN="${1#*=}"
+            if [[ ! -n "$RUN" || ! $1 =~ "=" ]]; then  
+                MSG="--run missing value."
+                MSG+=" --run=\"\" and --run= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--run" || $1 == "-r" ]]; then
+            try_assign RUN "$1" "$2"
+            shift 2
+        fi
         ;;
-    --run-storage)
-        try_assign SD "$1" "$2"
-        shift 2
+    --run-storage*)
+        if [[ $1 =~ "--run-storage=" ]]; then 
+            SD="${1#*=}"
+            if [[ ! -n "$SD" || ! $1 =~ "=" ]]; then  
+                MSG="--run-storage missing value."
+                MSG+=" --run-storage=\"\" and --run-storage= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--run-storage" ]]; then
+            try_assign SD "$1" "$2"
+            shift 2
+        fi
         ;;
     *) # preserve positional arguments even if they fall between other params
     # note that options and their operands will be separate elements of $PARAMS

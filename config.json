@@ -10,6 +10,14 @@
     "r-lib-3.6": "/local/projects-t3/MSL/pipelines/packages/R/x86_64-pc-linux-gnu-library/3.6",
     "r-lib-4.0": "/local/projects-t3/MSL/pipelines/packages/R/x86_64-pc-linux-gnu-library/4.0",
     "ref_16s_dir": "/local/projects-t3/MSL/pipelines/share/taxonomy",
+    "taxonomy_dbs": {
+        "SILVA128": "silva_nr_v128_train_set.fa.gz",
+        "SILVA132": "silva_nr_v132_train_set.fa.gz",
+        "SILVA138forPB": "silva_nr99_v138_wSpecies_train_set.fa.gz",
+        "HOMD": "HOMD_v15.1_DADA2_taxonomy_final.txt",
+        "UNITE": "sh_general_release_dynamic_01.12.2017.fasta"
+    },
+    "SILVA_default": "SILVA132",
     "python2": "/usr/local/packages/python-2.7.17/bin/python2",
     "qiime_env": "/local/projects-t3/MSL/pipelines/packages/envs/qiime1",
     "conda_init": "/usr/local/packages/miniconda3/etc/profile.d/conda.sh",
