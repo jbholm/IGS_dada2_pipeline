@@ -412,7 +412,7 @@ my $params_hashref = params();
 chdir $global_config{wd};
 
 # Initialize log file
-my $run     = File::Basename::basename($global_config{wd});
+my $run = File::Basename::basename($global_config{wd});
 
 my $time = strftime("%Y-%m-%d %H:%M:%S", localtime(time));
 my $log  = "$global_config{wd}/${run}_16S_pipeline_log.txt";
@@ -538,8 +538,7 @@ my $metadata = project_metadata();
 $metadata =
   project_metadata(metadata => {"params" => {"platform" => "ILLUMINA"}});
 
-my $qiime =
-  "$global_config{wd}/${run}_qiime_config.txt";
+my $qiime = "$global_config{wd}/${run}_qiime_config.txt";
 
 if (@dbg)
 {
@@ -839,8 +838,10 @@ if ($tbshtBarcodes)
         }
     }
 
-    die
-      "Finished troubleshooting barcodes. Please inspect the split library logs in each trial directory to determine which demux was correct. Correct files can be moved back to this run directory, and the pipeline can be continued using '--debug splitsamples --debug tagclean --debug dada2'.";
+    my $msg =
+      "Finished troubleshooting barcodes. Please inspect the split library logs in each trial directory to determine which demux was correct. Correct files can be moved back to this run directory, and the pipeline can be continued using '--debug splitsamples --debug tagclean --debug dada2'.\n";
+    $logTee->print($msg);
+    exit 0;
 
 } else
 {
@@ -1261,7 +1262,7 @@ if (!@dbg || grep(/^splitsamples$/, @dbg))
         push @cmds,
           "qsub -N $step3 -cwd -b y -l mem_free=5G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $rRevSeqsFq --file_type fastq -o $revSampleDir";
         execute_and_log(@cmds, $logTee, $dryRun,
-                     "Splitting $run seqs.fastq " . "files by sample ID\n");
+                        "Splitting $run seqs.fastq " . "files by sample ID\n");
 
         ## the $nSamples needs to be altered if a sample has 0 reads, because the sample-specific fastq won't be produced
         my $n_fq   = 0;
@@ -1764,8 +1765,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
 #############################
 if ((!@dbg) || grep(/^dada2$/, @dbg))
 {
-    my $projrtout =
-      "$global_config{wd}/${run}_dada2_part1_rTmp.Rout";
+    my $projrtout   = "$global_config{wd}/${run}_dada2_part1_rTmp.Rout";
     my $stats_file  = catfile($global_config{wd}, "dada2_part1_stats.txt");
     my $counts_file = catfile($global_config{wd}, "dada2_abundance_table.rds");
 
@@ -2581,11 +2581,9 @@ sub convert_to_local_if_gz
             my $suffix =
               substr($dest, (length($dest) - 11), 8);    # get suffix (sans .gz)
 
-            $wd =~ s/\/$//; # remove any trailing slash
+            $wd =~ s/\/$//;    # remove any trailing slash
             my @dirs = File::Spec->splitdir($wd);
-            $file =
-                "$wd/$dirs[scalar(@dirs) - 1]"
-              . "_$suffix";
+            $file = "$wd/$dirs[scalar(@dirs) - 1]" . "_$suffix";
         }
         push(@ans, $file);
     }
