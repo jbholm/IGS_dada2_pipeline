@@ -190,7 +190,14 @@ def share_unix_perms(path):
     pathlist = Path(str(path)).rglob("*")
     user_to_group_divisor = int(stat.S_IRUSR / stat.S_IRGRP)
     for path in pathlist:
-        st = path.stat()
+        try:
+            st = path.stat()
+        except Exception as e:
+            print(str(e))
+            if not ask_continue():
+                return False
+            else:
+                continue
         usr_perms = st.st_mode & stat.S_IRWXU
         if usr_perms > 0:
             if os.geteuid() == st.st_uid:
@@ -520,7 +527,6 @@ def confirm(prompt):
     ]
     return inquire(questions)
 
-
 def get_runs(proj_path):
     ans = {
         "status": True,
@@ -536,15 +542,15 @@ def get_runs(proj_path):
     choices = []
 
     for subdir in subdirs:
-        choice = {"name": str(subdir.name), "value": subdir}
-        if str(subdir) != "REPORT":
+        choice = {"name": subdir.name}
+        if subdir.name in list(project_metadata()['runs'].keys()):
             choice["checked"] = True
         else:
             choice["checked"] = False
         choices.append(choice)
     choices.sort(key=(lambda choice: choice["name"]))
 
-    prompt = "Choose subdirectories that contain runs to be processed:"
+    prompt = "Use <SPACE> to choose runs. Press <ENTER> to confirm."
     questions = [
         {"type": "checkbox", "name": "chooser", "message": "", "choices": choices}
     ]
@@ -556,9 +562,17 @@ def get_runs(proj_path):
         else:
             ans["status"] = False
     else:
-        ans["runs"] = response
+        ans["runs"] = [proj_path / Path(subdir) for subdir in response]
 
     return ans
+
+def project_metadata():
+    with Path(".meta.json").open("r") as fh:
+        metadata = json.load(fh)
+    if not type(metadata) is dict:
+        raise Exception("Project metadata not a JSON dictionary")
+
+    return metadata
 
 def read_metadata(run_path):
     with (run_path / Path(".meta.json")).open("r") as fh:
@@ -655,10 +669,12 @@ def organize_reads(proj_path, run_paths):
                 return True # not a show-stopper
 
             if len(filepaths) > 0:
-                make_for_contents(organized_dir, any_files)
                 any_files = True
-                subdir_destination = str(Path(organized_dir) / run_path.name)
+                
+                make_for_contents(organized_dir, any_files)
+                subdir_destination = str(Path(organized_dir) / Path(run_path.name))
                 make_for_contents(subdir_destination)
+
                 print(f"Copying {len(filepaths)} raw read files to {subdir_destination}.")
                 for filepath in filepaths:
                     shutil.copy2(filepath, Path(subdir_destination) / Path(filepath).name)
@@ -942,7 +958,12 @@ def add_references(proj_path, run_paths):
 def remove_trash(proj_path, run_paths):
     try:
         trash_files = []
-        trash_dirs = [str(run_path) for run_path in run_paths]
+        trash_dirs = []
+        for run_path in run_paths:
+            if run_path.is_symlink():
+                trash_files.append(str(run_path))
+            else:
+                trash_dirs.append(str(run_path))
 
         for entry in os.scandir("."):
             if (
@@ -1102,6 +1123,7 @@ CITATION_GROUPS = {
         Step_citations(
             'Taxonomic assignment',
             [
+                'Callahan, B., McMurdie, P., Rosen, M. et al. DADA2: High-resolution sample inference from Illumina amplicon data. Nat Methods 13, 581–583 (2016). https://doi.org/10.1038/nmeth.3869',
                 "Wang, Q, G. M. Garrity, J. M. Tiedje, and J. R. Cole. 2007. Naïve Bayesian Classifier for Rapid Assignment of rRNA Sequences into the New Bacterial Taxonomy. Appl Environ Microbiol. 73(16):5261-7."
             ],
             10
@@ -1123,11 +1145,32 @@ CITATION_GROUPS = {
             10
         ),
     ]),
+    'SILVA132': Citations([
+        Step_citations(
+            'Taxonomic assignment',
+            [
+                'Quast C, Pruesse E, Yilmaz P, Gerken J, Schweer T, Yarza P, Peplies J, Glöckner FO (2013) The SILVA ribosomal RNA gene database project: improved data processing and web-based tools. Nucl. Acids Res. 41 (D1): D590-D596.',
+                'Yilmaz P, Parfrey LW, Yarza P, Gerken J, Pruesse E, Quast C, Schweer T, Peplies J, Ludwig W, Glöckner FO (2014) The SILVA and "All-species Living Tree Project (LTP)" taxonomic frameworks. Nucl. Acids Res. 42:D643-D648'
+                'Callahan, Benjamin. (2018). Silva taxonomic training data formatted for DADA2 (Silva version 132) [Data set]. Zenodo.'
+            ]
+        )
+    ]),
     'SILVA138': Citations([
         Step_citations(
             'Taxonomic assignment',
             [
+                'Quast C, Pruesse E, Yilmaz P, Gerken J, Schweer T, Yarza P, Peplies J, Glöckner FO (2013) The SILVA ribosomal RNA gene database project: improved data processing and web-based tools. Nucl. Acids Res. 41 (D1): D590-D596.',
+                'Yilmaz P, Parfrey LW, Yarza P, Gerken J, Pruesse E, Quast C, Schweer T, Peplies J, Ludwig W, Glöckner FO (2014) The SILVA and "All-species Living Tree Project (LTP)" taxonomic frameworks. Nucl. Acids Res. 42:D643-D648'
                 'Michael R. McLaren. (2020). Silva SSU taxonomic training data formatted for DADA2 (Silva version 138) (Version 1) [Data set]. Zenodo. http://doi.org/10.5281/zenodo.3986799'
+            ]
+        )
+    ]),
+    'SILVA138forPB': Citations([
+        Step_citations(
+            'Taxonomic assignment',
+            [
+                'Quast C, Pruesse E, Yilmaz P, Gerken J, Schweer T, Yarza P, Peplies J, Glöckner FO (2013) The SILVA ribosomal RNA gene database project: improved data processing and web-based tools. Nucl. Acids Res. 41 (D1): D590-D596.',
+                'Yilmaz P, Parfrey LW, Yarza P, Gerken J, Pruesse E, Quast C, Schweer T, Peplies J, Ludwig W, Glöckner FO (2014) The SILVA and "All-species Living Tree Project (LTP)" taxonomic frameworks. Nucl. Acids Res. 42:D643-D648'
             ]
         )
     ]),
