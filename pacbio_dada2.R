@@ -55,10 +55,11 @@ parser$add_argument(
     help = "Run name that will be pre-pended to each sample name."
 )
 args <- parser$parse_args()
-if (any(is.null(args))) {ls
+if (any(is.null(args))) {
   stop("Some args missing!")
 }
 
+print(args)
 run_dir <- getwd()
 inPath <- args$input
 
@@ -94,6 +95,7 @@ run_meta(new_params = list(platform = "PACBIO"))
 
 glob_pattern <- gsub("()", "(.*)", args$pattern, fixed = T)
 fastqs <- sort(list.files(inPath, pattern = glob_pattern, full.names = T)) # B01\..+\.css\.fastq\.gz
+print(fastqs)
 sample.names <- sapply(fastqs, function(filename) {
     paste(args$run, sub(glob_pattern, "\\1", basename(filename), perl = T), sep = ".")
 })
@@ -132,7 +134,7 @@ trim_primers <- function(ins, outs) {
     }
 
     # Remove primers. Discard reads without primers. Write these counts somewhere?
-    prims <- t(mapply(function(ins, outs, name) {
+    prim.stats <- t(mapply(function(ins, outs) {
         stats <- tryCatch(
             {
                 dada2::removePrimers(
@@ -147,19 +149,19 @@ trim_primers <- function(ins, outs) {
                 fq <- readFastq(ins)
                 inseqs <- length(fq)
                 ans <- data.frame(reads.in = inseqs, reads.out = 0)
-                rownames(ans) <- name
                 return(ans)
             }
         )
-        print(stats)
         return(stats)
-    }, ins = ins, outs = outs, names(ins)))
-    
+    }, ins = ins, outs = outs)) %>%
+        set_rownames(names(ins)) %>%
+        set_colnames(c("reads.in", "reads.out"))
+    print(prim.stats)
     
     samples <- lapply(seq_along(ins), function(s) {
         fastq <- names(ins)[s]
         # filterAndTrim() returns a matrix with rows named by its fwd argument
-        trimmed_file <- if (prims[fastq, "reads.out"] == 0) NULL else outs[[s]]
+        trimmed_file <- if (prim.stats[fastq, "reads.out"] == 0) NULL else outs[[s]]
         ans <- list(
             raw = ins[[s]],
             trimmed = trimmed_file
@@ -169,7 +171,7 @@ trim_primers <- function(ins, outs) {
     }) %>% setNames(names(ins))
     run_meta(samples = samples)
 
-    return(prims)
+    return(prim.stats)
 }
 
 trim_and_filter <- function(ins, outs) {

@@ -180,6 +180,9 @@ if(! is.null(args$map)) {
         )
     }
 
+    # write this here for the time-being
+    write.csv(seqtab, "all_runs_dada2_abundance_table.csv", quote = FALSE)
+
     seqtab.df <- as.data.frame(seqtab)
     seqtab <- seqtab.df %>%
         merge_with_map() %>%

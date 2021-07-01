@@ -1,5 +1,8 @@
 #!/bin/bash
 set -e # exit when any command fails (returns non-0 exit status)
+# ensure the current working directory exists. (`module load sge` will fail if
+# working directory is stale file handle.)
+cd ~ && cd -
 
 # QSUB_ARGS=""
 # DRY_RUN=""
@@ -42,13 +45,18 @@ assign_default()
 while [[ ! "$1" == "--" && "$#" != 0 ]]; do
   case "$1" in
     --qsub*)
-        QSUB_ARGS="${1#*=}"
-        if [[ ! -n "$QSUB_ARGS" || ! $1 =~ "=" ]]; then  
-            MSG="--qsub missing value."
-            MSG+=" --qsub=\"\" and --qsub= are not accepted."
-            stop "$MSG"
+        if [[ $1 =~ "--qsub=" ]]; then 
+            QSUB_ARGS="${1#*=}"
+            if [[ ! -n "$QSUB_ARGS" || ! $1 =~ "=" ]]; then  
+                MSG="--qsub missing value."
+                MSG+=" --qsub=\"\" and --qsub= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--qsub" ]]; then
+            try_assign QSUB_ARGS "$1" "$2"
+            shift 2
         fi
-        shift 1
         ;;
     -i) # update the Perl and bash documentation!!!
         try_assign RAW_PATH "$1" "$2"
@@ -70,10 +78,6 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         try_assign I2 "$1" "$2"
         shift 2
         ;;
-    -p|--project-name)
-        try_assign PROJECT "$1" "$2"
-        shift 2
-        ;;
     -r|--run-ID)
         try_assign RUN "$1" "$2"
         shift 2
@@ -82,11 +86,17 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         try_assign MAP "$1" "$2"
         shift 2
         ;;
-    --bclen)
-        if [[ "$2" =~ ^- || ! -n "$2" ]]; then
-            stop "--bclen missing its value. Unable to continue."
-        else 
-            BCLENGTH="--bclen $2"
+    --bclen*)
+        if [[ $1 =~ "--bclen=" ]]; then 
+            BCLENGTH="${1#*=}"
+            if [[ ! -n "$BCLENGTH" || ! $1 =~ "=" ]]; then  
+                MSG="--bclen missing value."
+                MSG+=" --bclen=\"\" and --bclen= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--bclen" ]]; then
+            try_assign BCLENGTH "$1" "$2"
             shift 2
         fi
         ;;
@@ -118,34 +128,65 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         VERBOSE=$1
         shift 1
         ;;
-    --dada2-mem)
-        if [[ "$2" =~ ^- || ! -n "$2" ]]; then
-            stop "--debug missing its value. Unable to continue."
-        else 
-            DADA2MEM="--dada2-mem $2"
+    --dada2-mem*)
+        if [[ $1 =~ "--dada2-mem=" ]]; then 
+            DADA2MEM="${1#*=}"
+            if [[ ! -n "$DADA2MEM" || ! $1 =~ "=" ]]; then  
+                MSG="--dada2-mem missing value."
+                MSG+=" --dada2-mem=\"\" and --dada2-mem= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--dada2-mem" ]]; then
+            try_assign DADA2MEM "$1" "$2"
             shift 2
         fi
         ;;
     --dada2*)
-        DADA2="$1"
-        if [[ ! -n "${DADA2#*--dada2}" || ! $DADA2 =~ "=" ]]; then  
-            MSG="--dada2 missing value."
-            MSG+=" --dada2=\"\" and --dada2= are not accepted."
-            stop "$MSG"
+        if [[ $1 =~ "--dada2=" ]]; then 
+            DADA2="${1#*=}"
+            if [[ ! -n "$DADA2" || ! $1 =~ "=" ]]; then  
+                MSG="--dada2 missing value."
+                MSG+=" --dada2=\"\" and --dada2= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--dada2" ]]; then
+            try_assign DADA2 "$1" "$2"
+            shift 2
         fi
-        shift 1
         ;;
     --1Step)
         ONESTEP=$1
         shift 1
         ;;
-    --storage-dir|-sd)
-        try_assign SD "$1" "$2"
-        shift 2
+    --run-storage*)
+        if [[ $1 =~ "--run-storage=" ]]; then 
+            SD="${1#*=}"
+            if [[ ! -n "$SD" || ! $1 =~ "=" ]]; then  
+                MSG="--run-storage missing value."
+                MSG+=" --run-storage=\"\" and --run-storage= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--run-storage" ]]; then
+            try_assign SD "$1" "$2"
+            shift 2
+        fi
         ;;
-    -qp|--qsub-project)
-        try_assign QP "$1" "$2"
-        shift 2
+    -qp|--qsub-project*)
+        if [[ $1 =~ "--qsub-project=" ]]; then 
+            QP="${1#*=}"
+            if [[ ! -n "$QP" || ! $1 =~ "=" ]]; then  
+                MSG="--qsub-project missing value."
+                MSG+=" --qsub-project=\"\" and --qsub-project= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--qsub-project" || $1 == "-qp" ]]; then
+            try_assign QP "$1" "$2"
+            shift 2
+        fi
         ;;
     --email)
         EMAIL="-m ea"
@@ -224,16 +265,11 @@ fi
 
 # Validate that mapping file was given and exists
 if [[ ! -n "$MAP" ]]; then
-    stop "\tPlease provide a full path to the project mapping file (-m)"
+    stop "\tPlease provide a full path to the run mapping file (-m)"
 elif [[ ! -e "$MAP" ]]; then
     stop "\tMapping file (-m) does not exist or is inaccessible."
 fi
 printf "MAPPING FILE: $MAP\n"
-
-# -p is mandatory
-if [[ ! -n "$PROJECT" ]]; then
-    stop "Project name (-p) required."
-fi
 
 # -r is mandatory
 if [[ ! -n "$RUN" ]]; then
@@ -254,17 +290,32 @@ fi
 printf "VARIABLE REGION: $VAR\n"
 
 # Validate the storage directory
-if [[ ! -n "$SD" || "$SD" == "scratch" ]]; then
-    SD="/local/scratch"
-elif [[ "$SD" == "groupshare" ]]; then
-    SD="/local/groupshare/ravel"
+if [[ ! -n "$SD" ]]; then
+    SD=`cat "$MY_DIR/config.json" | \
+    python3 -c "import sys, json; print(json.load(sys.stdin)['run_storage_path'])"`
 elif [[ ! -d "$SD" ]]; then
-    stop "$SD does not exist!\n" # A custom storage directory must exist
+    stop "$SD does not exist or is not a directory!\n" # A custom storage directory must exist
 else
-    SD="${SD%\/}" # Remove any trailing slash
+    SD="${SD%\/}" # Remove any trailing slash and get abs path
 fi
-SD="$SD/$PROJECT/$RUN" # But we'll automatically make these subfolders
+SD=$(readlink -f "$SD/$RUN")
 printf "%b" "WORKING DIRECTORY: $SD\n"
+
+# get user to confirm overwrite if the run directory already exists
+if [[ -d "$SD" ]]; then
+    printf "$SD already exists! Overwrite?\n"
+    select yn in 'Yes' 'No'; do 
+        case "$yn" in 
+            "Yes")  
+                rm -rf "$SD/*"
+                break
+                ;; 
+            "No")
+                stop
+                ;; 
+        esac; 
+    done
+fi
 mkdir -p "$SD/qsub_error_logs/"
 mkdir -p "$SD/qsub_stdout_logs/"
 
@@ -359,14 +410,14 @@ export PYTHONPATH=""
 # export LD_LIBRARY_PATH=/usr/local/packages/python-2.7/lib:/usr/local/packages/gcc/lib64:$LD_LIBRARY_PATH
 
 # # Begin log (will be continued by illumina_dada2.pl)
-log="$SD/${PROJECT}_${RUN}_16S_pipeline_log.txt"
+log="$SD/${RUN}_16S_pipeline_log.txt"
 
 # Remove extra spaces caused by joining empty arguments with a whitespace
 OPTSARR=("$PARAMS" "$BCLENGTH" "$TROUBLESHOOT_BARCODES" "$ONESTEP" "$DADA2" "$DADA2MEM" "$DBG" "$VERBOSE" "$DRY_RUN")
 OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 
-ARGS=("-w w" "-cwd" "-b y" "-l mem_free=4G" "-P" "$QP" "-q threaded.q" "-pe thread 4" "-V" "-N" "MSL_$PROJECT" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "$QSUB_ARGS" "${MY_DIR}/illumina_dada2.pl" "$INPUT" "-wd" "$SD" "-v" "$VAR" "-m" "$MAP" "$OPTS")
+ARGS=("-w w" "-cwd" "-b y" "-l mem_free=4G" "-P" "$QP" "-q threaded.q" "-pe thread 4" "-V" "-N" "MSL_$RUN" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "$QSUB_ARGS" "${MY_DIR}/illumina_dada2.pl" "$INPUT" "-wd" "$SD" "-v" "$VAR" "-m" "$MAP" "$OPTS")
 CMD=()
 for ARG in "${ARGS[@]}"; do
     if [[ -n "$ARG" ]]; then
@@ -376,7 +427,6 @@ done
 
 printf "$ qsub ${CMD[*]}\n"
 printf "$ qsub ${CMD[*]}\n" >> $log
-
 qsub ${CMD[*]}
 
 : <<=cut
@@ -388,12 +438,9 @@ part1.sh
 
 =head1 DESCRIPTION
 
-The script can be launched from any location on the IGS server, it automatically 
-produces a directory in /local/groupshare/ravel named after the project and run
-ID provided. 
-
-Beginning with a set of raw Illumina sequencing files (usually R1, R2, I1, and I2),
-a mapping file, a project ID, and a run ID, this script:
+The script can be launched from any location on the IGS server. Beginning with a
+set of raw Illumina sequencing files (usually R1, R2, I1, and I2), a mapping 
+file, and a run ID, this script:
 
 1. Extracts barcodes from the raw files.
 
@@ -408,12 +455,13 @@ this project.
 V3V4 16S rRNA gene region. Alternatively, analysis of the V4 or ITS region may
 be specified.
 
-A log file is written at: <PROJECT>/<RUN>/<PROJECT>_<RUN>_16S_pipeline_log.txt
-
+All pipeline products are stored in a directory named after the run. By default,
+run directories are stored in /local/projects-t3/MSL/runs/. A log file is 
+written at ./<RUN>_16S_pipeline_log.txt
 
 =head1 SYNOPSIS
 
-part1.sh (-i <input directory> | -r1 <fwd reads> -r2 <rev reads> [-i1 <index 1> -i2 <index 2>]) -p <project> -r <run> -m <map> [-v <variable region>] [--1Step] [<options>]
+part1.sh (-i <input directory> | -r1 <fwd reads> -r2 <rev reads> [-i1 <index 1> -i2 <index 2>]) -r <run> -m <map> [-v <variable region>] [--1Step] [<options>]
 
 =head1 OPTIONS
 
@@ -458,10 +506,6 @@ with B<--1step>. Gzip compression optional.
 Full path to raw index 2 file (I2, or R3 in old naming scheme). Incompatible 
 with B<--1step>. Gzip compression optional.
 
-=item B<--project-name> name, B<-p> name
-
-Create the project folder with this name.
-
 =item B<--run-ID> name, B<-r> name
 
 Create the run folder with this name.
@@ -479,11 +523,10 @@ The targeted variable region. V3V4 is default.
 Use this flag if the data are prepared by 1-Step PCR (only r1 & r2 raw files
 available)
 
-=item B<--storage-dir> path, B<-sd> path
+=item B<--run-storage> path
 
-Indicate an existing directory in which to place the project directory.
-"scratch" (default) evaluates to "/local/scratch/" and "groupshare" evaluates to
-"/local/groupshare/ravel".
+Indicate an existing directory in which to place the run directory. The default
+path is in the pipeline configuration file.
 
 =item B<--bclen> LENGTH
 
