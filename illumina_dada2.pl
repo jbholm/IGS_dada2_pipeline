@@ -411,6 +411,12 @@ my $params_hashref = params();
 
 chdir $global_config{wd};
 
+# if we're in the global run directory, share all files with group
+my $global_run_storage = abs_path($params_hashref->{"run_storage_path"});
+if($global_config{wd} =~ /^${global_run_storage}/ ) {
+    umask(0002); 
+}
+
 # Initialize log file
 my $run = File::Basename::basename($global_config{wd});
 
@@ -552,7 +558,7 @@ if (@dbg)
 
 print $logTee "RUN: $run\nVARIABLE REGION: $var\n"
   . "R VERSION: "
-  . $params_hashref->{'R'}
+  . $params_hashref->{"part1"}->{'R'}
   . "\nPECAN MODELS: $models\n";
 if ($oneStep)
 {
@@ -1480,7 +1486,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                         my $tc = "$global_config{wd}/$Prefix" . "_tc";
                         $cmd =
                           "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
-                          . $params_hashref->{"tagcleaner"}
+                          . $params_hashref->{"part1"}->{"tagcleaner"}
                           . " -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2 -trim_within 50";
                         push @cmds, $cmd;
                     }
@@ -1500,7 +1506,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                         my $tc = "$global_config{wd}/$Prefix" . "_tc";
                         $cmd =
                           "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
-                          . $params_hashref->{"tagcleaner"}
+                          . $params_hashref->{"part1"}->{"tagcleaner"}
                           . " -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2 -trim_within 50";
                         push @cmds, $cmd;
                     }
@@ -1523,7 +1529,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                         my $tc = "$global_config{wd}/$Prefix" . "_tc";
                         $cmd =
                           "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
-                          . $params_hashref->{"tagcleaner"}
+                          . $params_hashref->{"part1"}->{"tagcleaner"}
                           . " -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
                         push @cmds, $cmd;
                     }
@@ -1543,7 +1549,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                         my $tc = "$global_config{wd}/$Prefix" . "_tc";
                         $cmd =
                           "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
-                          . $params_hashref->{"tagcleaner"}
+                          . $params_hashref->{"part1"}->{"tagcleaner"}
                           . " -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
                         push @cmds, $cmd;
                     }
@@ -1568,7 +1574,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
 
                         $cmd =
                           "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
-                          . $params_hashref->{"tagcleaner"}
+                          . $params_hashref->{"part1"}->{"tagcleaner"}
                           . " -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
                         push @cmds, $cmd;
                     }
@@ -1588,7 +1594,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
 
                         $cmd =
                           "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
-                          . $params_hashref->{"tagcleaner"}
+                          . $params_hashref->{"part1"}->{"tagcleaner"}
                           . " -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2";
                         push @cmds, $cmd;
                     }
@@ -1610,7 +1616,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                         my $tc = "$global_config{wd}/$Prefix" . "_tc";
                         $cmd =
                           "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
-                          . $params_hashref->{"tagcleaner"}
+                          . $params_hashref->{"part1"}->{"tagcleaner"}
                           . " -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
                         push @cmds, $cmd;
 
@@ -1631,7 +1637,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                         my $tc = "$global_config{wd}/$Prefix" . "_tc";
                         $cmd =
                           "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
-                          . $params_hashref->{"tagcleaner"}
+                          . $params_hashref->{"part1"}->{"tagcleaner"}
                           . " -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
                         push @cmds, $cmd;
                     }
@@ -1653,7 +1659,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                         my $tc = "$global_config{wd}/$Prefix" . "_tc";
                         $cmd =
                           "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
-                          . $params_hashref->{"tagcleaner"}
+                          . $params_hashref->{"part1"}->{"tagcleaner"}
                           . " -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 CTGCCCTTTGTACACACCGC -mm5 2";
                         push @cmds, $cmd;
                     }
@@ -1673,7 +1679,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                         my $tc = "$global_config{wd}/$Prefix" . "_tc";
                         $cmd =
                           "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
-                          . $params_hashref->{"tagcleaner"}
+                          . $params_hashref->{"part1"}->{"tagcleaner"}
                           . " -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 TTTCGCTGCGTTCTTCATCG -mm5 2";
                         push @cmds, $cmd;
                     }
@@ -2111,7 +2117,7 @@ sub params
 
     my $params = read_json($orig_param_file, "<");
 
-    return $params->{"part1"};
+    return $params;
 }
 
 sub project_metadata
@@ -2182,8 +2188,8 @@ sub qiime_cmd
     my $script = shift;
     my $config = shift;
 
-    my $python = catfile(abs_path($config->{"qiime1/bin"}), "python");
-    $script = catfile(abs_path($config->{"qiime1/bin"}), $script);
+    my $python = catfile(abs_path($config->{"part1"}->{"qiime1/bin"}), "python");
+    $script = catfile(abs_path($config->{"part1"}->{"qiime1/bin"}), $script);
     return "$python -s $script";
 }
 
@@ -2664,7 +2670,7 @@ sub run_R_script
         );
 
         $cmd =
-          "qsub -cwd -b y -l mem_free=$dada2mem -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log -N Rscript \"{ module load r/4.0.3 2>/dev/null || eval \\`/usr/local/packages/usepackage/bin/usepackage -b r-3.6.0\\` > /dev/null 2>&1; } && $params_hashref->{R}script $Rscript $args > $outR 2>&1\"";
+          "qsub -cwd -b y -l mem_free=$dada2mem -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log -N Rscript \"{ module load r/4.0.3 2>/dev/null || eval \\`/usr/local/packages/usepackage/bin/usepackage -b r-3.6.0\\` > /dev/null 2>&1; } && $params_hashref->{part1}->{R}script $Rscript $args > $outR 2>&1\"";
         execute_and_log($cmd, $logTee, $dryRun,
                   "Running DADA2 with fastq files in $wd for $var region...\n");
 

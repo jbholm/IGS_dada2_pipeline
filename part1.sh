@@ -289,10 +289,12 @@ elif [[ !( "$VAR" == "V3V4" || "$VAR" == "V4" || "$VAR" == "ITS" ) ]]; then
 fi
 printf "VARIABLE REGION: $VAR\n"
 
+SD_DEFAULT=`cat "$MY_DIR/config.json" | \
+    python3 -c "import sys, json; print(json.load(sys.stdin)['run_storage_path'])"`
+SD_DEFAULT=$(readlink -f "$SD_DEFAULT")
 # Validate the storage directory
 if [[ ! -n "$SD" ]]; then
-    SD=`cat "$MY_DIR/config.json" | \
-    python3 -c "import sys, json; print(json.load(sys.stdin)['run_storage_path'])"`
+    SD=$SD_DEFAULT
 elif [[ ! -d "$SD" ]]; then
     stop "$SD does not exist or is not a directory!\n" # A custom storage directory must exist
 else
@@ -315,6 +317,11 @@ if [[ -d "$SD" ]]; then
                 ;; 
         esac; 
     done
+fi
+
+UMASK_OLD=`umask`
+if [ "${SD##$SD_DEFAULT}" != "$SD" ]; then  
+    umask 0002 # if we're in the shared run directory, share the new directories
 fi
 mkdir -p "$SD/qsub_error_logs/"
 mkdir -p "$SD/qsub_stdout_logs/"
