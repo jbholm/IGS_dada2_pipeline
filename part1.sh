@@ -303,16 +303,31 @@ printf "%b" "WORKING DIRECTORY: $SD\n"
 
 # get user to confirm overwrite if the run directory already exists
 if [[ -d "$SD" ]]; then
-    printf "$SD already exists! Overwrite?\n"
-    select yn in 'Yes' 'No'; do 
+    printf "$SD already exists!\n"
+    select yn in 'Abort' 'Resume' 'Overwrite'; do 
         case "$yn" in 
-            "Yes")  
-                rm -rf "$SD/*"
+            "Overwrite")  
+                echo "Confirm complete overwrite? All existing progress will be lost."
+                select yn2 in 'No' 'Yes'; do
+                    case "$yn2" in
+                        "Yes")
+                        rm -rf $SD
+                        mkdir -p $SD
+                        break
+                        ;;
+                        "No")
+                        stop
+                        ;;
+                    esac;
+                done 
                 break
-                ;; 
-            "No")
+                ;;
+            "Abort")
                 stop
-                ;; 
+                ;;
+            "Resume")
+                break
+                ;;  
         esac; 
     done
 fi
