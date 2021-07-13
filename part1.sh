@@ -292,7 +292,7 @@ printf "VARIABLE REGION: $VAR\n"
 # Validate the storage directory
 if [[ ! -n "$SD" ]]; then
     SD=`cat "$MY_DIR/config.json" | \
-    python3 -c "import sys, json; print(json.load(sys.stdin)['run_storage_path'])"`
+    python3 -sc "import sys, json; print(json.load(sys.stdin)['run_storage_path'])"`
 elif [[ ! -d "$SD" ]]; then
     stop "$SD does not exist or is not a directory!\n" # A custom storage directory must exist
 else
@@ -423,6 +423,7 @@ export PYTHONPATH=""
 # conda activate "$qiime_env"
 # export PATH=/usr/local/packages/python-2.7/bin:$PATH
 # export LD_LIBRARY_PATH=/usr/local/packages/python-2.7/lib:/usr/local/packages/gcc/lib64:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/usr/lib64/:$LD_LIBRARY_PATH # for Rcpp libstdc++.so.6
 
 # # Begin log (will be continued by illumina_dada2.pl)
 log="$SD/${RUN}_16S_pipeline_log.txt"
