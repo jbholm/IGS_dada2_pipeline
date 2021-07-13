@@ -150,7 +150,7 @@ Print help message and exit successfully.
 Indicate which qsub-project space should be used for all qsubmissions. The
 default is jravel-lab.
 
-=item B<--debug> {validate, barcodes, demux, splitsamples, tagclean, dada2}
+=item B<--debug> {barcodes, demux, splitsamples, tagclean, dada2}
 
 Runs the specified section of the pipeline. Multiple --debug options can be given
 to run multiple consecutive parts of the pipeline, provided that the input to
@@ -322,17 +322,16 @@ if ($tbshtBarcodes) {@dbg = ();}
 
 if (@dbg)
 {
-    my $q  = grep(/^validate$/,     @dbg);
     my $e  = grep(/^barcodes$/,     @dbg);
     my $de = grep(/^demux$/,        @dbg);
     my $s  = grep(/^splitsamples$/, @dbg);
     my $t  = grep(/^tagclean$/,     @dbg);
     my $da = grep(/^dada2$/,        @dbg);
-    if ($q + $e + $de + $s + $t + $da == scalar @dbg) { }
+    if ($e + $de + $s + $t + $da == scalar @dbg) { }
     else
     {
         die "Illegal debug option. Legal debug options are "
-          . "validate, barcodes, demux, splitsamples, tagclean, and dada2.";
+          . "barcodes, demux, splitsamples, tagclean, and dada2.";
     }
     $noSkip = 1;
 }
@@ -415,7 +414,7 @@ chdir $global_config{wd};
 my $run = File::Basename::basename($global_config{wd});
 
 my $time = strftime("%Y-%m-%d %H:%M:%S", localtime(time));
-my $log  = "$global_config{wd}/${run}_16S_pipeline_log.txt";
+my $log  = catfile($global_config{wd}, "${run}_16S_pipeline_log.txt");
 open my $logFH, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
 my $logTee = new IO::Tee(\*STDOUT, $logFH);
 
@@ -753,7 +752,6 @@ if ($tbshtBarcodes)
              "$global_config{wd}_rc_fwd_rev" => "--rev_comp_bc1 --rev_comp_bc2",
              $global_config{wd}              => ""
     );
-    print Dumper(\%dirs_params);
 
     my $success = 0;
     print $logTee
@@ -1732,13 +1730,15 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
         print $logTee
           "---All tagcleaned R4 (R2) samples accounted for in $global_config{wd}\n";
 
-        $cmd = "gzip -f9 *_tc.fastq";
+        $cmd = "gzip -f9 {*_tc.fastq,$fwdSampleDir/*.fastq,$revSampleDir/*.fastq}";
         execute_and_log($cmd, $logTee, $dryRun,
                         "Compressing tagcleaned FASTQ's...\n");
-        print $logTee "---Tagcleaned FASTQ's compressed.\n";
+        print $logTee "---Raw and tagcleaned FASTQ's compressed.\n";
 
         if (!@dbg)
         {
+            cacheChecksums([glob("$fwdSampleDir/*"), glob("$revSampleDir/*")], "samples");
+
             my @gzipped = glob("$global_config{wd}/*R[1|2]_tc.fastq.gz");
             cacheChecksums(\@gzipped, "tagcleaned");
         }

@@ -15,6 +15,7 @@ options(
     },
     stringsAsFactors = FALSE
 )
+
 require(jsonlite)
 
 initial.options <- commandArgs(trailingOnly = FALSE)
@@ -27,7 +28,7 @@ config <- jsonlite::read_json(
 
 .libPaths(config[["r-lib-3.6"]])
 require("dada2")
-packageVersion("dada2") # 1.12.1  cwd<-getwd()
+packageVersion("dada2") # 1.12.1 
 require("argparse")
 require("autothresholdr")
 require("ShortRead")
@@ -49,17 +50,21 @@ parser$add_argument(
     help = "Regex pattern that will match all DEMUXED .ccs.fastq.gz files. Use () in place of sample name. Remember to escape regex special characters. For correct bash syntax, enclose the pattern in double quotes."
 )
 parser$add_argument(
-    "--run",
-    metavar = "RUN_NAME",
+    "--wd",
+    metavar = "PATH",
     type = "character",
-    help = "Run name that will be pre-pended to each sample name."
+    help = "Working directory. The directory's base name will be taken as the run name."
 )
 args <- parser$parse_args()
 if (any(is.null(args))) {
-  stop("Some args missing!")
+    stop("Some args missing!")
 }
+setwd(args$wd)
+run <- basename(getwd())
+sink(
+    file = file.path(getwd(), paste0(run, "_16S_pipeline_log.txt")), split = TRUE
+)
 
-print(args)
 run_dir <- getwd()
 inPath <- args$input
 

@@ -808,7 +808,7 @@ sub combine_run_metadata
                                . basename($rundir)
                                . " into the project directory.\n");
             }
-            symlink($rundir, catdir($projDir, basename($rundir))) or die $!;
+            symlink($rundir, catdir($projDir, basename($rundir))) or die "Problem creating " . catdir($projDir, basename($rundir)) . " -> $rundir\n$!\n";
         }
     }
     return $metadata;
