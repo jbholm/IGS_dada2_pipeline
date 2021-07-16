@@ -189,19 +189,23 @@ OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 R=`cat "$MY_DIR/config.json" | \
     python3 -sc "import sys, json; print(json.load(sys.stdin)['R-3.6'])"`
-ARGS=("-w w" "-b y" "-l mem_free=64G" "-P" "$QP" "-q threaded.q" "-pe thread 4" "-V" "-N" "MSL_PACBIO" "-o ${SD}/qsub_stdout_logs/pacbio_dada2.R.stdout" "-e ${SD}/qsub_error_logs/pacbio_dada2.R.stderr" "$QSUB_ARGS" "${R}script" "$MY_DIR/pacbio_dada2.R" "$OPTS" "--wd" "$SD" "--pattern" "\"$PATTERN\"")
+ARGS=("-l mem_free=64G" "-P" "$QP" "-V" "-N" "MSL_PACBIO" "-o ${SD}/qsub_stdout_logs/pacbio_dada2.R.stdout" "-e ${SD}/qsub_error_logs/pacbio_dada2.R.stderr" "$QSUB_ARGS" "${R}script" "$MY_DIR/pacbio_dada2.R" "$OPTS" "--wd" "$SD" "--pattern" "\"$PATTERN\"")
 CMD=()
 for ARG in "${ARGS[@]}"; do
     if [[ -n "$ARG" ]]; then
         CMD+=("$ARG")
-    fi 
+    fi
 done
 
 QSUB_CMD=${CMD[@]}
 QSUB_CMD="$QSUB_CMD"
-printf "qsub $QSUB_CMD\n"
-printf "qsub $QSUB_CMD\n" >> $log
-qsub $QSUB_CMD
+
+EXECUTOR=`cat "$MY_DIR/config.json" | \
+    python3 -sc "import sys, json; print(json.load(sys.stdin)['executor'])"`
+
+printf "$ $EXECUTOR $QSUB_CMD\n"
+printf "$ $EXECUTOR $QSUB_CMD\n" >> $log
+$EXECUTOR $QSUB_CMD
 
 : <<=cut
 =pod

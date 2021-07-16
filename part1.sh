@@ -433,7 +433,7 @@ OPTSARR=("$PARAMS" "$BCLENGTH" "$TROUBLESHOOT_BARCODES" "$ONESTEP" "$DADA2" "$DA
 OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 
-ARGS=("-w w" "-cwd" "-b y" "-l mem_free=4G" "-P" "$QP" "-q threaded.q" "-pe thread 4" "-V" "-N" "MSL_$RUN" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "$QSUB_ARGS" "${MY_DIR}/illumina_dada2.pl" "$INPUT" "-wd" "$SD" "-v" "$VAR" "-m" "$MAP" "$OPTS")
+ARGS=("-l mem_free=4G" "-V" "-P" "$QP" "-N" "MSL_$RUN" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "$QSUB_ARGS" "${MY_DIR}/illumina_dada2.pl" "$INPUT" "-wd" "$SD" "-v" "$VAR" "-m" "$MAP" "$OPTS")
 CMD=()
 for ARG in "${ARGS[@]}"; do
     if [[ -n "$ARG" ]]; then
@@ -441,9 +441,12 @@ for ARG in "${ARGS[@]}"; do
     fi 
 done
 
-printf "$ qsub ${CMD[*]}\n"
-printf "$ qsub ${CMD[*]}\n" >> $log
-qsub ${CMD[*]}
+EXECUTOR=`cat "$MY_DIR/config.json" | \
+    python3 -sc "import sys, json; print(json.load(sys.stdin)['executor'])"`
+
+printf "$ $EXECUTOR ${CMD[*]}\n"
+printf "$ $EXECUTOR ${CMD[*]}\n" >> $log
+$EXECUTOR ${CMD[*]}
 
 : <<=cut
 =pod
