@@ -1,6 +1,6 @@
 #! /local/projects-t3/MSL/pipelines/packages/miniconda3/envs/interactive/bin/python3
 
-import argparse, sys, os, glob, re, shlex, json, shutil, gzip, getpass, stat, tempfile
+import argparse, sys, os, glob, re, shlex, json, shutil, gzip, getpass, stat, tempfile, time
 from pathlib import Path # Use of Paths as os.pathlike objects requires Python3.6
 import PyInquirer  # MUST USE PYTHON3.6 FOUND IN interactive TO USE THIS
 import examples
@@ -9,6 +9,11 @@ from enum import Enum
 import scripts.synology_client as synology  # MUST BE IN SAME DIRECTORY AS THIS SCRIPT
 from jira import JIRA
 from jira.exceptions import JIRAError
+
+pipeline_dir = os.path.dirname(os.path.realpath(__file__))
+
+with (Path(pipeline_dir) / Path("config.json")).open("r") as fh:
+    CONFIG = json.load(fh)
 
 pathfinder = {
     "intermediate_taxonomies": Path("TAXONOMY_INTERMEDIATES"),
@@ -57,8 +62,7 @@ def main(args):
                 run_paths = ans["runs"]
             else:
                 continue
-
-            if not organize_reads(args.project, run_paths): continue
+            
             #if not organize_trimmed(args.project, run_paths): continue
             if not organize_counts_by_asv(args.project): continue
             if not organize_counts_by_taxon(args.project): continue
@@ -67,10 +71,11 @@ def main(args):
             if not organize_taxonomies_intermediates(args.project): continue
             if not add_index(): continue
             if not add_references(args.project, run_paths): continue
+            if not organize_reads(args.project, run_paths): continue
+            if not share_unix_perms(args.project): continue
 
             if not remove_trash(args.project, run_paths): continue
 
-            if not share_unix_perms(args.project): continue
 
         elif choice == "J":
             upload_to_jira(args.project)
@@ -534,9 +539,9 @@ def choose_project(default=None):
     return project
 
 
-def confirm(prompt):
+def confirm(prompt, default=False):
     questions = [
-        {"type": "confirm", "name": "response", "message": prompt, "default": False}
+        {"type": "confirm", "name": "response", "message": prompt, "default": default}
     ]
     return inquire(questions)
 
@@ -580,8 +585,11 @@ def get_runs(proj_path):
     return ans
 
 def project_metadata():
-    with Path(".meta.json").open("r") as fh:
-        metadata = json.load(fh)
+    try:
+        with Path(".meta.json").open("r") as fh:
+            metadata = json.load(fh)
+    except FileNotFoundError:
+        raise Exception("Cannot find project metadata from Part 2. Re-run Part 2.")
     if not type(metadata) is dict:
         raise Exception("Project metadata not a JSON dictionary")
 
@@ -605,35 +613,60 @@ def organize_reads(proj_path, run_paths):
         filepaths = []
         any_files = False
 
+        executor = CONFIG['executor']
+        external_exec = False
+        print("\nThis pipeline's default executor is:\n\n" + executor)
+        if confirm("Use executor to transfer large files? (Choose yes if not using screen or tmux)", default=True):
+            external_exec = True
+
         for run_path in run_paths:
-            ill_fwd_dir = proj_path / run_path / Path("fwdSplit")
-            ill_rev_dir = proj_path / run_path / Path("revSplit")
+            ill_fwd_dir = proj_path / run_path / Path("fwdSplit") / Path("split_by_sample_out")
+            ill_rev_dir = proj_path / run_path / Path("revSplit") / Path("split_by_sample_out")
 
-            try:
-                run_info = read_metadata(proj_path / run_path)
-            except Exception as e:
-                print(str(e))
-                print("WARNING: Can't open run metadata from " + run_path.name + ". Unable to locate raw reads")
-                return True # NOT A SHOWSTOPPER
+            # try:
+            #     run_info = read_metadata(proj_path / run_path)
+            # except Exception as e:
+            #     print(str(e))
+            #     print("WARNING: Can't open run metadata from " + run_path.name + ". Unable to locate raw reads")
+            #     return True # NOT A SHOWSTOPPER
 
-            try:
-                filepaths += [
-                    os.path.join(run_path, rel_path) for rel_path in run_info['checkpoints']["samples"].keys()
-                ]
-            except KeyError:
-                print("WARNING: Incompatible with the pipeline version used on this run. Cannot find raw read files.")
-                return True # not a show-stopper
+            # try:
+            #     filepaths += [
+            #         os.path.join(run_path, rel_path) for rel_path in run_info['checkpoints']["samples"].keys()
+            #     ]
+            # except KeyError:
+            #     print("WARNING: Incompatible with the pipeline version used on this run. Cannot find raw read files.")
+            #     return True # not a show-stopper
 
-            if len(filepaths) > 0:
+            if ill_fwd_dir.is_dir() and ill_rev_dir.is_dir():
+                nFiles = len(list(ill_fwd_dir.iterdir()))
+                nFiles += len(list(ill_rev_dir.iterdir()))
                 any_files = True
                 
                 make_for_contents(organized_dir, any_files)
                 subdir_destination = str(Path(organized_dir) / Path(run_path.name))
                 make_for_contents(subdir_destination)
 
-                print(f"Copying {len(filepaths)} raw read files to {subdir_destination}.")
-                for filepath in filepaths:
-                    shutil.copy2(filepath, Path(subdir_destination) / Path(filepath).name)
+                if external_exec:
+                    print(f"Using executor to copy {nFiles} raw read files to {subdir_destination}.\n")
+                    
+                    fwd_wildcard = str(ill_fwd_dir / Path("*"))
+                    rev_wildcard = str(ill_rev_dir / Path("*"))
+
+                    cmd = "module load sge && " + executor + " -V \'cp -f %s " + subdir_destination + "\'"
+                    print(cmd % fwd_wildcard)
+                    run(cmd % fwd_wildcard, shell=True)
+                    print(cmd % rev_wildcard)
+                    run(cmd % rev_wildcard, shell=True)
+
+                    print("\nRemember to delete any stray STDOUT and STDERR files from the working directory.\n")
+
+                    time.sleep(5)
+
+                else:
+                    print(f"Copying {nFiles} raw read files to {subdir_destination}.")
+                    for filepath in filepaths:
+                        shutil.copy2(filepath, Path(subdir_destination) / Path(filepath).name)
 
                 # gzip all if needed
                 for f in Path(subdir_destination).iterdir():
