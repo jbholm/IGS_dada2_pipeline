@@ -577,7 +577,7 @@ if (   !@dbg
         $skip = skippable(
                           [$map],
                           [$localMap, $mapLog],
-                          $metadata->{"checkpoints"}{$map},
+                          $metadata->{"checkpoints"}{"map"},
                           $metadata->{"checkpoints"}{"meta"},
                           "map validation"
                          );
@@ -888,11 +888,13 @@ sub barcodes
     my $count = 0;
 
     my @files;
+    my @names;
     if ($oneStep)
     {
         print $logTee "Forward and reverse reads will be obtained from:\n"
           . "\t$readsForInput\n\t$readsRevInput\n";
         @files = ($readsForInput, $readsRevInput);
+        @names = ("RF", "RR");
     } else
     {
         print $logTee "Forward and reverse reads will be obtained from:\n"
@@ -900,6 +902,7 @@ sub barcodes
         print $logTee "Index 1 and Index 2 will be obtained from:\n"
           . "\t$index1Input\n\t$index2Input\n";
         @files = ($readsForInput, $readsRevInput, $index1Input, $index2Input);
+        @names = ("RF", "RR", "I1", "I2");
     }
 
     my $input  = \@files;
@@ -911,7 +914,8 @@ sub barcodes
                           $output,
                           $metadata->{"checkpoints"}{"raw"},
                           $metadata->{"checkpoints"}{"barcodes"},
-                          "barcode extraction"
+                          "barcode extraction",
+                          \@names
                          );
     }
 
@@ -1000,7 +1004,7 @@ sub barcodes
         # Record hash of barcodes.fastq, and inputs
         if (!@dbg)
         {
-            cacheChecksums(\@files,     "raw");
+            cacheChecksums(\@files, "raw", \@names);
             cacheChecksums([$barcodes], "barcodes");
         }
 
@@ -1077,23 +1081,18 @@ sub demux
     if (!$noSkip)
     {
         $skip = skippable(
-                          [
-                           $readsForInput, $readsRevInput, $localMap, $barcodes
-                          ],
-                          [$rForSeqsFq, $rRevSeqsFq],
-                          {
-                           "RF" => $metadata->{"checkpoints"}{"raw"}->{"RF"},
-                           "RR" => $metadata->{"checkpoints"}{"raw"}->{"RR"},
-                           %{$metadata->{"checkpoints"}{"map"}},
-                           %{$metadata->{"checkpoints"}{"barcodes"}}
-                          },
-                          $metadata->{"checkpoints"}{"library"},
-                          "demultiplexing",
-                          [
-                           $readsForInput, $readsRevInput, $localMap,
-                           File::Spec->abs2rel($barcodes, $wd)
-                          ]
-                         );
+                         [$readsForInput, $readsRevInput, $localMap, $barcodes],
+                         [$rForSeqsFq,    $rRevSeqsFq],
+                         {
+                          "RF"  => $metadata->{"checkpoints"}{"raw"}->{"RF"},
+                          "RR"  => $metadata->{"checkpoints"}{"raw"}->{"RR"},
+                          "map" => $metadata->{"checkpoints"}{"map"},
+                          "barcodes" => $metadata->{"checkpoints"}{"barcodes"}
+                         },
+                         $metadata->{"checkpoints"}{"library"},
+                         "demultiplexing",
+                         ["RF", "RR", "map", "barcodes"]
+        );
     }
 
     if (!$skip)
@@ -1234,14 +1233,17 @@ if (!@dbg || grep(/^splitsamples$/, @dbg))
 
     my $n_fq1 = 0;
 
-    my @fwdOutput = glob("$fwdSampleDir/*.fastq");
-    my @revOutput = glob("$revSampleDir/*.fastq");
+    my @fwdOutput = glob("$fwdSampleDir/*.fastq $fwdSampleDir/*.fastq.gz");
+    my @revOutput = glob("$revSampleDir/*.fastq $revSampleDir/*.fastq.gz");
 
     if (!$noSkip)
     {
         $skip = skippable(
-                          [$rForSeqsFq, $rRevSeqsFq],
-                          [@fwdOutput,  @revOutput],
+                          [
+                           File::Spec->abs2rel($rForSeqsFq, $global_config{wd}),
+                           File::Spec->abs2rel($rRevSeqsFq, $global_config{wd})
+                          ],
+                          [@fwdOutput, @revOutput],
                           $metadata->{"checkpoints"}{"library"},
                           $metadata->{"checkpoints"}{"samples"},
                           "sample splitting"
@@ -1425,18 +1427,17 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
     my $fwdSampleDir = "$fwdProjDir/split_by_sample_out";
     my $revSampleDir = "$revProjDir/split_by_sample_out";
 
-    my @inputsF  = glob("$fwdSampleDir/*.fastq");
-    my @inputsR  = glob("$revSampleDir/*.fastq");
-    my @outPatts = ("_R1_tc", "_R2_tc");
+    my @inputsF  = glob("$fwdSampleDir/*.fastq $fwdSampleDir/*.fastq.gz");
+    my @inputsR  = glob("$revSampleDir/*.fastq $fwdSampleDir/*.fastq.gz");
 
     if (scalar @inputsF != scalar @inputsR)
     {
-        die "Unequal numbers of forward and reverse sample-specific FASTQ's.\n";
+        die "Unequal numbers of forward and reverse sample FASTQ's.\n";
     }
     my $newSamNo = scalar @inputsF;
 
-    my @fwdTcFiles = glob("$global_config{wd}/*R1_tc.fastq");
-    my @revTcFiles = glob("$global_config{wd}/*R2_tc.fastq");
+    my @fwdTcFiles = glob("$global_config{wd}/*R1_tc.fastq.gz");
+    my @revTcFiles = glob("$global_config{wd}/*R2_tc.fastq.gz");
 
     # my @forFilenames = glob("$fwdSampleDir/*.fastq");
     # my @revFilenames = glob("$revSampleDir/*.fastq");
@@ -1444,12 +1445,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
     if (!$noSkip)
     {
         $skip = skippable(
-                          [
-                           (
-                            glob("$fwdSampleDir/*.fastq"),
-                            glob("$revSampleDir/*.fastq")
-                           )
-                          ],
+                          [(@inputsF, @inputsR)],
                           [@fwdTcFiles, @revTcFiles],
                           $metadata->{"checkpoints"}{"samples"},
                           $metadata->{"checkpoints"}{"tagcleaned"},
@@ -1461,10 +1457,11 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
     my $cmd;
     if (!$skip)
     {
-        my $base_cmd = "$config_hashref->{'executor'} -l mem_free=400M -P $qproj -e " .
-        "$error_log -o $stdout_log perl " .
-        $config_hashref->{'part1'}->{"tagcleaner"};
-        
+        my $base_cmd =
+            "$config_hashref->{'executor'} -l mem_free=400M -P $qproj -e "
+          . "$error_log -o $stdout_log perl "
+          . $config_hashref->{'part1'}->{"tagcleaner"};
+
         my $fwd_adapt;
         my $rev_adapt;
 
@@ -1502,37 +1499,37 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
 
         my $filename;
         opendir R1, $fwdSampleDir
-            or die "Cannot open directory $fwdSampleDir\n";
+          or die "Cannot open directory $fwdSampleDir\n";
         while ($filename = readdir R1)
         {
             if ($filename =~ /.fastq$/)
             {
                 my @suffixes = (".fastq", ".fq");
-                my $Prefix =
-                    File::Basename::basename($filename, @suffixes);
-                my $tc = "$global_config{wd}/$Prefix" . "_tc";
-                $cmd = $base_cmd . 
-                " -fastq $fwdSampleDir/$filename -out $tc -line_width 0 " .
-                "-verbose -tag5 $fwd_adapt -mm5 2";
+                my $Prefix   = File::Basename::basename($filename, @suffixes);
+                my $tc       = "$global_config{wd}/$Prefix" . "_tc";
+                $cmd =
+                    $base_cmd
+                  . " -fastq $fwdSampleDir/$filename -out $tc -line_width 0 "
+                  . "-verbose -tag5 $fwd_adapt -mm5 2";
                 push @cmds, $cmd;
             }
         }
         close R1;
 
         opendir R4, $revSampleDir
-            or die "Cannot open directory $revSampleDir\n";
+          or die "Cannot open directory $revSampleDir\n";
         while ($filename = readdir R4)
         {
             if ($filename =~ /.fastq$/)
             {
 
                 my @suffixes = (".fastq", ".fq");
-                my $Prefix =
-                    File::Basename::basename($filename, @suffixes);
-                my $tc = "$global_config{wd}/$Prefix" . "_tc";
-                $cmd = $base_cmd .
-                " -fastq $revSampleDir/$filename -out $tc -line_width 0 " .
-                "-verbose -tag5 $rev_adapt -mm5 2";
+                my $Prefix   = File::Basename::basename($filename, @suffixes);
+                my $tc       = "$global_config{wd}/$Prefix" . "_tc";
+                $cmd =
+                    $base_cmd
+                  . " -fastq $revSampleDir/$filename -out $tc -line_width 0 "
+                  . "-verbose -tag5 $rev_adapt -mm5 2";
                 push @cmds, $cmd;
             }
         }
@@ -1548,7 +1545,8 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
             @fwdFiles = glob("$global_config{wd}/*R1_tc.fastq");
             $nFiles   = @fwdFiles;
 
-# Ensure that each tagcleaned file has the same number of lines as its input file
+            # Ensure that each tagcleaned file has the same number of lines as 
+            # its input file
             $equalLns = 1;
             foreach my $file (@fwdFiles)
             {
@@ -1572,7 +1570,8 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
             @revFiles = glob("$global_config{wd}/*R2_tc.fastq");
             $nFiles   = @revFiles;
 
-# Ensure that each tagcleaned file has the same number of lines as its input file
+            # Ensure that each tagcleaned file has the same number of lines as
+            # its input file
             $equalLns = 1;
             foreach my $file (@revFiles)
             {
@@ -1588,14 +1587,16 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
         print $logTee
           "---All tagcleaned R4 (R2) samples accounted for in $global_config{wd}\n";
 
-        $cmd = "gzip -f9 {*_tc.fastq,$fwdSampleDir/*.fastq,$revSampleDir/*.fastq}";
+        $cmd =
+          "gzip -f9 {*_tc.fastq,$fwdSampleDir/*.fastq,$revSampleDir/*.fastq}";
         execute_and_log($cmd, $logTee, $dryRun,
                         "Compressing tagcleaned FASTQ's...\n");
         print $logTee "---Raw and tagcleaned FASTQ's compressed.\n";
 
         if (!@dbg)
         {
-            cacheChecksums([glob("$fwdSampleDir/*"), glob("$revSampleDir/*")], "samples");
+            cacheChecksums([glob("$fwdSampleDir/*"), glob("$revSampleDir/*")],
+                           "samples");
 
             my @gzipped = glob("$global_config{wd}/*R[1|2]_tc.fastq.gz");
             cacheChecksums(\@gzipped, "tagcleaned");
@@ -1624,8 +1625,8 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
 if ((!@dbg) || grep(/^dada2$/, @dbg))
 {
     my $projrtout   = "$global_config{wd}/${run}_dada2_part1_rTmp.Rout";
-    my $stats_file  = catfile($global_config{wd}, "dada2_part1_stats.txt");
-    my $counts_file = catfile($global_config{wd}, "dada2_abundance_table.rds");
+    my $stats_file  = "dada2_part1_stats.txt";
+    my $counts_file = "dada2_abundance_table.rds";
 
     my @outputs = ($stats_file, $counts_file);
     my @inputs  = glob("$global_config{wd}/*R[1|2]_tc.fastq.gz");
@@ -2040,7 +2041,8 @@ sub qiime_cmd
     my $script = shift;
     my $config = shift;
 
-    my $python = catfile(abs_path($config->{'part1'}->{"qiime1/bin"}), "python");
+    my $python =
+      catfile(abs_path($config->{'part1'}->{"qiime1/bin"}), "python");
     $script = catfile(abs_path($config->{'part1'}->{"qiime1/bin"}), $script);
     return "$python -s $script";
 }
@@ -2067,6 +2069,10 @@ sub skippable
         %checksumsIn = %{$par3};
     }
 
+    #try changing keys of %checksumsIn and %checksumsOut to absolute paths. Same
+    # with anything incoming $inputsR and $outputsR. whoever uses this function
+    # shouldn't be tasked with knowing the cache structure
+
     # Remove any key-value pairs with undef value. This is the necessary to
     # test if we have reference checksums for all the files present.
     delete $checksumsIn{$_}
@@ -2081,6 +2087,13 @@ sub skippable
     delete $checksumsOut{$_}
       for grep {not defined $checksumsOut{$_}} keys %checksumsOut;
 
+    if($verbose) {
+        $logTee->print("Input files: " . Dumper($inputsR) . "\n");
+        $logTee->print("Cached files: " . Dumper(%checksumsIn) . "\n");
+        $logTee->print("Output files: " . Dumper($outputsR) . "\n");
+        $logTee->print("Cached files: " . Dumper(%checksumsOut) . "\n");
+    }
+
     my $prevSkip = $skip;                # file-level my-variable
     my $step     = shift;
     my $inNames  = shift;
@@ -2089,14 +2102,17 @@ sub skippable
 
     if (scalar @$outputsR == 0)
     {
+        $logTee->print("$step has not been run yet. Running now...\n");
         return 0;
     }                                    # no output files found by caller
     if (List::Util::none {defined $_} @$outputsR)
     {
+        $logTee->print("Failed to find output files.\n");
         return 0;
     }
     if (List::Util::none {-e $_} @$outputsR)
     {
+        $logTee->print("Output files were specified but do not exist.\n");
 
         # Caller named output files but none existed. No need to print message
         return 0;
@@ -2130,7 +2146,6 @@ sub skippable
 
     if (!setIdent($inNames, [keys %checksumsIn]))
     {
-
         # The input files are named differently from last time (or pipeline
         # provided inconsistent file nicknames)
         print $logTee
@@ -2149,7 +2164,8 @@ sub skippable
         return 0;
     }
 
-    print ucfirst("$step") . " output exists. Trying to validate...\n";
+    $logTee->print(
+                  ucfirst("$step") . " output exists. Trying to validate...\n");
 
     if (!$prevSkip)
     {
@@ -2162,20 +2178,15 @@ sub skippable
             $i++;
             my @stdout   = split(/\s/, `sha512sum $_`);
             my $checksum = $stdout[0];
-            if ($checksum eq $checksumsIn{$inNames->[$i]})
-            {
-                return 1;
-            } else
-            {
-                return 0;
-            }
+
+            $checksum eq $checksumsIn{$inNames->[$i]};
         }
         @$inputsR;
 
         # If all inputs are/nt valid give appropriate messages
         if ($inputValid)
         {
-            print "Input to $step matches previous records.\n";
+            $logTee->print("Input to $step matches previous records.\n");
         } else
         {
             print $logTee
@@ -2193,20 +2204,15 @@ sub skippable
         $i++;
         my @stdout   = split(/\s/, `sha512sum $_`);
         my $checksum = $stdout[0];
-        if ($checksum eq $checksumsOut{$outNames->[$i]})
-        {
-            return 1;
-        } else
-        {
-            return 0;
-        }
+
+        $checksum eq $checksumsOut{$outNames->[$i]};
     }
     @$outputsR;
 
     # If all outputs are/nt valid give appropriate messages
     if ($outputValid)
     {
-        print "Output to $step matches previous records.\n";
+        $logTee->print("Output to $step matches previous records.\n");
         return 1;
     } else
     {

@@ -2,7 +2,7 @@
 set -e # exit when any command fails (returns non-0 exit status)
 # ensure the current working directory exists. (`module load sge` will fail if
 # working directory is stale file handle.)
-cd ~ && cd -
+cd ~ && cd - 1>/dev/null
 
 # QSUB_ARGS=""
 # DRY_RUN=""
@@ -336,7 +336,9 @@ mkdir -p "$SD/qsub_stdout_logs/"
 
 if [[ ! -n "$QP" ]]; then
     printf "qsub-project ID (--qp) not provided. Using jravel-lab as default\n"
-    QP="jravel-lab"
+    QP=""
+else
+    QP="-P $QP"
 fi
 
 # validate -dbg flags
@@ -433,7 +435,7 @@ OPTSARR=("$PARAMS" "$BCLENGTH" "$TROUBLESHOOT_BARCODES" "$ONESTEP" "$DADA2" "$DA
 OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 
-ARGS=("-l mem_free=4G" "-V" "-P" "$QP" "-N" "MSL_$RUN" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "$QSUB_ARGS" "${MY_DIR}/illumina_dada2.pl" "$INPUT" "-wd" "$SD" "-v" "$VAR" "-m" "$MAP" "$OPTS")
+ARGS=("-l mem_free=4G" "-V" "$QP" "-N" "MSL_$RUN" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "$QSUB_ARGS" "${MY_DIR}/illumina_dada2.pl" "$INPUT" "-wd" "$SD" "-v" "$VAR" "-m" "$MAP" "$OPTS")
 CMD=()
 for ARG in "${ARGS[@]}"; do
     if [[ -n "$ARG" ]]; then
