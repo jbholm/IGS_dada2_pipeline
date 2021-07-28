@@ -273,12 +273,7 @@ local $SIG{__WARN__} = sub {
     print STDERR "WARNING: $_[0]";
 };    # Warnings go to log file, stdout, and stderr
 
-if (!exists $ENV{"LD_LIBRARY_PATH"})
-{
-    $ENV{"LD_LIBRARY_PATH"} = "";
-}
-$ENV{'LD_LIBRARY_PATH'} =
-  $ENV{'LD_LIBRARY_PATH'} . ":/usr/local/packages/gcc/lib64";
+$ENV{'LD_LIBRARY_PATH'} = "/usr/lib64/:/usr/local/packages/gcc/lib64";
 my $output = `python2 --version 2>&1`;
 if ($? == -1)
 {
