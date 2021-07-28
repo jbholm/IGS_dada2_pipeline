@@ -305,16 +305,31 @@ printf "%b" "WORKING DIRECTORY: $SD\n"
 
 # get user to confirm overwrite if the run directory already exists
 if [[ -d "$SD" ]]; then
-    printf "$SD already exists! Overwrite?\n"
-    select yn in 'Yes' 'No'; do 
+    printf "$SD already exists!\n"
+    select yn in 'Abort' 'Resume' 'Overwrite'; do 
         case "$yn" in 
-            "Yes")  
-                rm -rf "$SD/*"
+            "Overwrite")  
+                echo "Confirm complete overwrite? All existing progress will be lost."
+                select yn2 in 'No' 'Yes'; do
+                    case "$yn2" in
+                        "Yes")
+                        rm -rf $SD
+                        mkdir -p $SD
+                        break
+                        ;;
+                        "No")
+                        stop
+                        ;;
+                    esac;
+                done 
                 break
-                ;; 
-            "No")
+                ;;
+            "Abort")
                 stop
-                ;; 
+                ;;
+            "Resume")
+                break
+                ;;  
         esac; 
     done
 fi
@@ -415,6 +430,7 @@ export PYTHONPATH=""
 # conda activate "$qiime_env"
 # export PATH=/usr/local/packages/python-2.7/bin:$PATH
 # export LD_LIBRARY_PATH=/usr/local/packages/python-2.7/lib:/usr/local/packages/gcc/lib64:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/usr/lib64/:$LD_LIBRARY_PATH # for Rcpp libstdc++.so.6
 
 # # Begin log (will be continued by illumina_dada2.pl)
 log="$SD/${RUN}_16S_pipeline_log.txt"
@@ -424,7 +440,7 @@ OPTSARR=("$PARAMS" "$BCLENGTH" "$TROUBLESHOOT_BARCODES" "$ONESTEP" "$DADA2" "$DA
 OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 
-ARGS=("-w w" "-cwd" "-b y" "-l mem_free=4G" "-P" "$QP" "-q threaded.q" "-pe thread 4" "-V" "-N" "MSL_$RUN" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "$QSUB_ARGS" "${MY_DIR}/illumina_dada2.pl" "$INPUT" "-wd" "$SD" "-v" "$VAR" "-m" "$MAP" "$OPTS")
+ARGS=("-l mem_free=4G" "-V" "-P" "$QP" "-N" "MSL_$RUN" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "$QSUB_ARGS" "${MY_DIR}/illumina_dada2.pl" "$INPUT" "-wd" "$SD" "-v" "$VAR" "-m" "$MAP" "$OPTS")
 CMD=()
 for ARG in "${ARGS[@]}"; do
     if [[ -n "$ARG" ]]; then
@@ -432,9 +448,12 @@ for ARG in "${ARGS[@]}"; do
     fi 
 done
 
-printf "$ qsub ${CMD[*]}\n"
-printf "$ qsub ${CMD[*]}\n" >> $log
-qsub ${CMD[*]}
+EXECUTOR=`cat "$MY_DIR/config.json" | \
+    python3 -sc "import sys, json; print(json.load(sys.stdin)['executor'])"`
+
+printf "$ $EXECUTOR ${CMD[*]}\n"
+printf "$ $EXECUTOR ${CMD[*]}\n" >> $log
+$EXECUTOR ${CMD[*]}
 
 : <<=cut
 =pod

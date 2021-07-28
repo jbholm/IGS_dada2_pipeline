@@ -150,7 +150,7 @@ Print help message and exit successfully.
 Indicate which qsub-project space should be used for all qsubmissions. The
 default is jravel-lab.
 
-=item B<--debug> {validate, barcodes, demux, splitsamples, tagclean, dada2}
+=item B<--debug> {barcodes, demux, splitsamples, tagclean, dada2}
 
 Runs the specified section of the pipeline. Multiple --debug options can be given
 to run multiple consecutive parts of the pipeline, provided that the input to
@@ -322,17 +322,16 @@ if ($tbshtBarcodes) {@dbg = ();}
 
 if (@dbg)
 {
-    my $q  = grep(/^validate$/,     @dbg);
     my $e  = grep(/^barcodes$/,     @dbg);
     my $de = grep(/^demux$/,        @dbg);
     my $s  = grep(/^splitsamples$/, @dbg);
     my $t  = grep(/^tagclean$/,     @dbg);
     my $da = grep(/^dada2$/,        @dbg);
-    if ($q + $e + $de + $s + $t + $da == scalar @dbg) { }
+    if ($e + $de + $s + $t + $da == scalar @dbg) { }
     else
     {
         die "Illegal debug option. Legal debug options are "
-          . "validate, barcodes, demux, splitsamples, tagclean, and dada2.";
+          . "barcodes, demux, splitsamples, tagclean, and dada2.";
     }
     $noSkip = 1;
 }
@@ -403,16 +402,16 @@ if ((File::Spec->splitpath("$global_config{wd}"))[2] !~ /[^\/]/)
     die "Working directory (-wd) must be a path to a directory";
 }
 
-my $params_hashref = params();
-
 ####################################################################
 ## INITIALIZATION
 ###################################################################
 
+my $config_hashref = config();
+
 chdir $global_config{wd};
 
 # if we're in the global run directory, share all files with group
-my $global_run_storage = abs_path($params_hashref->{"run_storage_path"});
+my $global_run_storage = abs_path($config_hashref->{"run_storage_path"});
 if($global_config{wd} =~ /^${global_run_storage}/ ) {
     umask(0002); 
 }
@@ -421,7 +420,7 @@ if($global_config{wd} =~ /^${global_run_storage}/ ) {
 my $run = File::Basename::basename($global_config{wd});
 
 my $time = strftime("%Y-%m-%d %H:%M:%S", localtime(time));
-my $log  = "$global_config{wd}/${run}_16S_pipeline_log.txt";
+my $log  = catfile($global_config{wd}, "${run}_16S_pipeline_log.txt");
 open my $logFH, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
 my $logTee = new IO::Tee(\*STDOUT, $logFH);
 
@@ -558,7 +557,7 @@ if (@dbg)
 
 print $logTee "RUN: $run\nVARIABLE REGION: $var\n"
   . "R VERSION: "
-  . $params_hashref->{"part1"}->{'R'}
+  . $config_hashref->{'part1'}->{'R'}
   . "\nPECAN MODELS: $models\n";
 if ($oneStep)
 {
@@ -575,7 +574,7 @@ if (   !@dbg
 {
     ###### BEGIN CHECK OF QIIME CONFIGURATION ###########
     #####################################################
-    my $cmd = qiime_cmd('print_qiime_config.py', $params_hashref) . " > $qiime";
+    my $cmd = qiime_cmd('print_qiime_config.py', $config_hashref) . " > $qiime";
     execute_and_log($cmd, $logTee, $dryRun,
                     "QIIME CONFIGURATION DETAILS:\nsee $qiime\n");
 
@@ -599,7 +598,7 @@ if (   !@dbg
         ################################################
         print $logTee "MAPPING FILE: $localMap\n";
 
-        my $cmd = qiime_cmd('validate_mapping_file.py', $params_hashref)
+        my $cmd = qiime_cmd('validate_mapping_file.py', $config_hashref)
           . " -m $localMap -s -o $error_log";
         execute_and_log($cmd, $logTee, $dryRun, "Validating map from $map\n");
         my $mappingError = glob("$error_log/*.log");
@@ -759,7 +758,6 @@ if ($tbshtBarcodes)
              "$global_config{wd}_rc_fwd_rev" => "--rev_comp_bc1 --rev_comp_bc2",
              $global_config{wd}              => ""
     );
-    print Dumper(\%dirs_params);
 
     my $success = 0;
     print $logTee
@@ -985,7 +983,7 @@ sub barcodes
         # Was in original code, but maybe unnecessary?
         my $mapOpt = $oneStep ? "-m $localMap" : "";
 
-        my $cmd = qiime_cmd('extract_barcodes.py', $params_hashref)
+        my $cmd = qiime_cmd('extract_barcodes.py', $config_hashref)
           . " -f $localNames{\"index1\"} -r $localNames{\"index2\"} -c barcode_paired_end --bc1_len $bcLen --bc2_len $bcLen $mapOpt -o $wd $oriParams";
 
         execute_and_log($cmd, $logTee, $dryRun,
@@ -1108,16 +1106,16 @@ sub demux
     {
         my $start  = time;
         my $step2  = "split_libraries_fastq.py";
-        my $script = qiime_cmd($step2, $params_hashref);
+        my $script = qiime_cmd($step2, $config_hashref);
 
    # qiime's split_libraries_fastq accepts some keywords too, such as "golay_12"
         my $barcodeType = 2 * $bcLen;
 
         @cmds = ();
         push @cmds,
-          "qsub -N $step2 -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $readsForInput -o $fwdProjDir -b $barcodes -m $localMap --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
+          "$config_hashref->{'executor'} -N $step2 -P $qproj -e $error_log -o $stdout_log $script -i $readsForInput -o $fwdProjDir -b $barcodes -m $localMap --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
         push @cmds,
-          "qsub -N $step2 -cwd -b y -l mem_free=1G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $readsRevInput -o $revProjDir -b $barcodes -m $localMap --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
+          "$config_hashref->{'executor'} -N $step2 -P $qproj -e $error_log -o $stdout_log $script -i $readsRevInput -o $revProjDir -b $barcodes -m $localMap --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
 
         execute_and_log(@cmds, $logTee, $dryRun,
                         "Demultiplexing to get the run library...\n");
@@ -1177,13 +1175,13 @@ sub demux
         # Replace this with calls to execute_and_log after merging in master
         my $binary = "/local/projects-t3/MSL/pipelines/bin/fastqc";
         my $cmd =
-          "qsub -cwd -b y -l mem_free=300M -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $binary --limits $pipelineDir/ext/fastqc/limits.txt --outdir $fwdProjDir $fwdProjDir/seqs.fastq";
+          "$config_hashref->{'executor'} -l mem_free=300M -P $qproj -e $error_log -o $stdout_log $binary --limits $pipelineDir/ext/fastqc/limits.txt --outdir $fwdProjDir $fwdProjDir/seqs.fastq";
         print "\tcmd=$cmd\n" if $verbose;
         system($cmd) == 0
           or die "system($cmd) failed with exit code: $?"
           if !$dryRun;
         $cmd =
-          "qsub -cwd -b y -l mem_free=300M -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $binary --limits $pipelineDir/ext/fastqc/limits.txt --outdir $revProjDir $revProjDir/seqs.fastq";
+          "$config_hashref->{'executor'} -l mem_free=300M -P $qproj -e $error_log -o $stdout_log $binary --limits $pipelineDir/ext/fastqc/limits.txt --outdir $revProjDir $revProjDir/seqs.fastq";
         print "\tcmd=$cmd\n" if $verbose;
         system($cmd) == 0
           or die "system($cmd) failed with exit code: $?"
@@ -1259,14 +1257,14 @@ if (!@dbg || grep(/^splitsamples$/, @dbg))
     if (!$skip)
     {
         my $step3  = "split_sequence_file_on_sample_ids.py";
-        my $script = qiime_cmd($step3, $params_hashref);
+        my $script = qiime_cmd($step3, $config_hashref);
         my @cmds   = ();
         while (!(-e $rForSeqsFq) || !(-e $rRevSeqsFq)) {sleep 1;}
 
         push @cmds,
-          "qsub -N $step3 -cwd -b y -l mem_free=5G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $rForSeqsFq --file_type fastq -o $fwdSampleDir";
+          "$config_hashref->{'executor'} -N $step3 -l mem_free=5G -P $qproj -e $error_log -o $stdout_log $script -i $rForSeqsFq --file_type fastq -o $fwdSampleDir";
         push @cmds,
-          "qsub -N $step3 -cwd -b y -l mem_free=5G -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log $script -i $rRevSeqsFq --file_type fastq -o $revSampleDir";
+          "$config_hashref->{'executor'} -N $step3 -l mem_free=5G -P $qproj -e $error_log -o $stdout_log $script -i $rRevSeqsFq --file_type fastq -o $revSampleDir";
         execute_and_log(@cmds, $logTee, $dryRun,
                         "Splitting $run seqs.fastq " . "files by sample ID\n");
 
@@ -1469,224 +1467,82 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
     my $cmd;
     if (!$skip)
     {
+        my $base_cmd = "$config_hashref->{'executor'} -l mem_free=400M -P $qproj -e " .
+        "$error_log -o $stdout_log perl " .
+        $config_hashref->{'part1'}->{"tagcleaner"};
+        
+        my $fwd_adapt;
+        my $rev_adapt;
+
         if ($oneStep)
         {
+            $base_cmd .= " -trim_within 50";
             if ($var eq "V3V4")
             {
-                my $filename;
-                opendir R1, $fwdSampleDir
-                  or die "Cannot open directory $fwdSampleDir\n";
-                while ($filename = readdir R1)
-                {
-                    if ($filename =~ /.fastq$/)
-                    {
-                        my @suffixes = (".fastq", ".fq");
-                        my $Prefix =
-                          File::Basename::basename($filename, @suffixes);
-                        my $tc = "$global_config{wd}/$Prefix" . "_tc";
-                        $cmd =
-                          "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
-                          . $params_hashref->{"part1"}->{"tagcleaner"}
-                          . " -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2 -trim_within 50";
-                        push @cmds, $cmd;
-                    }
-                }
-                close R1;
-
-                opendir R4, $revSampleDir
-                  or die "Cannot open directory $revSampleDir\n";
-                while ($filename = readdir R4)
-                {
-                    if ($filename =~ /.fastq$/)
-                    {
-
-                        my @suffixes = (".fastq", ".fq");
-                        my $Prefix =
-                          File::Basename::basename($filename, @suffixes);
-                        my $tc = "$global_config{wd}/$Prefix" . "_tc";
-                        $cmd =
-                          "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
-                          . $params_hashref->{"part1"}->{"tagcleaner"}
-                          . " -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2 -trim_within 50";
-                        push @cmds, $cmd;
-                    }
-                }
-                close R4;
+                $fwd_adapt = "GGACTACHVGGGTWTCTAAT";
+                $rev_adapt = "ACTCCTACGGGAGGCAGCAG";
             }
-
             if ($var eq "V4")
             {
-                my $filename;
-                opendir R1, $fwdSampleDir
-                  or die "Cannot open directory $fwdSampleDir\n";
-                while ($filename = readdir R1)
-                {
-                    if ($filename =~ /.fastq$/)
-                    {
-                        my @suffixes = (".fastq", ".fq");
-                        my $Prefix =
-                          File::Basename::basename($filename, @suffixes);
-                        my $tc = "$global_config{wd}/$Prefix" . "_tc";
-                        $cmd =
-                          "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
-                          . $params_hashref->{"part1"}->{"tagcleaner"}
-                          . " -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
-                        push @cmds, $cmd;
-                    }
-                }
-                close R1;
-
-                opendir R4, $revSampleDir
-                  or die "Cannot open directory $revSampleDir\n";
-                while ($filename = readdir R4)
-                {
-                    if ($filename =~ /.fastq$/)
-                    {
-
-                        my @suffixes = (".fastq", ".fq");
-                        my $Prefix =
-                          File::Basename::basename($filename, @suffixes);
-                        my $tc = "$global_config{wd}/$Prefix" . "_tc";
-                        $cmd =
-                          "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
-                          . $params_hashref->{"part1"}->{"tagcleaner"}
-                          . " -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
-                        push @cmds, $cmd;
-                    }
-                }
-                close R4;
+                $fwd_adapt = "GTGCCAGCMGCCGCGGTAA";
+                $rev_adapt = "ACTCCTACGGGAGGCAGCAG";
             }
         } else
         {
             if ($var eq "V3V4")
             {
-                my $filename;
-                opendir R1, $fwdSampleDir
-                  or die "Cannot open directory $fwdSampleDir\n";
-                while ($filename = readdir R1)
-                {
-                    if ($filename =~ /.fastq$/)
-                    {
-                        my @suffixes = (".fastq", ".fq");
-                        my $Prefix =
-                          File::Basename::basename($filename, @suffixes);
-                        my $tc = "$global_config{wd}/$Prefix" . "_tc";
-
-                        $cmd =
-                          "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
-                          . $params_hashref->{"part1"}->{"tagcleaner"}
-                          . " -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
-                        push @cmds, $cmd;
-                    }
-                }
-                close R1;
-
-                opendir R4, $revSampleDir
-                  or die "Cannot open directory $revSampleDir\n";
-                while ($filename = readdir R4)
-                {
-                    if ($filename =~ /.fastq$/)
-                    {
-                        my @suffixes = (".fastq", ".fq");
-                        my $Prefix =
-                          File::Basename::basename($filename, @suffixes);
-                        my $tc = "$global_config{wd}/$Prefix" . "_tc";
-
-                        $cmd =
-                          "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
-                          . $params_hashref->{"part1"}->{"tagcleaner"}
-                          . " -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GGACTACHVGGGTWTCTAAT -mm5 2";
-                        push @cmds, $cmd;
-                    }
-                }
-                close R4;
+                $fwd_adapt = "ACTCCTACGGGAGGCAGCAG";
+                $rev_adapt = "GGACTACHVGGGTWTCTAAT";
             }
             if ($var eq "V4")
             {
-                my $filename;
-                opendir R1, $fwdSampleDir
-                  or die "Cannot open directory $fwdSampleDir\n";
-                while ($filename = readdir R1)
-                {
-                    if ($filename =~ /.fastq$/)
-                    {
-                        my @suffixes = (".fastq", ".fq");
-                        my $Prefix =
-                          File::Basename::basename($filename, @suffixes);
-                        my $tc = "$global_config{wd}/$Prefix" . "_tc";
-                        $cmd =
-                          "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
-                          . $params_hashref->{"part1"}->{"tagcleaner"}
-                          . " -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 GTGCCAGCMGCCGCGGTAA -mm5 2";
-                        push @cmds, $cmd;
-
-                    }
-                }
-                close R1;
-
-                opendir R4, $revSampleDir
-                  or die "Cannot open directory $revSampleDir\n";
-                while ($filename = readdir R4)
-                {
-                    if ($filename =~ /.fastq$/)
-                    {
-
-                        my @suffixes = (".fastq", ".fq");
-                        my $Prefix =
-                          File::Basename::basename($filename, @suffixes);
-                        my $tc = "$global_config{wd}/$Prefix" . "_tc";
-                        $cmd =
-                          "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
-                          . $params_hashref->{"part1"}->{"tagcleaner"}
-                          . " -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 ACTCCTACGGGAGGCAGCAG -mm5 2";
-                        push @cmds, $cmd;
-                    }
-                }
-                close R4;
+                $fwd_adapt = "GTGCCAGCMGCCGCGGTAA";
+                $rev_adapt = "ACTCCTACGGGAGGCAGCAG";
             }
             if ($var eq "ITS")
             {
-                my $filename;
-                opendir R1, $fwdSampleDir
-                  or die "Cannot open directory $fwdSampleDir\n";
-                while ($filename = readdir R1)
-                {
-                    if ($filename =~ /.fastq$/)
-                    {
-                        my @suffixes = (".fastq", ".fq");
-                        my $Prefix =
-                          File::Basename::basename($filename, @suffixes);
-                        my $tc = "$global_config{wd}/$Prefix" . "_tc";
-                        $cmd =
-                          "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
-                          . $params_hashref->{"part1"}->{"tagcleaner"}
-                          . " -fastq $fwdSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 CTGCCCTTTGTACACACCGC -mm5 2";
-                        push @cmds, $cmd;
-                    }
-                }
-                close R1;
-
-                opendir R4, $revSampleDir
-                  or die "Cannot open directory $revSampleDir\n";
-                while ($filename = readdir R4)
-                {
-                    if ($filename =~ /.fastq$/)
-                    {
-
-                        my @suffixes = (".fastq", ".fq");
-                        my $Prefix =
-                          File::Basename::basename($filename, @suffixes);
-                        my $tc = "$global_config{wd}/$Prefix" . "_tc";
-                        $cmd =
-                          "qsub -cwd -b y -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
-                          . $params_hashref->{"part1"}->{"tagcleaner"}
-                          . " -fastq $revSampleDir/$filename -out $tc -line_width 0 -verbose -tag5 TTTCGCTGCGTTCTTCATCG -mm5 2";
-                        push @cmds, $cmd;
-                    }
-                }
-                close R4;
+                $fwd_adapt = "CTGCCCTTTGTACACACCGC";
+                $rev_adapt = "TTTCGCTGCGTTCTTCATCG";
             }
         }
+
+        my $filename;
+        opendir R1, $fwdSampleDir
+            or die "Cannot open directory $fwdSampleDir\n";
+        while ($filename = readdir R1)
+        {
+            if ($filename =~ /.fastq$/)
+            {
+                my @suffixes = (".fastq", ".fq");
+                my $Prefix =
+                    File::Basename::basename($filename, @suffixes);
+                my $tc = "$global_config{wd}/$Prefix" . "_tc";
+                $cmd = $base_cmd . 
+                " -fastq $fwdSampleDir/$filename -out $tc -line_width 0 " .
+                "-verbose -tag5 $fwd_adapt -mm5 2";
+                push @cmds, $cmd;
+            }
+        }
+        close R1;
+
+        opendir R4, $revSampleDir
+            or die "Cannot open directory $revSampleDir\n";
+        while ($filename = readdir R4)
+        {
+            if ($filename =~ /.fastq$/)
+            {
+
+                my @suffixes = (".fastq", ".fq");
+                my $Prefix =
+                    File::Basename::basename($filename, @suffixes);
+                my $tc = "$global_config{wd}/$Prefix" . "_tc";
+                $cmd = $base_cmd .
+                " -fastq $revSampleDir/$filename -out $tc -line_width 0 " .
+                "-verbose -tag5 $rev_adapt -mm5 2";
+                push @cmds, $cmd;
+            }
+        }
+        close R4;
         execute_and_log(@cmds, $logTee, $dryRun,
                         "Removing $var primers from all sequences.\n");
 
@@ -1738,13 +1594,15 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
         print $logTee
           "---All tagcleaned R4 (R2) samples accounted for in $global_config{wd}\n";
 
-        $cmd = "gzip -f9 *_tc.fastq";
+        $cmd = "gzip -f9 {*_tc.fastq,$fwdSampleDir/*.fastq,$revSampleDir/*.fastq}";
         execute_and_log($cmd, $logTee, $dryRun,
                         "Compressing tagcleaned FASTQ's...\n");
-        print $logTee "---Tagcleaned FASTQ's compressed.\n";
+        print $logTee "---Raw and tagcleaned FASTQ's compressed.\n";
 
         if (!@dbg)
         {
+            cacheChecksums([glob("$fwdSampleDir/*"), glob("$revSampleDir/*")], "samples");
+
             my @gzipped = glob("$global_config{wd}/*R[1|2]_tc.fastq.gz");
             cacheChecksums(\@gzipped, "tagcleaned");
         }
@@ -2109,7 +1967,7 @@ sub read_json
     return $hash;
 }
 
-sub params
+sub config
 {
     my %arg             = @_;
     my $new_params      = delete $arg{new_params} // {};
@@ -2670,7 +2528,7 @@ sub run_R_script
         );
 
         $cmd =
-          "qsub -cwd -b y -l mem_free=$dada2mem -P $qproj -q threaded.q -pe thread 4 -e $error_log -o $stdout_log -N Rscript \"{ module load r/4.0.3 2>/dev/null || eval \\`/usr/local/packages/usepackage/bin/usepackage -b r-3.6.0\\` > /dev/null 2>&1; } && $params_hashref->{part1}->{R}script $Rscript $args > $outR 2>&1\"";
+          "$config_hashref->{'executor'} -l mem_free=$dada2mem -P $qproj -e $error_log -o $stdout_log -N Rscript \"{ module load r/4.0.3 2>/dev/null || eval \\`/usr/local/packages/usepackage/bin/usepackage -b r-3.6.0\\` > /dev/null 2>&1; } && $config_hashref->{'part1'}->{R}script $Rscript $args > $outR 2>&1\"";
         execute_and_log($cmd, $logTee, $dryRun,
                   "Running DADA2 with fastq files in $wd for $var region...\n");
 

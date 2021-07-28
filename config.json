@@ -7,6 +7,7 @@
         "R": "/usr/local/packages/r-4.0.3/bin/R"
     },
     "R": "/usr/local/packages/r-4.0.2/bin/R",
+    "R-3.6": "/usr/local/packages/r-3.6.3/bin/R",
     "r-lib-3.6": "/local/projects-t3/MSL/pipelines/packages/R/x86_64-pc-linux-gnu-library/3.6",
     "r-lib-4.0": "/local/projects-t3/MSL/pipelines/packages/R/x86_64-pc-linux-gnu-library/4.0",
     "ref_16s_dir": "/local/projects-t3/MSL/pipelines/share/taxonomy",
@@ -21,5 +22,6 @@
     "python2": "/usr/local/packages/python-2.7.17/bin/python2",
     "qiime_env": "/local/projects-t3/MSL/pipelines/packages/envs/qiime1",
     "conda_init": "/usr/local/packages/miniconda3/etc/profile.d/conda.sh",
-    "run_storage_path": "/local/projects-t3/MSL/runs"
+    "run_storage_path": "/local/projects-t3/MSL/runs",
+    "executor": "qsub -w w -b y -P jravel-lab -q threaded.q -pe thread 4 -cwd -l mem_free=1G"
 }

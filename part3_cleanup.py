@@ -1,6 +1,6 @@
 #! /local/projects-t3/MSL/pipelines/packages/miniconda3/envs/interactive/bin/python3
 
-import argparse, sys, os, glob, re, shlex, json, shutil, gzip, getpass, stat, tempfile
+import argparse, sys, os, glob, re, shlex, json, shutil, gzip, getpass, stat, tempfile, time
 from pathlib import Path # Use of Paths as os.pathlike objects requires Python3.6
 import PyInquirer  # MUST USE PYTHON3.6 FOUND IN interactive TO USE THIS
 import examples
@@ -9,6 +9,11 @@ from enum import Enum
 import scripts.synology_client as synology  # MUST BE IN SAME DIRECTORY AS THIS SCRIPT
 from jira import JIRA
 from jira.exceptions import JIRAError
+
+pipeline_dir = os.path.dirname(os.path.realpath(__file__))
+
+with (Path(pipeline_dir) / Path("config.json")).open("r") as fh:
+    CONFIG = json.load(fh)
 
 pathfinder = {
     "intermediate_taxonomies": Path("TAXONOMY_INTERMEDIATES"),
@@ -57,9 +62,8 @@ def main(args):
                 run_paths = ans["runs"]
             else:
                 continue
-
-            if not organize_reads(args.project, run_paths): continue
-            if not organize_trimmed(args.project, run_paths): continue
+            
+            #if not organize_trimmed(args.project, run_paths): continue
             if not organize_counts_by_asv(args.project): continue
             if not organize_counts_by_taxon(args.project): continue
             if not organize_logs(args.project, run_paths): continue
@@ -67,10 +71,11 @@ def main(args):
             if not organize_taxonomies_intermediates(args.project): continue
             if not add_index(): continue
             if not add_references(args.project, run_paths): continue
+            if not organize_reads(args.project, run_paths): continue
+            if not share_unix_perms(args.project): continue
 
             if not remove_trash(args.project, run_paths): continue
 
-            if not share_unix_perms(args.project): continue
 
         elif choice == "J":
             upload_to_jira(args.project)
@@ -285,47 +290,60 @@ def upload_to_jira(proj):
             return
 
     # UPLOAD ###########################################################################
-    files = sorted([str(child) for child in Path(".").iterdir() if child.is_file()])
-    questions = [
-        {
-            "type": "checkbox",
-            "name": "chooser",
-            "message": "",
-            "choices": [{"name": file} for file in files],
-        }
-    ]
-    choices = inquire(questions, "Choose map(s) to upload:")
+    done = False
+    while not done:
+        files = sorted([str(child) for child in Path(".").iterdir() if child.is_file()])
+        questions = [
+            {
+                "type": "checkbox",
+                "name": "chooser",
+                "message": "",
+                "choices": [{"name": file} for file in files],
+            }
+        ]
+        choices = inquire(questions, "Choose map(s) to upload:")
+        if len(choices) == 0:
+            if confirm("You selected 0 files. Continue?"):
+                done = True
+        else:
+            for choice in choices:
+                filepath = str(proj / Path(choice))
+                if not attach_to_issue(j_connection, issue_name, filepath):
+                    return
+            done = True
 
-    for choice in choices:
-        filepath = str(proj / Path(choice))
-        if not attach_to_issue(j_connection, issue_name, filepath):
-            return
+    done = False
+    while not done:
+        files = sorted([str(child) for child in pathfinder["counts-by-taxon"].iterdir() if child.is_file()])
+        # process = Popen(
+        #     ["ls", "-al", str(proj / pathfinder["counts-by-taxon"])],
+        #     stdin=PIPE,
+        #     stdout=PIPE,
+        #     stderr=PIPE,
+        # )
+        # tree = process.stdout.read().decode(encoding="utf8").split("\n")
+        # if len(tree) < 5:
+        #     print("Cannot read contents of current directory.")
+        #     return
+        questions = [
+            {
+                "type": "checkbox",
+                "name": "chooser",
+                "message": "",
+                "choices": [{"name": file} for file in files],
+            }
+        ]
+        choices = inquire(questions, "Choose count tables to upload:")
 
-    process = Popen(
-        ["ls", "-al", str(proj / pathfinder["counts-by-taxon"])],
-        stdin=PIPE,
-        stdout=PIPE,
-        stderr=PIPE,
-    )
-    tree = process.stdout.read().decode(encoding="utf8").split("\n")
-    if len(tree) < 5:
-        print("Cannot read contents of current directory.")
-        return
-    questions = [
-        {
-            "type": "checkbox",
-            "name": "chooser",
-            "message": "",
-            "choices": [{"name": line} for line in tree[3:len(tree)-1]],
-        }
-    ]
-
-    choices = inquire(questions, "Choose count tables to upload:")
-
-    for choice in choices:
-        filepath = str(proj / pathfinder["counts-by-taxon"] / Path(choice.split()[8]))
-        if not attach_to_issue(j_connection, issue_name, filepath):
-            return
+        if len(choices) == 0:
+            if confirm("You selected 0 files. Continue?"):
+                done = True
+        else:
+            for choice in choices:
+                filepath = str(proj / pathfinder["counts-by-taxon"] / Path(choice))
+                if not attach_to_issue(j_connection, issue_name, filepath):
+                    return
+            done = True
 
     return
 
@@ -521,9 +539,9 @@ def choose_project(default=None):
     return project
 
 
-def confirm(prompt):
+def confirm(prompt, default=False):
     questions = [
-        {"type": "confirm", "name": "response", "message": prompt, "default": False}
+        {"type": "confirm", "name": "response", "message": prompt, "default": default}
     ]
     return inquire(questions)
 
@@ -567,8 +585,11 @@ def get_runs(proj_path):
     return ans
 
 def project_metadata():
-    with Path(".meta.json").open("r") as fh:
-        metadata = json.load(fh)
+    try:
+        with Path(".meta.json").open("r") as fh:
+            metadata = json.load(fh)
+    except FileNotFoundError:
+        raise Exception("Cannot find project metadata from Part 2. Re-run Part 2.")
     if not type(metadata) is dict:
         raise Exception("Project metadata not a JSON dictionary")
 
@@ -589,95 +610,63 @@ def read_metadata(run_path):
 def organize_reads(proj_path, run_paths):
     try:
         organized_dir = "FASTQ"
-        # if the paths are recorded in the project metadata, here's how to organize them
-        # (the exceptions have been tested yet)
-        # filepaths = []
-        # any_files = False
-        # proj_meta = read_metadata()
-
-        # if not make_for_contents(organized_dir, any_files):
-        #     return False
-
-        # count = 0
-        # problem_samples = 0
-        # for sample, sample_files in proj_meta["samples"].items():
-        #     # if type(sample) is dict:
-
-        #     # 1. sample_files doen't have raw_fwd or raw_rev -> bad metadata: tell user and continue
-        #     # 2. shutil.copy2 fails with file permission error -> assume nothing else to do, stop and tell user why
-        #     if type(sample_files) is not dict:
-        #         print(f"WARNING: malformed project metadata for {sample}. Unable to copy the raw files to ./FASTQ/.")
-        #         problem_samples += 1
-        #         continue
-            
-        #     problem = False
-        #     for filekey in ["raw_fwd", "raw_rev"]:
-        #         try:
-        #             src = sample_files[filekey]
-        #         except KeyError:
-        #             print(f"WARNING: project metadata doesn't contain filepath for {sample} raw file: {filekey}. Unable to copy the file to ./FASTQ/.")
-        #             problem = True
-        #             continue            
-
-        #         shutil.copy2(src, Path(organized_dir) / Path(sample + ".fastq"))
-        #         count += 1
-
-        #     if problem:
-        #         problem_samples += 1
-        # for f in Path(organized_dir).iterdir():
-        #     if f.suffix != ".gz":
-        #         gz(str(f))
-
-        # if count == 0:
-        #     print(f"Removing {organized_dir} (no demuxed reads found)")
-        #     try:
-        #         os.rmdir(organized_dir)
-        #     except Exception as e:
-        #         print(str(e))
-
-        # elif count > 0:
-        #     print(f"Moved {count} demuxed reads to ./{organized_dir}/")
-
-        # if problem_samples > 0:
-        #     print(f"Unable to read metadata and relocate raw reads for {problem_samples} samples. Continuing.")
-        
         filepaths = []
         any_files = False
+
+        executor = CONFIG['executor']
+        external_exec = False
+        print("\nThis pipeline's default executor is:\n\n" + executor)
+        if confirm("Use executor to transfer large files? (Choose yes if not using screen or tmux)", default=True):
+            external_exec = True
+
         for run_path in run_paths:
-            ill_fwd_dir = proj_path / run_path / Path("fwdSplit")
-            ill_rev_dir = proj_path / run_path / Path("revSplit")
+            ill_fwd_dir = proj_path / run_path / Path("fwdSplit") / Path("split_by_sample_out")
+            ill_rev_dir = proj_path / run_path / Path("revSplit") / Path("split_by_sample_out")
 
-            # if ill_fwd_dir.is_dir():
-            #     filepaths += glob.glob(str(proj_path / run_path / Path('fwdSplit/split_by_sample_out/*.fastq')))
-            # if ill_rev_dir.is_dir():
-            #     filepaths += glob.glob(str(proj_path / run_path / Path('revSplit/split_by_sample_out/*.fastq')))
+            # try:
+            #     run_info = read_metadata(proj_path / run_path)
+            # except Exception as e:
+            #     print(str(e))
+            #     print("WARNING: Can't open run metadata from " + run_path.name + ". Unable to locate raw reads")
+            #     return True # NOT A SHOWSTOPPER
 
-            # if not ill_fwd_dir.is_dir() and not ill_rev_dir.is_dir():
-            try:
-                run_info = read_metadata(proj_path / run_path)
-            except Exception as e:
-                print(str(e))
-                print("WARNING: Can't open run metadata from " + run_path.name + ". Unable to locate raw reads")
-                return True # NOT A SHOWSTOPPER
+            # try:
+            #     filepaths += [
+            #         os.path.join(run_path, rel_path) for rel_path in run_info['checkpoints']["samples"].keys()
+            #     ]
+            # except KeyError:
+            #     print("WARNING: Incompatible with the pipeline version used on this run. Cannot find raw read files.")
+            #     return True # not a show-stopper
 
-            try:
-                filepaths += [
-                    os.path.join(run_path, rel_path) for rel_path in run_info['checkpoints']["samples"].keys()
-                ]
-            except KeyError:
-                print("WARNING: Incompatible with the pipeline version used on this run. Cannot find raw read files.")
-                return True # not a show-stopper
-
-            if len(filepaths) > 0:
+            if ill_fwd_dir.is_dir() and ill_rev_dir.is_dir():
+                nFiles = len(list(ill_fwd_dir.iterdir()))
+                nFiles += len(list(ill_rev_dir.iterdir()))
                 any_files = True
                 
                 make_for_contents(organized_dir, any_files)
                 subdir_destination = str(Path(organized_dir) / Path(run_path.name))
                 make_for_contents(subdir_destination)
 
-                print(f"Copying {len(filepaths)} raw read files to {subdir_destination}.")
-                for filepath in filepaths:
-                    shutil.copy2(filepath, Path(subdir_destination) / Path(filepath).name)
+                if external_exec:
+                    print(f"Using executor to copy {nFiles} raw read files to {subdir_destination}.\n")
+                    
+                    fwd_wildcard = str(ill_fwd_dir / Path("*"))
+                    rev_wildcard = str(ill_rev_dir / Path("*"))
+
+                    cmd = "module load sge && " + executor + " -V \'cp -f %s " + subdir_destination + "\'"
+                    print(cmd % fwd_wildcard)
+                    run(cmd % fwd_wildcard, shell=True)
+                    print(cmd % rev_wildcard)
+                    run(cmd % rev_wildcard, shell=True)
+
+                    print("\nRemember to delete any stray STDOUT and STDERR files from the working directory.\n")
+
+                    time.sleep(5)
+
+                else:
+                    print(f"Copying {nFiles} raw read files to {subdir_destination}.")
+                    for filepath in filepaths:
+                        shutil.copy2(filepath, Path(subdir_destination) / Path(filepath).name)
 
                 # gzip all if needed
                 for f in Path(subdir_destination).iterdir():
@@ -695,42 +684,42 @@ def organize_reads(proj_path, run_paths):
     return True
 
 
-def organize_trimmed(proj_path, run_paths):
-    try:
-        organized_dir = "FASTQ_TRIMMED"
+# def organize_trimmed(proj_path, run_paths):
+#     try:
+#         organized_dir = "FASTQ_TRIMMED"
 
-        filepaths = []
-        any_files = False
-        for run_path in run_paths:
-            filepaths += glob.glob(str(proj_path / run_path / Path("*_tc.fastq*")))
-            filepaths += glob.glob(
-                str(proj_path / run_path / Path("tagcleaned") / Path("*.fastq*"))
-            )
+#         filepaths = []
+#         any_files = False
+#         for run_path in run_paths:
+#             filepaths += glob.glob(str(proj_path / run_path / Path("*_tc.fastq*")))
+#             filepaths += glob.glob(
+#                 str(proj_path / run_path / Path("tagcleaned") / Path("*.fastq*"))
+#             )
 
-            if len(filepaths) > 0:
-                make_for_contents(organized_dir, any_files)
-                any_files = True
-                subdir_destination = str(Path(organized_dir) / run_path.name)
-                make_for_contents(subdir_destination)
-                print(
-                    f"Copying {len(filepaths)} adapter-trimmed read files to {subdir_destination}."
-                )
-                for filepath in filepaths:
-                    shutil.copy2(filepath, Path(subdir_destination) / Path(filepath).name)
+#             if len(filepaths) > 0:
+#                 make_for_contents(organized_dir, any_files)
+#                 any_files = True
+#                 subdir_destination = str(Path(organized_dir) / run_path.name)
+#                 make_for_contents(subdir_destination)
+#                 print(
+#                     f"Copying {len(filepaths)} adapter-trimmed read files to {subdir_destination}."
+#                 )
+#                 for filepath in filepaths:
+#                     shutil.copy2(filepath, Path(subdir_destination) / Path(filepath).name)
 
-                for f in Path(subdir_destination).iterdir():  # gzip if necessary
-                    if f.suffix != ".gz":
-                        gz(str(f))
+#                 for f in Path(subdir_destination).iterdir():  # gzip if necessary
+#                     if f.suffix != ".gz":
+#                         gz(str(f))
 
-        if not any_files:
-            print(f"Skipping creation of {organized_dir} (no adapter-trimmed reads found)")
+#         if not any_files:
+#             print(f"Skipping creation of {organized_dir} (no adapter-trimmed reads found)")
 
-    except Exception as e:
-        print(str(e))
-        if not ask_continue():
-            return False
+#     except Exception as e:
+#         print(str(e))
+#         if not ask_continue():
+#             return False
     
-    return True
+#     return True
 
 
 def organize_counts_by_asv(proj_path):
@@ -957,17 +946,30 @@ def add_references(proj_path, run_paths):
 
 def remove_trash(proj_path, run_paths):
     try:
-        trash_files = []
-        trash_dirs = []
+        trash_files = [] # if we need to use os.unlink
+        trash_dirs = [] # if we need to use shutil.rmtree
         for run_path in run_paths:
             if run_path.is_symlink():
-                trash_files.append(str(run_path))
+                for fastq in run_path.glob('*Split/seqs.fastq'):
+                    trash_files.append(str(fastq))
+                for fastq in run_path.glob('barcodes.fastq'):
+                    trash_files.append(str(fastq))
+                for fastq in run_path.glob('*_tc.fastq.gz'):
+                    trash_files.append(str(fastq))
+                
+                # we must delete the symlink or directory last
+                trash_files.append(
+                    {
+                        'name': str(run_path) + " (L)", 
+                        'value': str(run_path)
+                    }
+                )
             else:
                 trash_dirs.append(str(run_path))
 
         for entry in os.scandir("."):
             if (
-                entry.name.startswith(".") and entry.name != ".meta.json"
+                entry.name.startswith(".")
                 or entry.name.startswith("rTmp.")
                 or entry.name.startswith("dump.rda")
                 or re.match(".*\.[eo][0-9]+$", entry.name)
@@ -976,24 +978,25 @@ def remove_trash(proj_path, run_paths):
 
         if len(trash_files) > 0 or len(trash_dirs) > 0:
             print()
-            print("\n".join(trash_files))
             print("\n".join(trash_dirs))
+            trash_files_names = [x["name"] if isinstance(x, dict) else x for x in trash_files]
+            print("\n".join(trash_files_names))
 
             questions = [
                 {
                     "type": "list",
                     "name": "chooser",
-                    "message": "The above files/directories will be deleted. Ensure that all important result files have been copied out.",
+                    "message": "The above files/directories will be deleted. (L) indicates removal of a symlink, while the real files will be preserved. Ensure that all important result files have been copied out.",
                     "choices": ["Keep", "Delete all"],
                 }
             ]
             if not inquire(questions) == "Delete all":
                 return True
             
-            part2_danger = not (pathfinder['counts-by-taxon'].is_dir() and pathfinder['counts-by-ASV'].is_dir() and pathfinder['intermediate_taxonomies'].is_dir() and pathfinder['final_taxonomies'].is_dir())
+            # part2_danger = not (pathfinder['counts-by-taxon'].is_dir() and pathfinder['counts-by-ASV'].is_dir() and pathfinder['intermediate_taxonomies'].is_dir() and pathfinder['final_taxonomies'].is_dir())
             confirm_msg = "Are you sure?"
-            if part2_danger:
-                confirm_msg = "Looks like Part 2 hasn't been run!  " + confirm_msg
+            # if part2_danger:
+            #     confirm_msg = "Looks like Part 2 hasn't been run!  " + confirm_msg
             questions = [
                 {
                     "type": "list",
@@ -1007,6 +1010,7 @@ def remove_trash(proj_path, run_paths):
             for trash_dir in trash_dirs:
                 shutil.rmtree(trash_dir)
             for trash_file in trash_files:
+                trash_file = trash_file['value'] if isinstance(trash_file, dict) else trash_file
                 os.unlink(trash_file)
 
         return True
