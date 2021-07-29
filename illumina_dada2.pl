@@ -210,6 +210,7 @@ use lib $scriptsDir;    # .pm files in ./scripts/ can be loaded
 
 require Version;
 
+use File::Find;
 use Pod::Usage;
 use English qw( -no_match_vars );
 use Getopt::Long qw(:config no_ignore_case no_auto_abbrev pass_through);
@@ -409,6 +410,12 @@ if ((File::Spec->splitpath("$global_config{wd}"))[2] !~ /[^\/]/)
 my $config_hashref = config();
 
 chdir $global_config{wd};
+
+# if we're in the global run directory, share all files with group
+my $global_run_storage = abs_path($config_hashref->{"run_storage_path"});
+if($global_config{wd} =~ /^${global_run_storage}/ ) {
+    umask(0002); 
+}
 
 # Initialize log file
 my $run = File::Basename::basename($global_config{wd});
@@ -1925,6 +1932,16 @@ if ((!@dbg) || grep(/^dada2$/, @dbg))
 
 END
 {
+    if($global_config{wd} =~ /^${global_run_storage}/ ) {
+        find(
+            sub { 
+                chmod(0664, $File::Find::name) unless -d;
+                chmod(0775, $File::Find::name) if -d;
+            }, 
+            $global_config{wd}
+        );
+        chmod(0775, $global_config{wd});
+    }
 
     if (defined $logTee)
     {

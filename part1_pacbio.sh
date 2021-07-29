@@ -113,9 +113,12 @@ if [[ ! -n "$RUN" ]]; then
 fi
 
 # Validate the storage directory
+SD_DEFAULT=`cat "$MY_DIR/config.json" | \
+    python3 -c "import sys, json; print(json.load(sys.stdin)['run_storage_path'])"`
+SD_DEFAULT=$(readlink -f "$SD_DEFAULT")
+
 if [[ ! -n "$SD" ]]; then
-    SD=`cat "$MY_DIR/config.json" | \
-    python3 -sc "import sys, json; print(json.load(sys.stdin)['run_storage_path'])"`
+    SD=$SD_DEFAULT
 elif [[ ! -d "$SD" ]]; then
     stop "$SD does not exist or is not a directory!\n" # A custom storage directory must exist
 else
@@ -153,6 +156,12 @@ if [[ -d "$SD" ]]; then
                 ;;  
         esac; 
     done
+else
+    UMASK_OLD=`umask`
+    if [ "${SD##$SD_DEFAULT}" != "$SD" ]; then  
+        umask 0002 # if we're in the shared run directory, share the new directories
+    fi
+    mkdir -p "$SD"
 fi
 mkdir -p "$SD/qsub_error_logs/"
 mkdir -p "$SD/qsub_stdout_logs/"
