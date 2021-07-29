@@ -1934,10 +1934,12 @@ END
     if($global_config{wd} =~ /^${global_run_storage}/ ) {
         find(
             sub { 
-                chmod(0002, $File::Find::name) unless -d
+                chmod(0664, $File::Find::name) unless -d;
+                chmod(0775, $File::Find::name) if -d;
             }, 
             $global_config{wd}
         );
+        chmod(0775, $global_config{wd});
     }
 
     if (defined $logTee)
