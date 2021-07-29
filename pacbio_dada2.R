@@ -66,6 +66,11 @@ sink(
 )
 
 run_dir <- getwd()
+# share all output files if we're working in the global run directory
+if(grepl(run_dir, pattern = paste0("^", config[["run_storage_path"]]))) {
+    Sys.umask(mode=0002)
+}
+
 inPath <- args$input
 
 run_meta <- function(new_params = list(), checkpoints = list(), samples = list()) {
