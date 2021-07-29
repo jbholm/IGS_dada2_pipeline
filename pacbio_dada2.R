@@ -62,7 +62,7 @@ if (any(is.null(args))) {
 setwd(args$wd)
 run <- basename(getwd())
 sink(
-    file = file.path(getwd(), paste0(run, "_16S_pipeline_log.txt")), split = TRUE
+    file = file.path(getwd(), paste0(run, "_16S_pipeline_log.txt")), split = T, append = T
 )
 
 run_dir <- getwd()
@@ -107,7 +107,7 @@ glob_pattern <- gsub("()", "(.*)", args$pattern, fixed = T)
 fastqs <- sort(list.files(inPath, pattern = glob_pattern, full.names = T)) # B01\..+\.css\.fastq\.gz
 print(fastqs)
 sample.names <- sapply(fastqs, function(filename) {
-    paste(args$run, sub(glob_pattern, "\\1", basename(filename), perl = T), sep = ".")
+    paste(run, sub(glob_pattern, "\\1", basename(filename), perl = T), sep = ".")
 })
 
 # copy to a local directory regardless of original location, and pre-pend the
