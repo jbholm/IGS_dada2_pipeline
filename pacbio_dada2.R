@@ -1,4 +1,4 @@
-#!/usr/local/packages/r-3.6.3/bin/Rscript
+#!/usr/bin/env Rscript
 options(
     show.error.locations = TRUE,
     show.error.messages = TRUE,
@@ -26,11 +26,10 @@ config <- jsonlite::read_json(
     path = file.path(config_file)
 )
 
-.libPaths(config[["r-lib-3.6"]])
+.libPaths(config[["r-lib"]])
 require("dada2")
 packageVersion("dada2") # 1.12.1 
 require("argparse")
-require("autothresholdr")
 require("ShortRead")
 library(dplyr)
 library(magrittr)
@@ -229,43 +228,47 @@ trim_and_filter <- function(ins, outs) {
     })
     lens <- do.call(c, lens.fn)
 
-    min_length <- 0
-    max_length <- max(lens)
-    min_length_chosen <- max_length_chosen <- F
-    prev_thresh <- 0
-    auto_thresh <- -1
-    current_lens <- lens
-    bad_thresh <- F
-    while (!min_length_chosen && !max_length_chosen && !bad_thresh) {
-        auto_thresh <- autothresholdr::auto_thresh(current_lens, "Renyi")[1] # 1589bp
-        if (auto_thresh > min(current_lens) && auto_thresh < 1200) {
-        # SILVA tells us there are 16S genes as short as 1200. Be open to novel
-        # sequences
-        min_length_chosen <- T
-        min_length <- auto_thresh
-        bad_thresh <- F
-        } else if (auto_thresh > 1600 && auto_thresh < max(current_lens)) {
-        # 1600 is B Callahan's default. SILVA tells us there are even longer ones
-        # out there
-        max_length_chosen <- T
-        max_length <- auto_thresh
-        bad_thresh <- F
-        } else {
-        bad_thresh <- T
-        }
-        current_lens <- current_lens[current_lens >= min_length & current_lens <= max_length]
-    }
-    if (!min_length_chosen) {
-        min_length <- 1000
-    } else {
-        warning(paste0("Minimum read length decreased from 1000 to ", min_length))
-    }
-    if (!max_length_chosen) {
-        max_length <- 1600 # defaults in Pacbio tutorials
-    } else {
-        warning(paste0("Maximum read length increased from 1600 to ", auto_thresh))
-    }
+    # min_length <- 0
+    # max_length <- max(lens)
+    # min_length_chosen <- max_length_chosen <- F
+    # prev_thresh <- 0
+    # auto_thresh <- -1
+    # current_lens <- lens
+    # bad_thresh <- F
+    # while (!min_length_chosen && !max_length_chosen && !bad_thresh) {
 
+    #     auto_thresh <- autothresholdr::auto_thresh(current_lens, "Renyi")[1] # 1589bp
+    #     if (auto_thresh > min(current_lens) && auto_thresh < 1200) {
+    #     # SILVA tells us there are 16S genes as short as 1200. Be open to novel
+    #     # sequences
+    #     min_length_chosen <- T
+    #     min_length <- auto_thresh
+    #     bad_thresh <- F
+    #     } else if (auto_thresh > 1600 && auto_thresh < max(current_lens)) {
+    #     # 1600 is B Callahan's default. SILVA tells us there are even longer ones
+    #     # out there
+    #     max_length_chosen <- T
+    #     max_length <- auto_thresh
+    #     bad_thresh <- F
+    #     } else {
+    #     bad_thresh <- T
+    #     }
+    #     current_lens <- current_lens[current_lens >= min_length & current_lens <= max_length]
+    # }
+    # if (!min_length_chosen) {
+    #     min_length <- 1000
+    # } else {
+    #     warning(paste0("Minimum read length decreased from 1000 to ", min_length))
+    # }
+    # if (!max_length_chosen) {
+    #     max_length <- 1600 # defaults in Pacbio tutorials
+    # } else {
+    #     warning(paste0("Maximum read length increased from 1600 to ", auto_thresh))
+    # }
+
+    min_length <- 1000
+    max_length <- 4000 # the DADA2 tutorial default is 1600, but 4000 is the max
+    # seq length in our SILVA db
     png("03_quality_trimmed_sample_lens.png",
         width = 4743,
         height = 400
@@ -276,7 +279,7 @@ trim_and_filter <- function(ins, outs) {
     abline(h = 0)
     dev.off()
 
-    # redo filter and trim, but this time we know the ideal minimum length
+    # redo filter and trim, this time with length filtering
     filter_in_out_counts <- dada2::filterAndTrim(
         fwd = ins,
         filt = outs,

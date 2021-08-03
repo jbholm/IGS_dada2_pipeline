@@ -1,15 +1,40 @@
 #!/usr/bin/env Rscript
 
-.libPaths(c("/home/jolim/share/R/x86_64-pc-linux-gnu-library/3.3", .libPaths()))
-require("optparse")
+require(jsonlite)
+initial.options <- commandArgs(trailingOnly = FALSE)
+pipelineDir <-
+    dirname(
+        dirname(
+            sub("--file=", "", initial.options[grep("--file=", initial.options)])
+        )
+    )
+config_file <- file.path(pipelineDir, "config.json")
+config <- jsonlite::read_json(
+    path = file.path(config_file)
+)
+.libPaths(config[["r-lib"]])
+
+require("argparse", quietly = T)
+
+parser <- ArgumentParser(description = "")
+parser$add_argument(
+    "--file", "-f",
+    metavar = "DADA2_STATS",
+    type = "character",
+    help = "The DADA2 stats file, tab-delimited"
+)
+parser$add_argument(
+    "--group_by", "-g",
+    metavar = "COLUMN_INDEX",
+    type = "integer",
+    help = "Which column index to group by (optional)"
+)
+opt <- parser$parse_args()
+
 require("kableExtra")
 require("stringi")
 require("jsonlite")
-option_list = list(make_option(c("--file", "-f"), type="character", metavar = "DADA2_STATS", help = "The DADA2 stats file, tab-delimited"),
-                   make_option(c("--group_by", "-g"), type = "numeric", metavar = "COLUMN_INDEX", help = "Which column index to group by (optional)")
-                   )
-opt_parser = OptionParser(option_list=option_list)
-opt = parse_args(opt_parser)
+
 if(is.null(opt$file)) {
     stop("Statistics file must be provided using -f or --file")
 }

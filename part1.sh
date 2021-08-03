@@ -434,6 +434,8 @@ export PYTHONPATH=""
 # export LD_LIBRARY_PATH=/usr/local/packages/python-2.7/lib:/usr/local/packages/gcc/lib64:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH=/usr/lib64/:$LD_LIBRARY_PATH # for Rcpp libstdc++.so.6
 
+module load r/4.0.2 2>/dev/null || true
+
 # # Begin log (will be continued by illumina_dada2.pl)
 log="$SD/${RUN}_16S_pipeline_log.txt"
 

@@ -181,12 +181,12 @@ use ()
     eval `/usr/local/packages/usepackage/bin/usepackage -b $*` || true
 }
 
-use sge > /dev/null 2>&1  || true
+#use sge > /dev/null 2>&1  || true
 module load sge 2>/dev/null || true
 export PYTHONPATH=""
 
-use r-3.6.0 > /dev/null 2>&1  || true
-module load r/3.6.3 2>/dev/null || true
+#use r-3.6.0 > /dev/null 2>&1  || true
+module load r/4.0.2 2>/dev/null || true
 
 export LD_LIBRARY_PATH=/usr/lib64/:$LD_LIBRARY_PATH # for Rcpp libstdc++.so.6
 
@@ -197,7 +197,7 @@ OPTSARR=("$PARAMS")
 OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 R=`cat "$MY_DIR/config.json" | \
-    python3 -sc "import sys, json; print(json.load(sys.stdin)['R-3.6'])"`
+    python3 -sc "import sys, json; print(json.load(sys.stdin)['R'])"`
 ARGS=("-l mem_free=64G" "-P" "$QP" "-V" "-N" "MSL_PACBIO" "-o ${SD}/qsub_stdout_logs/pacbio_dada2.R.stdout" "-e ${SD}/qsub_error_logs/pacbio_dada2.R.stderr" "$QSUB_ARGS" "${R}script" "$MY_DIR/pacbio_dada2.R" "$OPTS" "--wd" "$SD" "--pattern" "\"$PATTERN\"")
 CMD=()
 for ARG in "${ARGS[@]}"; do
