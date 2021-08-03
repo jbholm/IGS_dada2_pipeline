@@ -1,4 +1,4 @@
-#!/usr/local/packages/r-4.0.3/bin/Rscript
+#!/usr/bin/env Rscript
 options(
     show.error.locations = TRUE,
     show.error.messages = TRUE,
@@ -14,7 +14,7 @@ config <- jsonlite::read_json(
     path = file.path(config_file)
 )
 
-.libPaths(config[["r-lib-4.0"]])
+.libPaths(config[["r-lib"]])
 
 require("argparse")
 

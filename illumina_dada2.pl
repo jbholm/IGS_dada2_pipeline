@@ -271,8 +271,6 @@ GetOptions(
 
   or pod2usage(verbose => 0, exitstatus => 1);
 
-$verbose = 1;
-
 if ($help)
 {
     pod2usage(verbose => 2, exitstatus => 0);
@@ -2545,7 +2543,7 @@ sub run_R_script
         );
 
         $cmd =
-          "$config_hashref->{'executor'} -l mem_free=$dada2mem -P $qproj -e $error_log -o $stdout_log -N Rscript \"{ module load r/4.0.3 2>/dev/null || eval \\`/usr/local/packages/usepackage/bin/usepackage -b r-3.6.0\\` > /dev/null 2>&1; } && $config_hashref->{'part1'}->{R}script $Rscript $args > $outR 2>&1\"";
+          "$config_hashref->{'executor'} -l mem_free=$dada2mem -P $qproj -e $error_log -o $stdout_log -N Rscript \"$config_hashref->{R}script $Rscript $args > $outR 2>&1\"";
         execute_and_log($cmd, $logTee, $dryRun,
                   "Running DADA2 with fastq files in $wd for $var region...\n");
 

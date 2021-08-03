@@ -1,4 +1,4 @@
-#!/usr/local/packages/r-4.0.3/bin/Rscript
+#!/usr/bin/env Rscript
 options(
     show.error.locations = TRUE,
     show.error.messages = TRUE,
@@ -25,7 +25,7 @@ config_file <- file.path(pipelineDir, "config.json")
 config <- jsonlite::read_json(
     path = file.path(config_file)
 )
-.libPaths(config[["r-lib-4.0"]])
+.libPaths(config[["r-lib"]])
 
 library("argparse")
 library(dplyr)
@@ -67,6 +67,7 @@ args$maxEE <- as.numeric(args$maxEE)
 
 library("dada2")
 packageVersion("dada2")
+sessionInfo()
 
 run_meta <- function(new_params = list(), checkpoints = list(), samples = list()) {
     info_file <- ".meta.json"

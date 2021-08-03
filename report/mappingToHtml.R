@@ -15,11 +15,9 @@ options(
     },
     stringsAsFactors = FALSE
     )
-suppressMessages(
-    suppressWarnings(
-        require(jsonlite)
-    )
-)
+
+require(jsonlite, quietly = T)
+
 
 initial.options <- commandArgs(trailingOnly = FALSE)
 wd <- dirname(sub("--file=", "", initial.options[grep("--file=", initial.options)]))
@@ -28,11 +26,31 @@ config_file <- file.path(dirname(wd), "config.json")
 config <- jsonlite::read_json(
     path = file.path(config_file)
 )
-.libPaths(config[["r-lib-4.0"]])
+.libPaths(config[["r-lib"]])
+
+require("argparse", quietly = T)
+
+parser <- ArgumentParser(description = "")
+parser$add_argument(
+    "--map", "-m",
+    metavar = "MAPPING_FILE_PATH",
+    type = "character",
+    help = "The mapping file, tab-delimited"
+)
+parser$add_argument(
+    "--group_by", "-g",
+    metavar = "COLUMN_INDEX",
+    type = "integer",
+    help = "Which column index to group by (optional)"
+)
+opt <- parser$parse_args()
+
+if(is.null(opt$map)) {
+    stop("Mapping file must be provided using -m or --map")
+}
 
 suppressMessages(
     suppressWarnings({
-        require("optparse")
         require("kableExtra")
         require("stringi")
         library("magrittr")
@@ -40,15 +58,6 @@ suppressMessages(
         library(readr)
     })
 )
-
-option_list = list(make_option(c("--map", "-m"), type="character", metavar = "MAPPING_FILE_PATH", help = "The mapping file, tab-delimited"),
-                   make_option(c("--group_by", "-g"), type = "numeric", metavar = "COLUMN_INDEX", help = "Which column index to group by (optional)")
-                   )
-opt_parser = OptionParser(option_list=option_list)
-opt = parse_args(opt_parser)
-if(is.null(opt$map)) {
-    stop("Mapping file must be provided using -m or --map")
-}
 
 mapping <- tibble(
     ID = character(),
