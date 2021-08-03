@@ -1,4 +1,4 @@
-#!/usr/local/packages/r-4.0.3/bin/Rscript
+#!/usr/bin/env Rscript
 options(
     show.error.locations = TRUE,
     show.error.messages = TRUE,
@@ -25,7 +25,7 @@ config_file <- file.path(pipelineDir, "config.json")
 config <- jsonlite::read_json(
     path = file.path(config_file)
 )
-.libPaths(config[["r-lib-4.0"]])
+.libPaths(config[["r-lib"]])
 
 require("argparse")
 
@@ -168,7 +168,7 @@ if(! is.null(args$map)) {
                 rows_insert(controls[! controls$RUN.PLATEPOSITION %in% map$RUN.PLATEPOSITION, ], by = "RUN.PLATEPOSITION")
         }
     }
-    write_tsv(map, file = args$map)
+    write_tsv(map, args$map)
 
     merge_with_map <- function(df) {
         return(

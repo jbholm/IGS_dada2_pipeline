@@ -840,14 +840,12 @@ sub R
     my $args   = shift;
 
     open my $scriptFH, "<$script", or die "cannot read header of $script: $!\n";
-    my $shebang = <$scriptFH>;
-    chomp $shebang;
-    $shebang =~ s/#!//;    # Remove shebang itself
+    my $R = $config_hashref->{'R'};
     my $pathsep = catfile('', '');
 
     # my $outR    = catfile( $projDir, basename($script) . "out" );
 
-    my $cmd = "$shebang --verbose $script $args";
+    my $cmd = "${R}script --verbose $script $args";
     my ($stdout) = execute_and_log($cmd, $logTee, 0, "");
 
     # check_R_for_error(\$stdout); execute_and_log should die on error
