@@ -13,7 +13,7 @@
         "SILVA132": "silva_nr_v132_train_set.fa.gz",
         "SILVA138forPB": "silva_nr99_v138_wSpecies_train_set.fa.gz",
         "HOMD": "HOMD_v15.1_DADA2_taxonomy_final.txt",
-        "UNITE": "sh_general_release_dynamic_01.12.2017.fasta"
+        "UNITE": "sh_general_release_dynamic_10.05.2021_dev.fasta"
     },
     "SILVA_default": "SILVA132",
     "python2": "/usr/local/packages/python-2.7.17/bin/python2",

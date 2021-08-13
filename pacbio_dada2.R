@@ -27,15 +27,17 @@ config <- jsonlite::read_json(
 )
 
 .libPaths(config[["r-lib"]])
-require("dada2")
-packageVersion("dada2") # 1.12.1 
 require("argparse")
-require("ShortRead")
-library(dplyr)
-library(magrittr)
-library(tidyr)
 
-parser <- ArgumentParser(description = "Assign taxa")
+parser <- ArgumentParser(
+    description = "MSL 16S pipeline for preprocessing and denoising PacBio runs",
+    epilog =
+        paste(
+            "This script is analogous to the MSL 16S pipeline for Illumina",
+            "runs. Reads will be trimmed of adapters, quality-trimmed,",
+            "quality-filtered, and denoised using DADA2 functions."
+        )
+)
 parser$add_argument(
     "input",
     metavar = "INPUT_DIRECTORY",
@@ -46,13 +48,15 @@ parser$add_argument(
     "--pattern",
     metavar = "GLOB",
     type = "character",
-    help = "Regex pattern that will match all DEMUXED .ccs.fastq.gz files. Use () in place of sample name. Remember to escape regex special characters. For correct bash syntax, enclose the pattern in double quotes."
+    help = "Regex pattern that will match all DEMUXED .ccs.fastq.gz files. Use () in place of sample name. Remember to escape regex special characters. For correct bash syntax, enclose the pattern in double quotes.",
+    required = T
 )
 parser$add_argument(
     "--wd",
     metavar = "PATH",
     type = "character",
-    help = "Working directory. The directory's base name will be taken as the run name."
+    help = "Working directory. The directory's base name will be taken as the run name.",
+    required = T
 )
 args <- parser$parse_args()
 if (any(is.null(args))) {
@@ -63,8 +67,16 @@ run <- basename(getwd())
 sink(
     file = file.path(getwd(), paste0(run, "_16S_pipeline_log.txt")), split = T, append = T
 )
-
 run_dir <- getwd()
+
+require("dada2")
+packageVersion("dada2") # 1.12.1 
+
+require("ShortRead")
+library(dplyr)
+library(magrittr)
+library(tidyr)
+
 # share all output files if we're working in the global run directory
 if(grepl(run_dir, pattern = paste0("^", config[["run_storage_path"]]))) {
     Sys.umask(mode=0002)
