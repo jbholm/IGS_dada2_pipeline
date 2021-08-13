@@ -5,67 +5,130 @@
 
 illumina_dada2.pl
 
-=head1 DESCRIPTION
-
-The script can be launched from any location on the IGS server, it automatically 
-produces a directory in /local/groupshare/ravel named after the project and run
-ID provided. 
-
-Beginning with a set of raw Illumina sequencing files (usually R1, R2, I1, and I2),
-a mapping file, a project ID, a run ID, and specifying the targeted variable
-region, this script:
-  1. Extracts barcodes from the raw files.
-  2. Demultiplexes the raw reads into fastq files containing reads specific to 
-  this project.
-  3. Produces individual .fastq files for each sample listed in the mapping file
-  4. Performs tag-cleaning of each file
-  5. Runs the forward and reverse reads through the dada2 pipeline for the 
-  specified 16S rRNA gene region.
-
-A log file is written at <PROJECT>/<RUN>/<PROJECT>_<RUN>_16S_pipeline_log.txt
-
 =head1 SYNOPSIS
 
-THE FOLLOWING STEPS ARE REQUIRED BEFORE THIS SCRIPT WILL RUN:
+illumina_dada2.pl (-i <input directory> | -r1 <fwd reads> -r2 <rev reads> [-i1 <index 1> -i2 <index 2>]) --wd <directory> -m <map> -v <variable-region> [<options>]
 
-1. Qlogin to RHEL7 if you ssh'd onto a non-RHEL7 host: 
+=head1 DESCRIPTION
 
-  qlogin -P jravel-lab -l mem_free=500M -q interactive.q -V
+This is the MSL 16S pipeline for ILLUMINA runs. It can be launched from any 
+location on the IGS server. When running the pipeline in full, the
+essential inputs are a set of raw Illumina sequencing files (usually R1, R2, I1, 
+and I2), a QIIME-formatted mapping file, the targeted variable region, and the
+path to a working directory where the outputs will be placed.
 
-2. Execute from bash: 
+The steps of the pipeline are as follows:
 
-  export LD_LIBRARY_PATH=/usr/local/packages/gcc/lib64
-  source /usr/local/packages/usepackage/share/usepackage/use.bsh
-  use python-2.7
-  use qiime
+=over 
 
-3. then run script as below: 
+=item 1. Extracts barcodes from the raw files. Required inputs:
 
-FOR 2-STEP:
-qsub -cwd -b y -l mem_free=1G -P jravel-lab -q threaded.q -pe thread 4 -V
-  -e <path_to_logs> -o <path_to_logs> /home/jholm/bin/illumina_dada2.pl 
-  -i <path to raw files> -p <project name> -r <run id> -v <variable region> 
-  -m <full path to mapping file> -sd <storage directory>
+=over
 
-OR:
-qsub -cwd -b y -l mem_free=1G -P jravel-lab -q threaded.q -pe thread 4 -V
-  -e <path_to_logs> -o <path_to_logs> /home/jholm/bin/illumina_dada2.pl 
-  -r1 <path_to_fwd_reads_file> -r2 <path_to_rev_reads_file> -i1 <path_to_index_1_file>
-  -i2 <path_to_index_2_file> -p <project name> -r <run id> -v <variable region> 
-  -m <full path to mapping file> -sd <storage directory>
+=item Z<>* raw reads and indexes
 
-FOR 1-STEP
-qsub -cwd -b y -l mem_free=1G -P jravel-lab -q threaded.q -pe thread 4 -V
-  -e <path_to_logs> -o <path_to_logs> illumina_dada2.pl -i <input directory>
-  -p <project name> -r <run ID> -m <mapping file> -v <variable region> 
-  -sd <storage directory> --1Step
+=item Z<>* map
 
-qsub -cwd -b y -l mem_free=1G -P jravel-lab -q threaded.q -pe thread 4 -V
-  -e <path_to_logs> -o <path_to_logs> illumina_dada2.pl -r1 <path_to_fwd_reads_file>
-  -r2 <path_to_rev_reads_file> -p <project name> -r <run ID> -m <mapping file>
-  -v <variable region> -sd <storage directory> --1Step
+=back
+
+=item 2. Demultiplexes the raw reads into fastq files containing reads specific to 
+this project. Required inputs:
+
+=over
+
+=item Z<>* ./barcodes.fastq
+
+=item Z<>* map
+
+=back
+
+=item 3. Produces individual .fastq files for each sample listed in the mapping file.
+Required inputs:
+
+=over
+
+=item Z<>* ./fwdSplit/seqs.fastq
+
+=item Z<>* ./revSplit/seqs.fastq
+
+=back
+
+=item 4. Performs tag-cleaning of each sample-specific file. Required inputs:
+
+=over
+
+=item Z<>* ./fwdSplit/split_by_sample_out/<sample_id>_*.fastq
+
+=item Z<>* ./revSplit/split_by_sample_out/<sample_id>_*.fastq
+
+=back
+
+=item 5. Runs the forward and reverse reads through the dada2 pipeline for the 
+V3V4 16S rRNA gene region. Alternatively, analysis of the V4 or ITS region may
+be specified.
+
+=over
+
+=item Z<>* ./<sample_id>_*R1_tc.fastq
+
+=item Z<>* ./<sample_id>_*R2_tc.fastq
+
+=back
+
+=back
+
+All pipeline products are stored in a directory named after the run. By default,
+run directories are stored in /local/projects-t3/MSL/runs/. A log file is 
+written at ./<RUN>_16S_pipeline_log.txt
 
 =head1 OPTIONS
+
+=head2 GENERAL
+
+=over
+
+=item B<--working-dir>=PATH, B<-wd> PATH
+
+Indicate an existing directory in which to place output, and from which the
+run name will be parsed. The last directory on PATH must be named after the run.
+(Many of the result files will be named after the run.)
+
+=item B<--1Step>
+
+Use this flag if the data are prepared by 1-Step PCR (only forward & reverse read files
+available). This processes the input files correctly and activates appropriate
+parameters during adapter trimming, quality trimming/filtering, and denoising.
+
+=item B<-h>, B<--help>
+
+Print help message and exit successfully.
+
+=item B<--qsub-project>=space, B<-qp> space
+
+Indicate which qsub-project space should be used for all qsubmissions. The
+default is jravel-lab.
+
+=item B<--debug> {barcodes, demux, splitsamples, tagclean, dada2}
+
+Runs the specified section of the pipeline. Multiple --debug options can be given
+to run multiple consecutive parts of the pipeline, provided that the input to
+the earliest requested step is present. Any non-consecutive steps will be 
+ignored.
+
+Usually helpful to add B<--noskip>.
+
+=item B<--noskip>
+
+Will not check for any possible existing output files when deciding whether to 
+run a section of the pipeline.
+
+=item B<--verbose>
+
+Prints each command to STDOUT and to the log file.
+
+=back
+
+=head2 INPUT
 
 =over
 
@@ -111,20 +174,11 @@ with B<--1step>. Gzip compression optional.
 
 The full path to the Qiime-formatted mapping file.
 
-=item B<--var-reg>={V3V4, V4, ITS}, B<-v> {V3V4, V4, ITS}
+=back
 
-The targeted variable region.
+=head2 BARCODE EXTRACTION AND DEMULTIPLEXING
 
-=item B<--1Step>
-
-Use this flag if the data are prepared by 1-Step PCR (only forward & reverse read files
-available)
-
-=item B<--working-dir>=PATH, B<-wd> PATH
-
-Indicate an existing directory in which to place output, and from which the
-run name will be parsed. The last directory on PATH must be named after the run.
-(Many of the result files will be named after the run.)
+=over
 
 =item B<--bclen> LENGTH
 
@@ -141,52 +195,41 @@ successful demux is used. Note: Performing these transformations on the indexes
 may coincidentally yield a barcode that seems to be correct, even though the 
 overall demux is incorrect. 
 
-=item B<-h>, B<--help>
+=back
 
-Print help message and exit successfully.
+=head2 TRIMMING, FILTERING, AND DENOISING
 
-=item B<--qsub-project>=space, B<-qp> space
+=over
 
-Indicate which qsub-project space should be used for all qsubmissions. The
-default is jravel-lab.
+=item B<--var-reg>={V3V4, V4, ITS}, B<-v> {V3V4, V4, ITS}
 
-=item B<--debug> {barcodes, demux, splitsamples, tagclean, dada2}
+The targeted variable region.
 
-Runs the specified section of the pipeline. Multiple --debug options can be given
-to run multiple consecutive parts of the pipeline, provided that the input to
-the earliest requested step is present. Any non-consecutive steps will be 
-ignored.
+=item B<--dada2>="options"
 
-Section inputs:
+Overrides the default DADA2 parameters used at the MSL. The following options
+are allowed:
 
-Barcodes
+ --dada2-truncLen-f, -for (defaults: V3V4: 225 | V4: 200 | ITS: 0)
+ --dada2-truncLen-r, -rev (defaults: V3V4: 225 | V4: 200 | ITS: 0)
+ --dada2-maxN (default: 0)
+ --dada2-maxEE (defaults: V3V4: 2 | V4: 2 | ITS: 0)
+ --dada2-truncQ (default: 2)
+ --dada2-rmPhix (default: TRUE)
+ --dada2-maxLen (default: Inf)
+ --dada2-minLen (default: V3V4: 20 | V4: 20 | ITS: 50)
+ --dada2-minQ (default: 0)
 
-1) raw reads and indexes
-2) map
+Please see https://rdrr.io/bioc/dada2/man/filterAndTrim.html for descriptions
+of the parameters. The parameters should be given within double quotes as shown 
+below:
 
-Demux
+part1.sh --dada2="--dada2-maxEE 5 --dada2-minQ 10" ...
 
-1) ./barcodes.fastq
-2) map
+=item B<--dada2-mem> memory
 
-Splitsamples
-
-1) ./fwdSplit/seqs.fastq
-2) ./revSplit/seqs.fastq
-
-Tagclean
-
-1) ./fwdSplit/split_by_sample_out/<sample_id>_*.fastq
-2) ./revSplit/split_by_sample_out/<sample_id>_*.fastq
-
-DADA2 (the sample_id is delimited by the first underscore character)
-
-1) ./<sample_id>_*R1_tc.fastq
-2) ./<sample_id>_*R2_tc.fastq
-
-=item B<--verbose>
-
-Prints each command to STDOUT.
+The amount of memory to request for the DADA2 qsub job. Use Sun Grid Engine
+syntax: 10G, 500M, etc.
 
 =back 
 

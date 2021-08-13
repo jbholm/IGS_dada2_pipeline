@@ -271,6 +271,10 @@ elif [[ ! -e "$MAP" ]]; then
 fi
 printf "MAPPING FILE: $MAP\n"
 
+if [[ -n "$BCLENGTH" ]]; then
+    BCLENGTH="--bclen=$BCLENGTH"
+fi
+
 # -r is mandatory
 if [[ ! -n "$RUN" ]]; then
     stop "Run ID (-r) required."
@@ -466,34 +470,163 @@ $EXECUTOR ${CMD[*]}
 
 part1.sh
 
+
+=head1 SYNOPSIS
+
+part1.sh (-i <input directory> | -r1 <fwd reads> -r2 <rev reads> [-i1 <index 1> -i2 <index 2>]) -r <run> -m <map> [<options>]
+
 =head1 DESCRIPTION
 
-The script can be launched from any location on the IGS server. Beginning with a
-set of raw Illumina sequencing files (usually R1, R2, I1, and I2), a mapping 
-file, and a run ID, this script:
+This is a wrapper to the MSL 16S pipeline for ILLUMINA runs. It can be launched 
+from any location on the IGS server. When running the pipeline in full, the
+essential inputs are a set of raw Illumina sequencing files (usually R1, R2, I1, 
+and I2), a QIIME-formatted mapping file, and a run ID that will be used to name
+the run directory.
 
-1. Extracts barcodes from the raw files.
+The steps of the pipeline are as follows:
 
-2. Demultiplexes the raw reads into fastq files containing reads specific to 
-this project.
+=over 
 
-3. Produces individual .fastq files for each sample listed in the mapping file
+=item 1. Extracts barcodes from the raw files. Required inputs:
 
-4. Performs tag-cleaning of each sample-specific file
+=over
 
-5. Runs the forward and reverse reads through the dada2 pipeline for the 
+=item Z<>* raw reads and indexes
+
+=item Z<>* map
+
+=back
+
+=item 2. Demultiplexes the raw reads into fastq files containing reads specific to 
+this project. Required inputs:
+
+=over
+
+=item Z<>* ./barcodes.fastq
+
+=item Z<>* map
+
+=back
+
+=item 3. Produces individual .fastq files for each sample listed in the mapping file.
+Required inputs:
+
+=over
+
+=item Z<>* ./fwdSplit/seqs.fastq
+
+=item Z<>* ./revSplit/seqs.fastq
+
+=back
+
+=item 4. Performs tag-cleaning of each sample-specific file. Required inputs:
+
+=over
+
+=item Z<>* ./fwdSplit/split_by_sample_out/<sample_id>_*.fastq
+
+=item Z<>* ./revSplit/split_by_sample_out/<sample_id>_*.fastq
+
+=back
+
+=item 5. Runs the forward and reverse reads through the dada2 pipeline for the 
 V3V4 16S rRNA gene region. Alternatively, analysis of the V4 or ITS region may
 be specified.
+
+=over
+
+=item Z<>* ./<sample_id>_*R1_tc.fastq
+
+=item Z<>* ./<sample_id>_*R2_tc.fastq
+
+=back
+
+=back
 
 All pipeline products are stored in a directory named after the run. By default,
 run directories are stored in /local/projects-t3/MSL/runs/. A log file is 
 written at ./<RUN>_16S_pipeline_log.txt
 
-=head1 SYNOPSIS
-
-part1.sh (-i <input directory> | -r1 <fwd reads> -r2 <rev reads> [-i1 <index 1> -i2 <index 2>]) -r <run> -m <map> [-v <variable region>] [--1Step] [<options>]
-
 =head1 OPTIONS
+
+=head2 GENERAL
+
+=over
+
+=item B<--run-ID>, B<-r> name
+
+Create the run folder with this name.
+
+=item B<--run-storage> path
+
+Indicate an existing directory in which to place the run directory. The default
+path is in the pipeline configuration file.
+
+=item B<--1Step>
+
+Use this flag if the data are prepared by 1-Step PCR (only r1 & r2 raw files
+available)
+
+=item B<-h>, B<--help>
+
+Print help message and exit successfully.
+
+=item B<--qsub-project>, B<-qp> space
+
+Indicate which qsub-project space should be used for all qsubmissions. The
+default is jravel-lab.
+
+=item B<--debug>, B<-d> {barcodes, demux, splitsamples, tagclean, dada2}
+
+Runs the specified section of the pipeline. Multiple --debug options can be given
+to run multiple consecutive parts of the pipeline, provided that the input to
+the earliest requested step is present. Any non-consecutive steps will be 
+ignored.
+
+=item B<--noskip>
+
+Will not check for any possible existing output files when deciding whether to 
+run a section of the pipeline.
+
+=item B<--verbose>
+
+Prints every shell command to the log file and to <run_directory>/qsub_stdout_logs/illumina_dada2.pl.stdout
+
+=item B<--dry-run>
+
+Runs the pipeline without executing any of the shell commands. May be useful
+combined with B<--verbose>. (Currently with B<--dry-run>, the pipeline may not 
+progress far due to checkpoints that halt the pipeline if any step seems to 
+fail.)
+
+=item B<--email>
+
+Notify by email when the job is finished. Does this by adding "-m ea" to the
+outermost qsub call. Compatible with --qsub.
+
+=item B<--qsub>="options"
+
+Adds options to the outermost qsub call. By default, qsub is called with the
+following options:
+
+    -cwd
+    -b y
+    -l mem_free=200M 
+    -P jravel-lab 
+    -q threaded.q 
+    -pe thread 4 
+    -V
+    -o <path auto-generated from -sd, -p, and -r>
+    -e <from auto-generated path -sd, -p, and -r>
+
+Most options will override the defaults shown above. The qsub options must be 
+specified as a single string surrounded by double quotes ("), as shown below.
+
+    part1.sh --qsub="-m ea -l excl=true" ...
+
+=back
+
+=head2 INPUT
 
 =over
 
@@ -536,27 +669,15 @@ with B<--1step>. Gzip compression optional.
 Full path to raw index 2 file (I2, or R3 in old naming scheme). Incompatible 
 with B<--1step>. Gzip compression optional.
 
-=item B<--run-ID> name, B<-r> name
-
-Create the run folder with this name.
-
-=item B<--map> file, B<-m> file
+=item B<--map>, B<-m> file
 
 The full path to the Qiime-formatted mapping file.
 
-=item B<--var-reg> {V3V4, V4, ITS}, B<-v> {V3V4, V4, ITS}
+=back
 
-The targeted variable region. V3V4 is default.
+=head2 BARCODE EXTRACTION AND DEMULTIPLEXING
 
-=item B<--1Step>
-
-Use this flag if the data are prepared by 1-Step PCR (only r1 & r2 raw files
-available)
-
-=item B<--run-storage> path
-
-Indicate an existing directory in which to place the run directory. The default
-path is in the pipeline configuration file.
+=over
 
 =item B<--bclen> LENGTH
 
@@ -573,82 +694,15 @@ successful demux is used. Note: Performing these transformations on the indexes
 may coincidentally yield a barcode that seems to be correct, even though the 
 overall demux is incorrect. 
 
-=item B<-h>, B<--help>
+=back
 
-Print help message and exit successfully.
+=head2 TRIMMING, FILTERING, AND DENOISING
 
-=item B<--qsub-project> space, B<-qp> space
+=over
 
-Indicate which qsub-project space should be used for all qsubmissions. The
-default is jravel-lab.
+=item B<--var-reg>, B<-v> {V3V4, V4, ITS}
 
-=item B<--debug>, B<-d> {barcodes, demux, splitsamples, tagclean, dada2}
-
-Runs one or more sections of the pipeline. To run multiple sections, type 
-"--debug <section>" or "-d <section>" for each section. 
-
-Section inputs:
-
-Barcodes
-
-1) raw reads and indexes
-2) map
-
-Demux
-
-1) ./barcodes.fastq
-2) map
-
-Splitsamples
-
-1) ./fwdSplit/seqs.fastq
-2) ./revSplit/seqs.fastq
-
-Tagclean
-
-1) ./fwdSplit/split_by_sample_out/<sample_id>_*.fastq
-2) ./revSplit/split_by_sample_out/<sample_id>_*.fastq
-
-DADA2 (the sample_id is delimited by the first underscore character)
-
-1) ./<sample_id>_*R1_tc.fastq
-2) ./<sample_id>_*R2_tc.fastq
-
-=item B<--verbose>
-
-Prints every shell command to: <storage-dir>/<project>/<run>/qsub_stdout_logs>/illumina_dada2.pl.stdout
-
-=item B<--dry-run>
-
-Runs the pipeline without executing any of the shell commands. May be useful
-combined with B<--verbose>. (Currently with B<--dry-run>, the pipeline may not 
-progress far due to checkpoints that halt the pipeline if any step seems to 
-fail.)
-
-=item B<--email>
-
-Notify by email when the job is finished. Does this by adding "-m ea" to the
-outermost qsub call. Compatible with --qsub.
-
-=item B<--qsub>="options"
-
-Adds options to the outermost qsub call. By default, qsub is called with the
-following options:
-
-    -cwd
-    -b y
-    -l mem_free=200M 
-    -P jravel-lab 
-    -q threaded.q 
-    -pe thread 4 
-    -V
-    -o <path auto-generated from -sd, -p, and -r>
-    -e <from auto-generated path -sd, -p, and -r>
-
-Most options will override the defaults shown above. The qsub options must be 
-specified as a single string surrounded by double quotes ("), as shown below.
-
-    part1.sh --qsub="-m ea -l excl=true" ...
+The targeted variable region. V3V4 is default.
 
 =item B<--dada2>="options"
 
