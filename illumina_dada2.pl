@@ -524,11 +524,6 @@ my %step2number = (
                   );
 my $skip;
 
-if (!$bcLen)
-{
-    $bcLen = $oneStep ? 12 : 10;    # 2-step pcr
-}
-
 my $models;
 if ($var eq 'V3V4')
 {
@@ -599,7 +594,7 @@ if (@dbg)
 
 print $logTee "RUN: $run\nVARIABLE REGION: $var\n"
   . "R VERSION: "
-  . $config_hashref->{'part1'}->{'R'}
+  . $config_hashref->{'R'}
   . "\nPECAN MODELS: $models\n";
 if ($oneStep)
 {
@@ -792,7 +787,6 @@ if (   !@dbg
 my $newSamNo;
 if ($tbshtBarcodes)
 {
-
     # make three other directories
     my %dirs_params = (
              "$global_config{wd}_rc_fwd"     => "--rev_comp_bc1",
@@ -1028,6 +1022,18 @@ sub barcodes
 
         # Was in original code, but maybe unnecessary?
         my $mapOpt = $oneStep ? "-m $localMap" : "";
+
+        if (! $bcLen) {
+            if ($oneStep) {
+                # Idk if auto-detecting the barcode length works under one-step 
+                # PCR. We've never done any one-step PCR runs while I've been
+                # here
+                $bcLen = 12; 
+            } else {
+                $bcLen = find_index_length($localNames{"index1"});
+                $logTee->print("Detected barcode length as $bcLen \n");
+            }
+        }
 
         my $cmd = qiime_cmd('extract_barcodes.py', $config_hashref)
           . " -f $localNames{\"index1\"} -r $localNames{\"index2\"} -c barcode_paired_end --bc1_len $bcLen --bc2_len $bcLen $mapOpt -o $wd $oriParams";
@@ -2510,6 +2516,20 @@ sub convert_to_local_if_gz
         push(@ans, $file);
     }
     return @ans;
+}
+
+sub find_index_length {
+    my $file = shift;
+    open my $reads, $file or die "Could not open $file: $!";
+    my $first_index;
+    while( <$reads> )  { 
+        chomp;
+        $first_index = $_ if $. == 2;    
+        last if $. == 2;
+    }
+    close $reads;
+
+    return(length $first_index);
 }
 
 sub readSplitLog
