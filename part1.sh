@@ -681,10 +681,13 @@ The full path to the Qiime-formatted mapping file.
 
 =item B<--bclen> LENGTH
 
-The length of forward and reverse barcodes. This many bases is removed from the
-index 1 and index 2 of each read, concatenated, and used to demultiplex the
-reads according to the provided map. (In our current pipeline, the indexes ARE
-exactly this length.) Default: 10.
+Manually specify the length of forward and reverse barcodes. This many bases is 
+removed from the index 1 and index 2 of each read, concatenated, and used to 
+demultiplex the reads according to the provided map.
+
+In our current sequencing configuration, the indexes ARE exactly this length.
+By default, the pipeline sets the barcode length equal to the length of the
+first index.
 
 =item B<--troubleshoot_barcodes>
 
