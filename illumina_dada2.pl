@@ -457,8 +457,9 @@ chdir $global_config{wd};
 
 # if we're in the global run directory, share all files with group
 my $global_run_storage = abs_path($config_hashref->{"run_storage_path"});
-if($global_config{wd} =~ /^${global_run_storage}/ ) {
-    umask(0002); 
+if ($global_config{wd} =~ /^${global_run_storage}/)
+{
+    umask(0002);
 }
 
 # Initialize log file
@@ -1026,13 +1027,16 @@ sub barcodes
         # Was in original code, but maybe unnecessary?
         my $mapOpt = $oneStep ? "-m $localMap" : "";
 
-        if (! $bcLen) {
-            if ($oneStep) {
-                # Idk if auto-detecting the barcode length works under one-step 
+        if (!$bcLen)
+        {
+            if ($oneStep)
+            {
+                # Idk if auto-detecting the barcode length works under one-step
                 # PCR. We've never done any one-step PCR runs while I've been
                 # here
-                $bcLen = 12; 
-            } else {
+                $bcLen = 12;
+            } else
+            {
                 $bcLen = find_index_length($localNames{"index1"});
                 $logTee->print("Detected barcode length as $bcLen \n");
             }
@@ -1484,8 +1488,8 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
     my $fwdSampleDir = "$fwdProjDir/split_by_sample_out";
     my $revSampleDir = "$revProjDir/split_by_sample_out";
 
-    my @inputsF  = glob("$fwdSampleDir/*.fastq $fwdSampleDir/*.fastq.gz");
-    my @inputsR  = glob("$revSampleDir/*.fastq $fwdSampleDir/*.fastq.gz");
+    my @inputsF = glob("$fwdSampleDir/*.fastq $fwdSampleDir/*.fastq.gz");
+    my @inputsR = glob("$revSampleDir/*.fastq $fwdSampleDir/*.fastq.gz");
 
     if (scalar @inputsF != scalar @inputsR)
     {
@@ -1567,7 +1571,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                 $cmd =
                     $base_cmd
                   . " -fastq $fwdSampleDir/$filename -out $tc -line_width 0 "
-                  . "-verbose -tag5 $fwd_adapt -mm5 2";
+                  . "-verbose -tag5 $fwd_adapt -mm5 7";
                 push @cmds, $cmd;
             }
         }
@@ -1586,7 +1590,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                 $cmd =
                     $base_cmd
                   . " -fastq $revSampleDir/$filename -out $tc -line_width 0 "
-                  . "-verbose -tag5 $rev_adapt -mm5 2";
+                  . "-verbose -tag5 $rev_adapt -mm5 7";
                 push @cmds, $cmd;
             }
         }
@@ -1602,7 +1606,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
             @fwdFiles = glob("$global_config{wd}/*R1_tc.fastq");
             $nFiles   = @fwdFiles;
 
-            # Ensure that each tagcleaned file has the same number of lines as 
+            # Ensure that each tagcleaned file has the same number of lines as
             # its input file
             $equalLns = 1;
             foreach my $file (@fwdFiles)
@@ -1982,14 +1986,15 @@ if ((!@dbg) || grep(/^dada2$/, @dbg))
 
 END
 {
-    if($global_config{wd} =~ /^${global_run_storage}/ ) {
+    if ($global_config{wd} =~ /^${global_run_storage}/)
+    {
         find(
-            sub { 
+            sub {
                 chmod(0664, $File::Find::name) unless -d;
                 chmod(0775, $File::Find::name) if -d;
-            }, 
+            },
             $global_config{wd}
-        );
+            );
         chmod(0775, $global_config{wd});
     }
 
@@ -2154,7 +2159,8 @@ sub skippable
     delete $checksumsOut{$_}
       for grep {not defined $checksumsOut{$_}} keys %checksumsOut;
 
-    if($verbose) {
+    if ($verbose)
+    {
         $logTee->print("Input files: " . Dumper($inputsR) . "\n");
         $logTee->print("Cached files: " . Dumper(%checksumsIn) . "\n");
         $logTee->print("Output files: " . Dumper($outputsR) . "\n");
@@ -2521,18 +2527,20 @@ sub convert_to_local_if_gz
     return @ans;
 }
 
-sub find_index_length {
+sub find_index_length
+{
     my $file = shift;
     open my $reads, $file or die "Could not open $file: $!";
     my $first_index;
-    while( <$reads> )  { 
+    while (<$reads>)
+    {
         chomp;
-        $first_index = $_ if $. == 2;    
+        $first_index = $_ if $. == 2;
         last if $. == 2;
     }
     close $reads;
 
-    return(length $first_index);
+    return (length $first_index);
 }
 
 sub readSplitLog
