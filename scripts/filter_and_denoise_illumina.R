@@ -90,8 +90,8 @@ run_meta <- function(new_params = list(), checkpoints = list(), samples = list()
 ## perform filtering and trimming
 filtpath <- "filtered"
 
-fastqFs <- sort(list.files(pattern="R1_tc.fastq(?:.gz)?"))
-fastqRs <- sort(list.files(pattern="R2_tc.fastq(?:.gz)?"))
+fastqFs <- sort(list.files(pattern="R1_tc\\.fastq(?:.gz)?"))
+fastqRs <- sort(list.files(pattern="R2_tc\\.fastq(?:.gz)?"))
 sample.names <- sapply(strsplit(basename(fastqFs), "_"), `[`, 1)
 filtF_files<-file.path(filtpath, paste0(sample.names, "_F_filt.fastq.gz"))
 filtR_files<-file.path(filtpath, paste0(sample.names, "_R_filt.fastq.gz"))
