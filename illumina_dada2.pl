@@ -272,7 +272,6 @@ use File::Copy::Recursive qw(dircopy );
 use Data::Dumper;
 use Hash::Merge qw( merge );
 use Path::Tiny qw(path);
-
 $OUTPUT_AUTOFLUSH = 1;
 
 ####################################################################
@@ -468,6 +467,9 @@ my $run = File::Basename::basename($global_config{wd});
 my $time = strftime("%Y-%m-%d %H:%M:%S", localtime(time));
 my $log  = catfile($global_config{wd}, "${run}_16S_pipeline_log.txt");
 open my $logFH, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
+my $old = select $logFH;
+$OUTPUT_AUTOFLUSH = 1;
+select $old;
 my $logTee = new IO::Tee(\*STDOUT, $logFH);
 
 local $SIG{__WARN__} = sub {
@@ -552,24 +554,23 @@ if (!-e $error_log)
     print "$error_log did not exist -> making $error_log\n";
 } else
 {
-
     # Remove old error logs
     my @oldLogs = glob("$error_log/*.*");
-    if (@oldLogs)
+    my @cmds;
+    foreach my $log (@oldLogs)
     {
-        my @cmds;
-        foreach my $log (@oldLogs)
+        my @dontDelete =
+          ("$error_log/illumina_dada2.pl.stderr", $localMap, $mapLog);
+        if (
+            List::Util::none {$_ eq $log}
+            @dontDelete
+           )
         {
-            my @dontDelete =
-              ("$error_log/illumina_dada2.pl.stderr", $localMap, $mapLog);
-            if (
-                List::Util::none {$_ eq $log}
-                @dontDelete
-               )
-            {
-                push @cmds, "rm $log";
-            }
+            push @cmds, "rm $log";
         }
+    }
+    if (@cmds)
+    {
         execute_and_log(@cmds, 0, $dryRun, "Removing stale error logs.");
     }
 }
@@ -1489,7 +1490,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
     my $revSampleDir = "$revProjDir/split_by_sample_out";
 
     my @inputsF = glob("$fwdSampleDir/*.fastq $fwdSampleDir/*.fastq.gz");
-    my @inputsR = glob("$revSampleDir/*.fastq $fwdSampleDir/*.fastq.gz");
+    my @inputsR = glob("$revSampleDir/*.fastq $revSampleDir/*.fastq.gz");
 
     if (scalar @inputsF != scalar @inputsR)
     {
@@ -1514,8 +1515,6 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                          );
     }
 
-    my @cmds;
-    my $cmd;
     if (!$skip)
     {
         my $base_cmd =
@@ -1558,97 +1557,89 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
             }
         }
 
+        my @cmds;
         my $filename;
-        opendir R1, $fwdSampleDir
-          or die "Cannot open directory $fwdSampleDir\n";
-        while ($filename = readdir R1)
+        foreach my $filename (@inputsF)
         {
-            if ($filename =~ /.fastq$/)
+            my ($name, $dir, $ext) =
+              File::Basename::fileparse($filename, qr{\.gz});
+            if ($ext)
             {
-                my @suffixes = (".fastq", ".fq");
-                my $Prefix   = File::Basename::basename($filename, @suffixes);
-                my $tc       = "$global_config{wd}/$Prefix" . "_tc";
-                $cmd =
-                    $base_cmd
-                  . " -fastq $fwdSampleDir/$filename -out $tc -line_width 0 "
-                  . "-verbose -tag5 $fwd_adapt -mm5 7";
+                my $cmd = "gunzip $filename";
                 push @cmds, $cmd;
-            }
-        }
-        close R1;
 
-        opendir R4, $revSampleDir
-          or die "Cannot open directory $revSampleDir\n";
-        while ($filename = readdir R4)
+                # $name would now contain <sample_name>.fastq
+            }
+            my @suffixes = (".fastq");
+            my $Prefix   = File::Basename::basename($name, @suffixes);
+            my $tc       = "$global_config{wd}/$Prefix" . "_tc";
+            my $cmd =
+                $base_cmd
+              . " -fastq "
+              . catfile($dir, $name)
+              . " -out $tc -line_width 0 "
+              . "-verbose -tag5 $fwd_adapt -mm5 2 -nomatch 1";
+            push @cmds, $cmd;
+        }
+
+        foreach my $filename (@inputsR)
         {
-            if ($filename =~ /.fastq$/)
+            my ($name, $dir, $ext) =
+              File::Basename::fileparse($filename, qr{\.gz});
+            if ($ext)
             {
-
-                my @suffixes = (".fastq", ".fq");
-                my $Prefix   = File::Basename::basename($filename, @suffixes);
-                my $tc       = "$global_config{wd}/$Prefix" . "_tc";
-                $cmd =
-                    $base_cmd
-                  . " -fastq $revSampleDir/$filename -out $tc -line_width 0 "
-                  . "-verbose -tag5 $rev_adapt -mm5 7";
+                my $cmd = "gunzip $filename";
                 push @cmds, $cmd;
+
+                # $name would now contain <sample_name>.fastq
             }
+            my @suffixes = (".fastq");
+            my $Prefix   = File::Basename::basename($name, @suffixes);
+            my $tc       = "$global_config{wd}/$Prefix" . "_tc";
+            my $cmd =
+                $base_cmd
+              . " -fastq "
+              . catfile($dir, $name)
+              . " -out $tc -line_width 0 "
+              . "-verbose -tag5 $rev_adapt -mm5 2 -nomatch 1";
+            push @cmds, $cmd;
         }
-        close R4;
         execute_and_log(@cmds, $logTee, $dryRun,
                         "Removing $var primers from all sequences.\n");
 
         my @fwdFiles = glob("$global_config{wd}/*R1_tc.fastq");
         my $nFiles   = @fwdFiles;
-        my $equalLns = 0;
-        while ($nFiles != $newSamNo || !$equalLns)
+        while ($nFiles != $newSamNo)
         {
             @fwdFiles = glob("$global_config{wd}/*R1_tc.fastq");
             $nFiles   = @fwdFiles;
-
-            # Ensure that each tagcleaned file has the same number of lines as
-            # its input file
-            $equalLns = 1;
-            foreach my $file (@fwdFiles)
-            {
-                my $basename = File::Basename::basename($file, ("_tc.fastq"));
-                if (count_lines($file) !=
-                    count_lines("$fwdSampleDir/$basename.fastq"))
-                {
-                    $equalLns = 0;
-                }
-            }
             check_error_log($error_log, "perl");
         }
         print $logTee
           "---All tagcleaned R1 samples accounted for in $global_config{wd}\n";
 
-        $equalLns = 0;
         my @revFiles = glob("$global_config{wd}/*R2_tc.fastq");
         $nFiles = @revFiles;
-        while ($nFiles != $newSamNo || !$equalLns)
+        while ($nFiles != $newSamNo)
         {
             @revFiles = glob("$global_config{wd}/*R2_tc.fastq");
             $nFiles   = @revFiles;
-
-            # Ensure that each tagcleaned file has the same number of lines as
-            # its input file
-            $equalLns = 1;
-            foreach my $file (@revFiles)
-            {
-                my $basename = File::Basename::basename($file, ("_tc.fastq"));
-                if (count_lines($file) !=
-                    count_lines("$revSampleDir/$basename.fastq"))
-                {
-                    $equalLns = 0;
-                }
-            }
             check_error_log($error_log, "perl");
         }
         print $logTee
           "---All tagcleaned R4 (R2) samples accounted for in $global_config{wd}\n";
 
-        $cmd =
+        for (my $i = 0; $i < scalar @fwdFiles; $i++)
+        {
+            my $revFile = $fwdFiles[$i] =~ s/R1_tc.fastq$/R2_tc.fastq/r;
+            if ((-s $fwdFiles[$i]) == 0 || (-s $revFile) == 0)
+            {
+                unlink $fwdFiles[$i];
+                unlink $revFile;
+            }
+        }
+
+        my $cmd =
           "gzip -f9 {*_tc.fastq,$fwdSampleDir/*.fastq,$revSampleDir/*.fastq}";
         execute_and_log($cmd, $logTee, $dryRun,
                         "Compressing tagcleaned FASTQ's...\n");
@@ -2173,23 +2164,14 @@ sub skippable
     my $outNames = shift;
     my $wd       = $global_config{wd};   # This hash is a file-level my-variable
 
-    if (scalar @$outputsR == 0)
+    if (   scalar @$outputsR == 0
+        || List::Util::none {defined $_} @$outputsR
+        || List::Util::none {-e $_} @$outputsR)
     {
         $logTee->print("$step has not been run yet. Running now...\n");
         return 0;
     }                                    # no output files found by caller
-    if (List::Util::none {defined $_} @$outputsR)
-    {
-        $logTee->print("Failed to find output files.\n");
-        return 0;
-    }
-    if (List::Util::none {-e $_} @$outputsR)
-    {
-        $logTee->print("Output files were specified but do not exist.\n");
 
-        # Caller named output files but none existed. No need to print message
-        return 0;
-    }
     if (!List::Util::all {-e $_} @$outputsR)
     {
 
@@ -2244,10 +2226,17 @@ sub skippable
     {
 
         # If the previous step was not skipped, the inputs must be checksummed
-
+        if ($verbose)
+        {
+            $logTee->print("Checksumming input files:\n" . Dumper($inputsR));
+        }
         my $i          = -1;
         my $inputValid = List::Util::all
         {
+            if ($verbose)
+            {
+                $logTee->print("Checksumming input file: $_\n");
+            }
             $i++;
             my @stdout   = split(/\s/, `sha512sum $_`);
             my $checksum = $stdout[0];
@@ -2271,10 +2260,19 @@ sub skippable
     }    # Otherwise, we know the inputs are valid
          # then do the same for all the outputs
 
-    my $i           = -1;
+    my $i = -1;
+    if ($verbose)
+    {
+        $logTee->print("Checksumming output files:\n" . Dumper($outputsR));
+    }
     my $outputValid = List::Util::all
     {
         $i++;
+        if ($verbose)
+        {
+
+            $logTee->print("Checksumming output file:$_\n");
+        }
         my @stdout   = split(/\s/, `sha512sum $_`);
         my $checksum = $stdout[0];
 
@@ -2764,6 +2762,10 @@ sub execute_and_log
         system($cmd) == 0
           or die "system($cmd) failed with exit code: $?"
           if !$dryRun;
+    }
+    if (!@_)
+    {
+        warn "execute_and_log() called with no commands\n";
     }
 }
 
