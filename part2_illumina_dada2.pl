@@ -258,6 +258,10 @@ foreach (@runs, $map_file)
 # PRINT TO LOG ASAP
 my $log = "$project" . "_part2_16S_pipeline_log.txt";
 open my $logFH, ">>$log" or die "Cannot open $log for writing: $OS_ERROR";
+my $old = select $logFH;
+$OUTPUT_AUTOFLUSH = 1;
+select $old;
+
 print $logFH "This file logs the progress of "
   . scalar(@runs)
   . " runs for $project 16S amplicon sequences through the illumina_dada2.pl pipeline.\n";
@@ -803,7 +807,10 @@ sub combine_run_metadata
                                . basename($rundir)
                                . " into the project directory.\n");
             }
-            symlink($rundir, catdir($projDir, basename($rundir))) or die "Problem creating " . catdir($projDir, basename($rundir)) . " -> $rundir\n$!\n";
+            symlink($rundir, catdir($projDir, basename($rundir)))
+              or die "Problem creating "
+              . catdir($projDir, basename($rundir))
+              . " -> $rundir\n$!\n";
         }
     }
     return $metadata;
@@ -840,7 +847,7 @@ sub R
     my $args   = shift;
 
     open my $scriptFH, "<$script", or die "cannot read header of $script: $!\n";
-    my $R = $config_hashref->{'R'};
+    my $R       = $config_hashref->{'R'};
     my $pathsep = catfile('', '');
 
     # my $outR    = catfile( $projDir, basename($script) . "out" );
