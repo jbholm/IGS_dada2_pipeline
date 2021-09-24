@@ -1517,10 +1517,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
 
     if (!$skip)
     {
-        my $base_cmd =
-            "$config_hashref->{'executor'} -l mem_free=400M -P $qproj -e "
-          . "$error_log -o $stdout_log perl "
-          . $config_hashref->{'part1'}->{"tagcleaner"};
+        my $base_cmd = "perl " . $config_hashref->{'part1'}->{"tagcleaner"};
 
         my $fwd_adapt;
         my $rev_adapt;
