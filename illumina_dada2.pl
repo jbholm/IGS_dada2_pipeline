@@ -247,12 +247,13 @@ my $pipelineDir;
 BEGIN
 {
     use File::Spec::Functions;
-    require File::Basename;
-    $pipelineDir = File::Basename::dirname(__FILE__);
+    use File::Basename;
+    $pipelineDir = dirname(__FILE__);
     $scriptsDir  = catdir($pipelineDir, "scripts");
 
 }
 use lib $scriptsDir;    # .pm files in ./scripts/ can be loaded
+use lib catdir($pipelineDir, "lib", "perl5");
 
 require Version;
 
@@ -272,6 +273,8 @@ use File::Copy::Recursive qw(dircopy );
 use Data::Dumper;
 use Hash::Merge qw( merge );
 use Path::Tiny qw(path);
+use Schedule::SGE;
+use Capture::Tiny qw(capture_stderr);
 $OUTPUT_AUTOFLUSH = 1;
 
 ####################################################################
@@ -462,7 +465,7 @@ if ($global_config{wd} =~ /^${global_run_storage}/)
 }
 
 # Initialize log file
-my $run = File::Basename::basename($global_config{wd});
+my $run = basename($global_config{wd});
 
 my $time = strftime("%Y-%m-%d %H:%M:%S", localtime(time));
 my $log  = catfile($global_config{wd}, "${run}_16S_pipeline_log.txt");
@@ -500,9 +503,8 @@ my $stdout_log = "$global_config{wd}/qsub_stdout_logs";
 ## Instead of working directory, give option for provided directory (or current
 #  working directory)
 
-my $localMap = catfile($global_config{wd}, File::Basename::basename($map));
-my $mapLog =
-  catfile($error_log, File::Basename::basename($map, ".txt") . ".log");
+my $localMap = catfile($global_config{wd}, basename($map));
+my $mapLog   = catfile($error_log, basename($map, ".txt") . ".log");
 
 my @split;
 
@@ -571,7 +573,11 @@ if (!-e $error_log)
     }
     if (@cmds)
     {
-        execute_and_log(@cmds, 0, $dryRun, "Removing stale error logs.");
+        execute_and_log(
+                        cmds    => \@cmds,
+                        dry_run => $dryRun,
+                        msg     => "Removing stale error logs."
+                       );
     }
 }
 
@@ -617,8 +623,12 @@ if (   !@dbg
     ###### BEGIN CHECK OF QIIME CONFIGURATION ###########
     #####################################################
     my $cmd = qiime_cmd('print_qiime_config.py', $config_hashref) . " > $qiime";
-    execute_and_log($cmd, $logTee, $dryRun,
-                    "QIIME CONFIGURATION DETAILS:\nsee $qiime\n");
+    execute_and_log(
+                    cmds       => [$cmd],
+                    filehandle => $logTee,
+                    dry_run    => $dryRun,
+                    msg        => "QIIME CONFIGURATION DETAILS:\nsee $qiime\n"
+                   );
 
     if (!$noSkip)
     {
@@ -642,7 +652,12 @@ if (   !@dbg
 
         my $cmd = qiime_cmd('validate_mapping_file.py', $config_hashref)
           . " -m $localMap -s -o $error_log";
-        execute_and_log($cmd, $logTee, $dryRun, "Validating map from $map\n");
+        execute_and_log(
+                        cmds       => [$cmd],
+                        filehandle => $logTee,
+                        dry_run    => $dryRun,
+                        msg        => "Validating map from $map\n"
+                       );
         my $mappingError = glob("$error_log/*.log");
         if ($mappingError)
         {
@@ -797,7 +812,7 @@ if ($tbshtBarcodes)
              "$global_config{wd}_rc_fwd"     => "--rev_comp_bc1",
              "$global_config{wd}_rc_rev"     => "--rev_comp_bc2",
              "$global_config{wd}_rc_fwd_rev" => "--rev_comp_bc1 --rev_comp_bc2",
-             $global_config{wd}              => ""
+             "$global_config{wd}"            => ""
     );
 
     my $success = 0;
@@ -1004,10 +1019,10 @@ sub barcodes
         if (scalar @cmds > 0)
         {
             execute_and_log(
-                @cmds,
-                0,
-                $dryRun,
-                "Decompressing raw files containing indexes to run directory...\n"
+                cmds    => \@cmds,
+                dry_run => $dryRun,
+                msg =>
+                  "Decompressing raw files containing indexes to run directory...\n"
             );
             print "---Raw index file(s) decompressed.\n";
             @cmds = ();
@@ -1046,8 +1061,12 @@ sub barcodes
         my $cmd = qiime_cmd('extract_barcodes.py', $config_hashref)
           . " -f $localNames{\"index1\"} -r $localNames{\"index2\"} -c barcode_paired_end --bc1_len $bcLen --bc2_len $bcLen $mapOpt -o $wd $oriParams";
 
-        execute_and_log($cmd, $logTee, $dryRun,
-                        "Waiting for barcode extraction to complete...\n");
+        execute_and_log(
+                        cmds       => [$cmd],
+                        filehandle => $logTee,
+                        dry_run    => $dryRun,
+                        msg => "Waiting for barcode extraction to complete...\n"
+                       );
 
         # Sanity check
         my $barcodeLns = count_lines("$barcodes");
@@ -1087,8 +1106,11 @@ sub barcodes
                 push @cmds, "rm -rf $localNames{\"index2\"}";
             }
         }
-        execute_and_log(@cmds, 0, $dryRun,
-                        "Cleaning up after extract_barcodes.py...\n");
+        execute_and_log(
+                        cmds    => \@cmds,
+                        dry_run => $dryRun,
+                        msg     => "Cleaning up after extract_barcodes.py...\n"
+                       );
 
         if (@dbg && !grep(/^demux$/, @dbg))
         {
@@ -1099,7 +1121,7 @@ sub barcodes
     } else
     {
         print $logTee "Barcodes already extracted as "
-          . File::Basename::basename($barcodes)
+          . basename($barcodes)
           . ". Moving on.\n";
     }
 }
@@ -1172,8 +1194,12 @@ sub demux
         push @cmds,
           "$config_hashref->{'executor'} -N $step2 -P $qproj -e $error_log -o $stdout_log $script -i $readsRevInput -o $revProjDir -b $barcodes -m $localMap --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
 
-        execute_and_log(@cmds, $logTee, $dryRun,
-                        "Demultiplexing to get the run library...\n");
+        execute_and_log(
+                        cmds       => \@cmds,
+                        filehandle => $logTee,
+                        dry_run    => $dryRun,
+                        msg => "Demultiplexing to get the run library...\n"
+                       );
 
         print "---Waiting for fwd and rev seqs.fastq to complete....\n";
         print "---Monitoring $step2 error logs....\n";
@@ -1249,8 +1275,11 @@ sub demux
             my @cmds = ();
             push(@cmds, "rm -rf $readsForInput");
             push(@cmds, "rm -rf $readsRevInput");
-            execute_and_log(@cmds, 0, $dryRun,
-                     "---Removing decompressed raw files from run directory\n");
+            execute_and_log(
+                cmds    => \@cmds,
+                dry_run => $dryRun,
+                msg => "---Removing decompressed raw files from run directory\n"
+            );
         }
 
         if (!@dbg)
@@ -1262,8 +1291,8 @@ sub demux
     } else
     {
         print $logTee "Library already produced as "
-          . File::Basename::basename($rForSeqsFq) . " and "
-          . File::Basename::basename($rRevSeqsFq)
+          . basename($rForSeqsFq) . " and "
+          . basename($rRevSeqsFq)
           . ". Moving on.\n";
         my @split = readSplitLog($split_log, 0);
 
@@ -1323,8 +1352,12 @@ if (!@dbg || grep(/^splitsamples$/, @dbg))
           "$config_hashref->{'executor'} -N $step3 -l mem_free=5G -P $qproj -e $error_log -o $stdout_log $script -i $rForSeqsFq --file_type fastq -o $fwdSampleDir";
         push @cmds,
           "$config_hashref->{'executor'} -N $step3 -l mem_free=5G -P $qproj -e $error_log -o $stdout_log $script -i $rRevSeqsFq --file_type fastq -o $revSampleDir";
-        execute_and_log(@cmds, $logTee, $dryRun,
-                        "Splitting $run seqs.fastq " . "files by sample ID\n");
+        execute_and_log(
+                    cmds       => \@cmds,
+                    filehandle => $logTee,
+                    dry_run    => $dryRun,
+                    msg => "Splitting $run seqs.fastq " . "files by sample ID\n"
+        );
 
         ## the $nSamples needs to be altered if a sample has 0 reads, because the sample-specific fastq won't be produced
         my $n_fq   = 0;
@@ -1426,16 +1459,14 @@ if (!@dbg || grep(/^splitsamples$/, @dbg))
                       "Appending _R1 or _R2 to each demuxed FASTQ filename.\n");
             foreach my $oldname (@fwdOutput)
             {
-                my ($name, $path, $suffix) =
-                  File::Basename::fileparse($oldname, ".fastq");
+                my ($name, $path, $suffix) = fileparse($oldname, ".fastq");
                 my $newname = catfile($path, "${name}_R1.fastq");
                 File::Copy::move($oldname, $newname);
                 $oldname = $newname;
             }
             foreach my $oldname (@revOutput)
             {
-                my ($name, $path, $suffix) =
-                  File::Basename::fileparse($oldname, ".fastq");
+                my ($name, $path, $suffix) = fileparse($oldname, ".fastq");
                 my $newname = catfile($path, "${name}_R2.fastq");
                 File::Copy::move($oldname, $newname);
                 $oldname = $newname;
@@ -1465,8 +1496,12 @@ if (!@dbg || grep(/^splitsamples$/, @dbg))
         my @cmds = ();
         push(@cmds, "rm -rf $readsForInput");
         push(@cmds, "rm -rf $readsRevInput");
-        execute_and_log(@cmds, 0, $dryRun,
-                "---Removing decompressed raw files from $global_config{wd}\n");
+        execute_and_log(
+                cmds    => \@cmds,
+                dry_run => $dryRun,
+                msg =>
+                  "---Removing decompressed raw files from $global_config{wd}\n"
+        );
     }
 
     if (@dbg && !grep(/^tagclean$/, @dbg))
@@ -1517,10 +1552,12 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
 
     if (!$skip)
     {
-        my $base_cmd = "perl " . $config_hashref->{'part1'}->{"tagcleaner"};
 
         my $fwd_adapt;
         my $rev_adapt;
+        my $base_cmd =
+          "$config_hashref->{'executor'} -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
+          . $config_hashref->{'part1'}->{"tagcleaner"};
 
         if ($oneStep)
         {
@@ -1558,8 +1595,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
         my $filename;
         foreach my $filename (@inputsF)
         {
-            my ($name, $dir, $ext) =
-              File::Basename::fileparse($filename, qr{\.gz});
+            my ($name, $dir, $ext) = fileparse($filename, qr{\.gz});
             if ($ext)
             {
                 my $cmd = "gunzip $filename";
@@ -1568,7 +1604,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                 # $name would now contain <sample_name>.fastq
             }
             my @suffixes = (".fastq");
-            my $Prefix   = File::Basename::basename($name, @suffixes);
+            my $Prefix   = basename($name, @suffixes);
             my $tc       = "$global_config{wd}/$Prefix" . "_tc";
             my $cmd =
                 $base_cmd
@@ -1581,8 +1617,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
 
         foreach my $filename (@inputsR)
         {
-            my ($name, $dir, $ext) =
-              File::Basename::fileparse($filename, qr{\.gz});
+            my ($name, $dir, $ext) = fileparse($filename, qr{\.gz});
             if ($ext)
             {
                 my $cmd = "gunzip $filename";
@@ -1591,7 +1626,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                 # $name would now contain <sample_name>.fastq
             }
             my @suffixes = (".fastq");
-            my $Prefix   = File::Basename::basename($name, @suffixes);
+            my $Prefix   = basename($name, @suffixes);
             my $tc       = "$global_config{wd}/$Prefix" . "_tc";
             my $cmd =
                 $base_cmd
@@ -1601,36 +1636,51 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
               . "-verbose -tag5 $rev_adapt -mm5 2 -nomatch 1";
             push @cmds, $cmd;
         }
-        execute_and_log(@cmds, $logTee, $dryRun,
-                        "Removing $var primers from all sequences.\n");
+
+        execute_and_log(
+                        cmds       => \@cmds,
+                        filehandle => $logTee,
+                        dry_run    => $dryRun,
+                        msg  => "Removing $var primers from all sequences.\n",
+                        qsub => 1
+                       );
+
+        #
+        # my $nFiles   = @fwdFiles;
+
+       # # use SGE::$sge->status();
+       # # foreach @jobs if $job in keys $sge->all_jobs();
+       # # to check if jobs are still running
+       # while ($nFiles != $newSamNo)
+       # {
+       #     @fwdFiles = glob("$global_config{wd}/*R1_tc.fastq");
+       #     $nFiles   = @fwdFiles;
+       #     check_error_log($error_log, "perl");
+       # }
+       # print $logTee
+       #   "---All tagcleaned R1 samples accounted for in $global_config{wd}\n";
+
+        # my @revFiles = glob("$global_config{wd}/*R2_tc.fastq");
+        # $nFiles = @revFiles;
+        # while ($nFiles != $newSamNo)
+        # {
+        #     @revFiles = glob("$global_config{wd}/*R2_tc.fastq");
+        #     $nFiles   = @revFiles;
+        #     check_error_log($error_log, "perl");
+        # }
+        print $logTee "---Finished trimming primers from all samples.\n";
 
         my @fwdFiles = glob("$global_config{wd}/*R1_tc.fastq");
-        my $nFiles   = @fwdFiles;
-        while ($nFiles != $newSamNo)
-        {
-            @fwdFiles = glob("$global_config{wd}/*R1_tc.fastq");
-            $nFiles   = @fwdFiles;
-            check_error_log($error_log, "perl");
-        }
-        print $logTee
-          "---All tagcleaned R1 samples accounted for in $global_config{wd}\n";
-
-        my @revFiles = glob("$global_config{wd}/*R2_tc.fastq");
-        $nFiles = @revFiles;
-        while ($nFiles != $newSamNo)
-        {
-            @revFiles = glob("$global_config{wd}/*R2_tc.fastq");
-            $nFiles   = @revFiles;
-            check_error_log($error_log, "perl");
-        }
-        print $logTee
-          "---All tagcleaned R4 (R2) samples accounted for in $global_config{wd}\n";
-
         for (my $i = 0; $i < scalar @fwdFiles; $i++)
         {
             my $revFile = $fwdFiles[$i] =~ s/R1_tc.fastq$/R2_tc.fastq/r;
-            if ((-s $fwdFiles[$i]) == 0 || (-s $revFile) == 0)
+            if (-z $fwdFiles[$i] || -z $revFile)
             {
+                my $file   = (File::Basename::basename($revFile))[0];
+                my $sample = ($file =~ s/_R2_tc\.fastq//r);
+                $logTee->print(
+                    "For one or both read files for $sample, primer trimming filtered all reads. Deleting.\n"
+                );
                 unlink $fwdFiles[$i];
                 unlink $revFile;
             }
@@ -1638,8 +1688,12 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
 
         my $cmd =
           "gzip -f9 {*_tc.fastq,$fwdSampleDir/*.fastq,$revSampleDir/*.fastq}";
-        execute_and_log($cmd, $logTee, $dryRun,
-                        "Compressing tagcleaned FASTQ's...\n");
+        execute_and_log(
+                        cmds       => [$cmd],
+                        filehandle => $logTee,
+                        dry_run    => $dryRun,
+                        msg        => "Compressing tagcleaned FASTQ's...\n"
+                       );
         print $logTee "---Raw and tagcleaned FASTQ's compressed.\n";
 
         if (!@dbg)
@@ -1904,7 +1958,13 @@ if ((!@dbg) || grep(/^dada2$/, @dbg))
 
         my $rtout = "$global_config{wd}/dada2_part1_rTmp.Rout";
         my @cmds  = ("mv $rtout $projrtout");
-        eval {execute_and_log(@cmds, 0, $dryRun, "Renaming DADA2 R files.\n");};
+        eval {
+            execute_and_log(
+                            cmds    => \@cmds,
+                            dry_run => $dryRun,
+                            msg     => "Renaming DADA2 R files.\n"
+                           );
+        };
         warn $@ if $@;
 
 ###### EVALUATING DADA2 OUTPUT ##########
@@ -2508,7 +2568,7 @@ sub convert_to_local_if_gz
         {
 
             # Rename *[R|I][1|2].fastq.gz to <WD>/<RUN>_[R|I][1|2].fastq
-            my $dest = File::Basename::basename($file);
+            my $dest = basename($file);
 
             my $suffix =
               substr($dest, (length($dest) - 11), 8);    # get suffix (sans .gz)
@@ -2605,16 +2665,20 @@ sub run_R_script
         my $cmd =
           "rm -rf $wd/filtered $outR $wd/dada2_part1_stats.txt $wd/dada2_abundance_table.rds $wd/.RData";
         execute_and_log(
-            $cmd,
-            0,
-            $dryRun,
-            "---Removing old filtered fastq files, stats, and Rout files from previous runs\n"
+            cmds    => [$cmd],
+            dry_run => $dryRun,
+            msg =>
+              "---Removing old filtered fastq files, stats, and Rout files from previous runs\n"
         );
 
         $cmd =
-          "$config_hashref->{'executor'} -l mem_free=$dada2mem -P $qproj -e $error_log -o $stdout_log -N Rscript \"$config_hashref->{R}script $Rscript $args > $outR 2>&1\"";
-        execute_and_log($cmd, $logTee, $dryRun,
-                  "Running DADA2 with fastq files in $wd for $var region...\n");
+          "$config_hashref->{'executor'} -l mem_free=$dada2mem -P $qproj -e $error_log -o $stdout_log -N Rscript \"$config_hashref->{R}script $Rscript $args > $outR\"";
+        execute_and_log(
+             cmds       => [$cmd],
+             filehandle => $logTee,
+             dry_run    => $dryRun,
+             msg => "Running DADA2 with fastq files in $wd for $var region...\n"
+        );
 
         while (!-e $outR)
         {
@@ -2727,43 +2791,87 @@ sub check_error_log
 
 ################################################################################
 # Execute the given commands;
-# 1st pop: Human-friendly message to be printed to STDOUT.
-# 2nd pop: $dryRun parameter
-# 3rd pop: Lexical filehandle that overrides printing to STDOUT. Pass 0 for no override.
+#  par 1: array ref containing commands
+# par 2: Lexical filehandle that overrides printing to STDOUT. Pass 0 for no override.
+# par 3: $dryRun parameter
+# par 4: Human-friendly message to be printed to STDOUT.
+# par 5: true if commands are to be qsubbed (causes return value to be array of SGE job IDs)
 # Remaining args: cmds to be run through system()
 sub execute_and_log
 {
-    my $cuteMsg   = pop @_;
-    my $dryRun    = pop @_;
-    my $lexicalFH = pop @_;
+    my %arg      = @_;
+    my $cmds     = delete %arg{"cmds"};
+    my @commands = @$cmds;
 
-    if ($lexicalFH)
-    {    # print the human-friendly message once
-        print $lexicalFH "$cuteMsg\n";   # Print to whatever handle was provided
-    } else
-    {
-        print "$cuteMsg\n";
-    }
+    # my @commands  = @{$par1};
+    my $lexicalFH = delete %arg{"filehandle"} // *STDOUT;
+    my $dryRun    = delete %arg{"dry_run"}    // 0;
+    my $cuteMsg   = delete %arg{"msg"}        // 0;
+    my $qsub      = delete %arg{"qsub"}       // 0;
 
-    # CAREFUL, $cmd holds a reference to a variable in the caller!
-    foreach my $cmd (@_)
-    {
-        if ($lexicalFH && $verbose)
-        {                                # print each command
-            print $lexicalFH "\$ $cmd\n";
-        } elsif (!$lexicalFH && $verbose)
-        {
-            print "\$ $cmd\n";
-        }
-
-        system($cmd) == 0
-          or die "system($cmd) failed with exit code: $?"
-          if !$dryRun;
-    }
-    if (!@_)
+    if (!@commands)
     {
         warn "execute_and_log() called with no commands\n";
     }
+
+    $lexicalFH->print("$cuteMsg\n");
+
+    my @pids;
+    my $sge;
+    if ($qsub)
+    {
+        $sge = Schedule::SGE->new(
+                -executable => {
+                    qsub  => '/usr/local/packages/sge-root/bin/lx24-amd64/qsub',
+                    qstat => '/usr/local/packages/sge-root/bin/lx24-amd64/qstat'
+                },
+        );
+    }
+
+    foreach my $cmd (@commands)
+    {
+        if ($verbose)
+        {    # print each command
+            print $lexicalFH "\$ $cmd\n";
+        } else
+        {
+            STDOUT->print("\$ $cmd\n");
+        }
+
+        if ($qsub)
+        {
+            $sge->command($cmd);
+            push @pids, $sge->execute();
+        } else
+        {
+            system($cmd) == 0
+              or die "system($cmd) failed with exit code: $?"
+              if !$dryRun;
+        }
+
+    }
+
+    if ($qsub)
+    {
+        my $done = 0;
+        while (!$done)
+        {
+            $sge->status();
+            $done = 1;
+            foreach (@pids)
+            {
+                my @job_stats = @{$sge->brief_job_stats($_)};
+                if (@job_stats)
+                {
+                    $done = 0;
+                    last;
+                }
+            }
+            sleep 1;
+        }
+    }
+    $lexicalFH->print(
+         "Finished " . lc(substr($cuteMsg, 0, 1)) . substr($cuteMsg, 1) . "\n");
 }
 
 exit 0;
