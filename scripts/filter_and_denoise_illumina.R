@@ -67,7 +67,10 @@ args$maxEE <- as.numeric(args$maxEE)
 
 library("dada2")
 packageVersion("dada2")
-sessionInfo()
+library(tibble)
+library(magrittr)
+require(ShortRead)
+library(tidyr)
 
 run_meta <- function(new_params = list(), checkpoints = list(), samples = list()) {
     info_file <- ".meta.json"
@@ -97,7 +100,21 @@ filtF_files<-file.path(filtpath, paste0(sample.names, "_F_filt.fastq.gz"))
 filtR_files<-file.path(filtpath, paste0(sample.names, "_R_filt.fastq.gz"))
 
 if(length(fastqFs) != length(fastqRs)) stop("Forward and reverse files do not match.")
-out <- filterAndTrim(
+nTrimmed <- filterAndTrim(
+    fwd = fastqFs,
+    filt = filtF_files,
+    rev = fastqRs,
+    filt.rev = filtR_files,
+    maxN = Inf,
+    truncQ = 0,
+    rm.phix = F,
+    compress = F,
+    multithread = TRUE,
+    verbose = F,
+    matchIDs = TRUE
+)[, "reads.out", drop = F] %>% set_rownames(sample.names)
+
+nFiltered <- filterAndTrim(
     fwd = fastqFs,
     filt = filtF_files,
     rev = fastqRs,
@@ -111,12 +128,13 @@ out <- filterAndTrim(
     multithread = TRUE,
     verbose = TRUE,
     matchIDs = TRUE
-)
+)[, "reads.out", drop = F] %>% set_rownames(sample.names)
+
 samples <- lapply(seq_along(fastqFs), function(s) {
-    f_fastq <- fastqFs[s]
+    sample <- sample.names[s]
     # filterAndTrim() returns a matrix with rows named by its fwd argument
-    filtF_file <- if (out[f_fastq, "reads.out"] == 0) NULL else filtF_files[[s]]
-    filtR_file <- if (out[f_fastq, "reads.out"] == 0) NULL else filtR_files[[s]]
+    filtF_file <- if (nFiltered[sample, "reads.out"] == 0) NULL else filtF_files[[s]]
+    filtR_file <- if (nFiltered[sample, "reads.out"] == 0) NULL else filtR_files[[s]]
     ans <- list(
         trimmed_fwd = fastqFs[[s]],
         trimmed_rev = fastqRs[[s]],
@@ -168,14 +186,44 @@ run_meta(samples = samples)
   seqtab <- makeSequenceTable(mergers)
   saveRDS(seqtab, "dada2_abundance_table.rds")
 
-  getN <- function(x) sum(getUniques(x))
-  ## track <- cbind(out, rowSums(seqtab))
-  v<-rowSums(seqtab)
-  v0<-numeric(nrow(out))
-  track<-cbind(out, v0)
-  rownames(track)<-Map(function(x) strsplit(x, split = "_", fixed = TRUE)[[1]][1], rownames(track))
-  track[names(v),3]<-v
-  colnames(track) <- c("input", "filtered", "merged")
+    count_reads <- function(file_name) {
+        if(file.exists(file_name)) {
+            ShortRead::countLines(file_name) / 4
+        } else {
+            return(0)
+        }
+    }
+  
+  nRaw <- read.table("./fwdSplit/split_library_stats.txt", header = T) %>%
+    mutate(Input = Reads) %>%
+    select(-Reads)
+  nTrimmed <- nTrimmed %>%
+    set_colnames("Trimmed") %>%
+    as.data.frame() %>%
+    rownames_to_column("Sample")
+    
+  nFiltered <- nFiltered %>%
+    set_colnames("Filtered") %>%
+    as.data.frame() %>%
+    rownames_to_column("Sample")
+
+  nMerged <- seqtab %>%
+    as.data.frame() %>%
+    rownames_to_column("Sample") %>%
+    mutate(Denoised = rowSums(.[-1])) %>%
+    select(Denoised, Sample)
+
+  track <- nRaw %>% 
+    merge(y = nTrimmed, all.x = T) %>%
+    merge(y = nFiltered, all.x = T) %>% 
+    merge(y = nMerged, all.x = T) %>%
+    dplyr::mutate_at(vars(-Sample), ~tidyr::replace_na(.x, 0)
+    ) %>%
+    arrange(Sample) %>%
+    column_to_rownames("Sample")
+  #rownames(track)<-Map(function(x) strsplit(x, split = "_", fixed = TRUE)[[1]][1], rownames(track))
+
+  #colnames(track) <- c("Input", "Filtered", "Denoised")
   write.table(
       track,
       "dada2_part1_stats.txt",
