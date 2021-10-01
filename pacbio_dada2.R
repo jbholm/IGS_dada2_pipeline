@@ -423,7 +423,7 @@ stats <- collectStats(
     filtered_files = samples$filtered,
     denoised_table = seq_tab
 )
-colnames(stats) <- c("Input", "Adapter-trimmed", "Filtered", "Denoised")
+colnames(stats) <- c("Input", "Trimmed", "Filtered", "Denoised")
 write.table(
     stats, "dada2_part1_stats.txt",
     quote = FALSE, append = FALSE, sep = , row.names = TRUE, col.names = TRUE

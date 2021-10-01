@@ -1251,6 +1251,18 @@ sub demux
             print $logTee "---Reads from all samples were demultiplexed.\n";
         }
 
+        @cmds = ();
+        push @cmds,
+          "$scriptsDir/get_split_library_stats.sh < $fwdProjDir/split_library_log.txt > $fwdProjDir/split_library_stats.txt";
+        push @cmds,
+          "$scriptsDir/get_split_library_stats.sh < $revProjDir/split_library_log.txt > $revProjDir/split_library_stats.txt";
+        execute_and_log(
+                        cmds       => \@cmds,
+                        filehandle => $logTee,
+                        dry_run    => $dryRun,
+                        msg        => "Extracting demultiplex stats...\n"
+                       );
+
         ###### BEGIN FASTQC ON SEQS.FASTQ #####
         #######################################
         # Replace this with calls to execute_and_log after merging in master
