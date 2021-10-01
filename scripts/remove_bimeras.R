@@ -37,7 +37,8 @@ parser$add_argument("--seq",
     metavar = "SEQUENCING_MACHINE", type = "character",
     help = "ILLUMINA or PACBIO"
 )
-parser$add_argument("--map", nargs = "?",
+parser$add_argument("--map",
+    nargs = "?",
     metavar = "PROJECT_MAP", type = "character",
     help = "Tab-delimited file with two columns: RUN.PLATEPOSITION and sampleID"
 )
@@ -105,10 +106,10 @@ counts_and_stats <- (function(runs) {
     stats <- lapply(names(runs), function(run_name) {
         stat_table <- read.csv(
             list.files(
-                runs[run_name], 
-                pattern = "dada2_part1_stats.txt", 
+                runs[run_name],
+                pattern = "dada2_part1_stats.txt",
                 full.names = TRUE
-                )[[1]],
+            )[[1]],
             sep = "", stringsAsFactors = FALSE
         )
 
@@ -145,7 +146,7 @@ stats <- counts_and_stats$stats
 
 # If given a project map, apply new sample names and remove samples not in map
 # trim_ws=T trims whitespace to avoid user errors in map
-if(! is.null(args$map)) {
+if (!is.null(args$map)) {
     map <- suppressMessages(
         read_tsv(args$map, quote = "", na = "", trim_ws = T)
     )
@@ -153,19 +154,24 @@ if(! is.null(args$map)) {
     control_positions <- suppressMessages(
         read_csv(file.path(pipelineDir, "share", "controls_platepositions.csv"), quote = "", na = "", trim_ws = T)
     )
-    for(plate in plates) {
-        matches <- regexpr(text = map$RUN.PLATEPOSITION, pattern = paste0("UDI", plate, "\\.[A-H]\\.[1-9]{1,2}$"), perl=T)
-        if(any(matches > -1)) {
-            first_in_run <- which(matches > -1)[1]
-            one_RUN.PLATEPOSITION <- map$RUN.PLATEPOSITION[first_in_run]
-            run <- substr(one_RUN.PLATEPOSITION, start=1, stop = matches[first_in_run] - 2
-                )
-            controls <- control_positions %>%
-                filter(Plate == plate) %>%
-                mutate(RUN.PLATEPOSITION = paste(run, PLATEPOSITION, sep = ".")) %>%
-                select(RUN.PLATEPOSITION, sampleID)
-            map <- map %>%
-                rows_insert(controls[! controls$RUN.PLATEPOSITION %in% map$RUN.PLATEPOSITION, ], by = "RUN.PLATEPOSITION")
+    for (plate in plates) {
+        matches <- regexpr(text = map$RUN.PLATEPOSITION, pattern = paste0("UDI", plate, "\\.[A-H]\\.[1-9]{1,2}$"), perl = T)
+        if (any(matches > -1)) {
+            runs_containing_plate <- map %>%
+                mutate(Matches = matches) %>%
+                filter(Matches > -1) %>%
+                mutate(Run = substr(RUN.PLATEPOSITION, start = 1, stop = Matches - 2)) %>%
+                pull(Run) %>%
+                unique()
+
+            for (run in runs_containing_plate) {
+                controls <- control_positions %>%
+                    filter(Plate == plate) %>%
+                    mutate(RUN.PLATEPOSITION = paste(run, PLATEPOSITION, sep = ".")) %>%
+                    select(RUN.PLATEPOSITION, sampleID)
+                map <- map %>%
+                    rows_insert(controls[!controls$RUN.PLATEPOSITION %in% map$RUN.PLATEPOSITION, ], by = "RUN.PLATEPOSITION")
+            }
         }
     }
     write_tsv(map, args$map)
@@ -189,14 +195,14 @@ if(! is.null(args$map)) {
         select(-c(RUN.PLATEPOSITION, sampleID)) %>%
         select_if(~ !is.numeric(.) || sum(.) != 0) %>% # remove now-absent ASVs
         as.matrix()
-    
+
     stats <- counts_and_stats$stats %>%
         merge_with_map() %>%
         select(-c(RUN.PLATEPOSITION, sampleID))
-    if(nrow(stats) == 0) {
+    if (nrow(stats) == 0) {
         stop("Provided map did not match any samples in runs")
     }
-    if(nrow(seqtab) == 0) {
+    if (nrow(seqtab) == 0) {
         stop("None of the samples in the project map passed denoising.")
     }
 }
@@ -219,7 +225,7 @@ outputs <- append(outputs, fasta)
 nonchimerics <- rowSums(seqtab)[rownames(stats)] %>%
     replace_na(0) %>%
     setNames(rownames(stats))
-    
+
 project_stats <- cbind(Sample = rownames(stats), stats, Nonchimeric = nonchimerics)
 
 write.table(project_stats, "DADA2_stats.txt",
