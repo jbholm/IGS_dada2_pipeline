@@ -1594,7 +1594,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
             if ($var eq "V4")
             {
                 $fwd_adapt = "GTGCCAGCMGCCGCGGTAA";
-                $rev_adapt = "ACTCCTACGGGAGGCAGCAG";
+                $rev_adapt = "GGACTACHVGGGTWTCTAAT";
             }
             if ($var eq "ITS")
             {

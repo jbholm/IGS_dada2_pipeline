@@ -286,6 +286,7 @@ sub _run
 
     if ($jobnumber)
     {
+        print "Job ID: $jobnumber\n";
         unlink("./$$.out");
         $self->{'job_id'} = $jobnumber;
         return $jobnumber;
