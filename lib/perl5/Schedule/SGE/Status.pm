@@ -64,14 +64,13 @@ sub status
     while (@status)
     {
         my $line = shift @status;
-        print $line;
         chomp($line);
         next if ($line =~ /^\-/);
         next if ($line =~ /queuename/);
         next if (!$line || $line =~ /^\s*$/);
 
         if ($line =~
-            m#^[a-zA-Z](\S+)\s+([BICPTN]+)\s+(\d+\/\d+\/\d+)\s+(\d+\.\d+)\s+(\S+)\s+([a-z]?)#
+            m#^[a-zA-Z](\S+)\s+([BICPTN]+)\s+(\d+\/\d+\/\d+)\s+(\d+\.\d+|-NA-)\s+(\S+)\s+([a-z]*)#
             && $line !~ /^\#/)
         {
 

@@ -1594,7 +1594,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
             if ($var eq "V4")
             {
                 $fwd_adapt = "GTGCCAGCMGCCGCGGTAA";
-                $rev_adapt = "ACTCCTACGGGAGGCAGCAG";
+                $rev_adapt = "GGACTACHVGGGTWTCTAAT";
             }
             if ($var eq "ITS")
             {
@@ -1688,11 +1688,17 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
             my $revFile = $fwdFiles[$i] =~ s/R1_tc.fastq$/R2_tc.fastq/r;
             if (-z $fwdFiles[$i] || -z $revFile)
             {
-                my $file   = (File::Basename::basename($revFile))[0];
-                my $sample = ($file =~ s/_R2_tc\.fastq//r);
-                $logTee->print(
-                    "For one or both read files for $sample, primer trimming filtered all reads. Deleting.\n"
-                );
+                if (-z $fwdFiles[$i])
+                {
+                    $logTee->print(
+                        "Primer trimming filtered all reads from $fwdFiles[$i]. Deleting both sample FASTQs.\n"
+                    );
+                } else
+                {
+                    $logTee->print(
+                        "Primer trimming filtered all reads from $revFile. Deleting both sample FASTQs.\n"
+                    );
+                }
                 unlink $fwdFiles[$i];
                 unlink $revFile;
             }
