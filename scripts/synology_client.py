@@ -392,7 +392,7 @@ if __name__ == "__main__":
     cd SYNOLOGY_USER
     mkdir .ssh
     chmod 700 .ssh
-    touch authorized_keys
+    touch ~/.ssh/authorized_keys
     cat ~/id_rsa.pub >> ~/.ssh/authorized_keys
     rm ~/id_rsa.pub
     chmod 600 authorized_keys

@@ -21,12 +21,12 @@ require(jsonlite)
 initial.options <- commandArgs(trailingOnly = FALSE)
 pipelineDir <-
     dirname(dirname(sub("--file=", "", initial.options[grep("--file=", initial.options)])))
+source(file.path(pipelineDir, "lib", "utils.R"))
 config_file <- file.path(pipelineDir, "config.json")
 config <- jsonlite::read_json(
     path = file.path(config_file)
 )
 .libPaths(config[["r-lib"]])
-
 require("argparse")
 
 initial.options <- commandArgs(trailingOnly = FALSE)
@@ -47,9 +47,12 @@ parser$add_argument("runs",
     nargs = "+",
     help = "Name of run directory(ies)"
 )
+parser$add_argument("--verbose", action = "store_true", help = "Enables all STDERR from R functions.")
+parser$add_argument("--log", type = "character", help = "Redirect messages and warnings to a file instead of STDERR")
+
 args <- parser$parse_args()
 if (is.null(args$seq)) {
-    stop("Please provide --seq. Execute dada2_part2.R --help for help.")
+    stop("Please provide --seq. Execute scripts/remove_bimeras.R --help for help.")
 }
 if (any(!dir.exists(args$runs))) {
     stop(do.call(base::paste, args = list(c(
@@ -57,17 +60,20 @@ if (any(!dir.exists(args$runs))) {
         args$runs[!dir.exists(args$runs)]
     ), sep = " ")))
 }
+if (!is.null(args$log)) {
+    con <- file(args$log, open = "a")
+    sink(con, append = TRUE, type = "message")
+}
 
-suppressMessages(
-    suppressWarnings({
-        library("Biostrings")
-        require("dada2")
-        library(tidyr)
-        library(dplyr)
-        library(magrittr)
-        library(readr)
-    })
-)
+suppress_if_not_verbose({
+    library("Biostrings")
+    require("dada2")
+    library(tidyr)
+    library(dplyr)
+    library(magrittr)
+    library(readr)
+})
+
 runs <- args$runs %>% setNames(lapply(args$runs, basename))
 
 project_meta <- function(runs = list(), samples = list()) {
@@ -80,10 +86,13 @@ project_meta <- function(runs = list(), samples = list()) {
         )
     }
 
-    if (length(runs) > 0 || length(samples) > 0) {
+    if (length(runs) > 0) {
         proj_info$runs[names(runs)] <- runs
+    }
+    if (length(samples) > 0) {
         proj_info$samples <- samples
-
+    }
+    if(length(runs) > 0 || length(samples) > 0) {
         jsonlite::write_json(proj_info, filepath, auto_unbox = T)
     }
     return(proj_info)
@@ -92,6 +101,7 @@ project_meta <- function(runs = list(), samples = list()) {
 ## INPUT
 ## list all of the files matching the pattern
 counts_and_stats <- (function(runs) {
+    message("Reading in count tables")
     tables <- lapply(names(runs), function(run_name) {
         count_table <- readRDS(
             list.files(
@@ -103,6 +113,7 @@ counts_and_stats <- (function(runs) {
         return(count_table)
     })
 
+    message("Reading in stats tables")
     stats <- lapply(names(runs), function(run_name) {
         stat_table <- read.csv(
             list.files(
@@ -116,8 +127,10 @@ counts_and_stats <- (function(runs) {
         return(stat_table)
     })
 
+    message("Combining stats")
     stats <- bind_rows(stats)
 
+    message("Recording metadata from runs")
     samples <- do.call(c, lapply(names(runs), function(run_name) {
         run_metadata <- project_meta()$runs[[run_name]]
         return(run_metadata$samples)
@@ -125,6 +138,7 @@ counts_and_stats <- (function(runs) {
     project_meta(samples = samples)
 
     # Combine count tables
+    message("Combining count tables")
     unqs <- unique(c(sapply(tables, colnames), recursive = TRUE))
     n <- sum(unlist(lapply(X = tables, FUN = nrow)))
     st <- matrix(0L, nrow = n, ncol = length(unqs)) %>%
@@ -137,6 +151,7 @@ counts_and_stats <- (function(runs) {
     }
 
     # sort ASVs by total frequency
+    message("Sorting ASVs by total frequency")
     st <- st[, order(colSums(st), decreasing = TRUE)]
     return(list(counts = st, stats = stats))
 })(runs)
@@ -147,16 +162,31 @@ stats <- counts_and_stats$stats
 # If given a project map, apply new sample names and remove samples not in map
 # trim_ws=T trims whitespace to avoid user errors in map
 if (!is.null(args$map)) {
-    map <- suppressMessages(
-        read_tsv(args$map, quote = "", na = "", trim_ws = T)
-    )
+    message("Reading in project map")
+
+    map <- suppress_if_not_verbose({
+        read_tsv(
+            args$map,
+            quote = "",
+            na = "",
+            trim_ws = T,
+            col_types = cols_only(
+                RUN.PLATEPOSITION = col_character(), sampleID = col_character()
+            )
+        )
+    })
     plates <- c("A", "B", "C", "D")
-    control_positions <- suppressMessages(
+    control_positions <- suppress_if_not_verbose(
         read_csv(file.path(pipelineDir, "share", "controls_platepositions.csv"), quote = "", na = "", trim_ws = T)
     )
+
+    message("Looking for UDI plates")
+
     for (plate in plates) {
         matches <- regexpr(text = map$RUN.PLATEPOSITION, pattern = paste0("UDI", plate, "\\.[A-H]\\.[1-9]{1,2}$"), perl = T)
         if (any(matches > -1)) {
+            message(paste("Found instances of UDI plate", plate))
+
             runs_containing_plate <- map %>%
                 mutate(Matches = matches) %>%
                 filter(Matches > -1) %>%
@@ -165,15 +195,25 @@ if (!is.null(args$map)) {
                 unique()
 
             for (run in runs_containing_plate) {
+                message(paste("Checking if controls need to be added for plate", plate, "in run", run))
+
                 controls <- control_positions %>%
                     filter(Plate == plate) %>%
                     mutate(RUN.PLATEPOSITION = paste(run, PLATEPOSITION, sep = ".")) %>%
                     select(RUN.PLATEPOSITION, sampleID)
-                map <- map %>%
-                    rows_insert(controls[!controls$RUN.PLATEPOSITION %in% map$RUN.PLATEPOSITION, ], by = "RUN.PLATEPOSITION")
+                controls_to_add <- controls[!controls$RUN.PLATEPOSITION %in% map$RUN.PLATEPOSITION, ]
+                if (nrow(controls_to_add) > 0) {
+                    message("Adding controls")
+                    map <- map %>%
+                        rows_insert(controls_to_add, by = "RUN.PLATEPOSITION")
+                } else {
+                    message("Controls already in project map.")
+                }
             }
         }
     }
+
+    message("Writing final project map")
     write_tsv(map, args$map)
 
     merge_with_map <- function(df) {
@@ -185,10 +225,11 @@ if (!is.null(args$map)) {
                 set_rownames(.$sampleID)
         )
     }
-
     # write this here for the time-being
+    message("Writing temporary all-runs abundance table")
     write.csv(seqtab, "all_runs_dada2_abundance_table.csv", quote = FALSE)
 
+    message("Using map to subset sample data from abundance table")
     seqtab.df <- as.data.frame(seqtab)
     seqtab <- seqtab.df %>%
         merge_with_map() %>%
@@ -196,6 +237,7 @@ if (!is.null(args$map)) {
         select_if(~ !is.numeric(.) || sum(.) != 0) %>% # remove now-absent ASVs
         as.matrix()
 
+    message("Using map to subset sample data from stats table")
     stats <- counts_and_stats$stats %>%
         merge_with_map() %>%
         select(-c(RUN.PLATEPOSITION, sampleID))
@@ -207,12 +249,13 @@ if (!is.null(args$map)) {
     }
 }
 
-
 # Remove chimeras
+message("Removing chimeras")
 mfpoa <- if (args$seq == "ILLUMINA") 2 else 3.5
 seqtab <- dada2::removeBimeraDenovo(seqtab, method = "consensus", minFoldParentOverAbundance = mfpoa, multithread = TRUE)
 
 # Write to disk
+message("Writing final abunadnce table, stats, ASVs")
 saveRDS(seqtab, "all_runs_dada2_abundance_table.rds") # CHANGE ME to where you want sequence table saved
 write.csv(seqtab, "all_runs_dada2_abundance_table.csv", quote = FALSE)
 outputs <- c("all_runs_dada2_abundance_table.rds", "all_runs_dada2_abundance_table.csv")

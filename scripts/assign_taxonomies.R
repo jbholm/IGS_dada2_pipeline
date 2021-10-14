@@ -9,6 +9,7 @@ require(jsonlite)
 initial.options <- commandArgs(trailingOnly = FALSE)
 pipelineDir <-
     dirname(dirname(sub("--file=", "", initial.options[grep("--file=", initial.options)])))
+source(file.path(pipelineDir, "lib", "utils.R"))
 config_file <- file.path(pipelineDir, "config.json")
 config <- jsonlite::read_json(
     path = file.path(config_file)
@@ -42,27 +43,41 @@ parser$add_argument(
     type = "integer",
     default = 80
 )
+parser$add_argument(
+    "--verbose",
+    required = F, action = "store_true", help = "Enables all STDERR from R functions."
+)
+parser$add_argument("--log", type = "character", help = "Redirect messages and warnings to a file instead of STDERR")
+
 args <- parser$parse_args()
+if (!is.null(args$log)) {
+    con <- file(args$log, open = "a")
+    sink(con, append = TRUE, type = "message")
+}
+
 # if (is.null(args$input)) {
 #   stop("Please provide an ASV table stored in an RDS.\n")
 # }
 # if (length(args$tax) == 0) {
 #   stop("No taxonomy given.\n")
 # }
-require("dada2")
-require("Biostrings")
+suppress_if_not_verbose({
+    require("dada2")
+    require("Biostrings")
+})
 path <- getwd()
 
 # Assign taxonomy (requires colnames of seqtab to be ASV sequences)
 taxonomies <- config[["taxonomy_dbs"]]
 
-message("About to read in sequences")
+message("Reading in sequences")
 fasta <- args$input[[1]]
 seqs <- dada2::getSequences(fasta)
 
 stdout <- lapply(args$tax, function(taxonomy) {
     db <- taxonomies[taxonomy]
     db <- file.path(config$ref_16s_dir, db)
+    message(paste(taxonomy, "database:", db))
 
     if (taxonomy == "SILVA128") {
         taxLevels <- c(
@@ -94,7 +109,7 @@ stdout <- lapply(args$tax, function(taxonomy) {
         )
     }
 
-    message("About to assign taxonomy")
+    message("Assigning taxonomy")
     tryCatch(
         {
             invisible(

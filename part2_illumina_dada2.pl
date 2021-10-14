@@ -278,8 +278,8 @@ local $SIG{__WARN__} = sub {
 };    # Warnings go to log file, stdout, and stderr
 
 $ENV{'LD_LIBRARY_PATH'} = "/usr/lib64/:/usr/local/packages/gcc/lib64";
-my $output = `python2 --version 2>&1`;
-if ($? == -1)
+my $output = `whereis python2`;
+if ($output eq "python2:\n")
 {
     $ENV{'PATH'} = $ENV{'PATH'} . ":" . dirname($config_hashref->{"python2"});
 }
@@ -853,10 +853,37 @@ sub R
     # my $outR    = catfile( $projDir, basename($script) . "out" );
 
     my $cmd = "${R}script --verbose $script $args";
-    my ($stdout) = execute_and_log($cmd, $logTee, 0, "");
+
+# Get stdout and stderr; print stderr to the logfile/stdout because R sends
+# normal status messages through STDERR. Save STDOUT because all my R
+# scripts give the paths to their output files as STDOUT.
+# $logTee->print("\$ $cmd\n");
+# if ($verbose)
+# {
+#     $cmd .= " --verbose";
+# }
+# $cmd .= " 2>&1 1>.rstdout";    # print stderr to stdout in real time.
+#                                # capture stdout
+# system($cmd) == 0
+#   or die
+#   "system($cmd) failed with exit code $?. See this script's STDOUT for error description.";
+
+    # the above solution would work, except that on our SGE, a slew of nonsense
+    # gets printed to STDERR whenever a new shell is started. So instead of
+    # redirecting R's STDERR to STDOUT, we give R our log file to print to.
+    # One disadvantage is, it doesn't go to perl's STDOUT.
+    $logTee->print("\$ $cmd\n");
+
+    my $out = `$cmd`;
+    if ($?)
+    {
+        die
+          "system($cmd) failed with exit code $?. See the part2 LOG file for error description.";
+    }
+    print("\n");
 
     # check_R_for_error(\$stdout); execute_and_log should die on error
-    return ($stdout);
+    return ($out);
 }
 
 # Combines all part1 dada2 counts and stats into single files
@@ -873,7 +900,13 @@ sub dada2_combine
     my $sequencer = $pacbio ? "PACBIO" : "ILLUMINA";
 
     my $script = catfile($pipelineDir, "scripts", "remove_bimeras.R");
-    my $args   = "--seq=$sequencer --map $map_file -- " . join(" ", @rundirs);
+
+    my $args = "--seq=$sequencer --map $map_file --log $log";
+    if ($verbose)
+    {
+        $args .= " --verbose";
+    }
+    $args .= " -- " . join(" ", @rundirs);
 
     return (split(/\s/, R($script, $args)));
 }
@@ -888,7 +921,11 @@ sub dada2_classify
     $taxonomies = join(' ', @taxonomies);
 
     my $script = catfile($pipelineDir, "scripts", "assign_taxonomies.R");
-    my $args   = "$fasta $taxonomies";
+    my $args   = "$fasta $taxonomies --log $log";
+    if ($verbose)
+    {
+        $args .= " --verbose";
+    }
     my @taxonomic_refs = split("\n", R($script, $args));
     return @taxonomic_refs;
 }
@@ -936,39 +973,45 @@ sub execute_and_log
 
         if (!$dryRun)
         {
+            # this gets the return code, STDOUT and STDERR separately
             my $res = system("$cmd 1>.perlstdout 2>.perlstderr");
-            if ($res != 0)
+
+            my $err;
             {
                 open(my $fh, '<', '.perlstderr');
 
                 #my @stat = stat
                 my $filesize = -s '.perlstderr';
-                my $err;
                 read $fh, $err, $filesize;
                 close $fh;
-                die "system($cmd) failed with exit code: $?\n$err";
             }
-            open my $fh, '<', '.perlstdout';
-            my $filesize = -s $fh;
+
+            if ($res != 0)
+            {
+
+                die "system($cmd) failed with exit code: $res\n$err";
+            }
+
             my $out;
-            read $fh, $out, $filesize;
+            {
+                open my $fh, '<', '.perlstdout';
+                my $filesize = -s $fh;
+                read $fh, $out, $filesize;
+                close $fh;
+            }
+
             if ($verbose)
             {
-                $logTee->print("STDOUT: $out\n");
-                open(my $fh, '<', '.perlstderr');
-                my $filesize = -s '.perlstderr';
-                my $err;
-                read $fh, $err, $filesize;
-                close $fh;
+                $logTee->print("Output files:\n$out\n");
             }
-            close $fh;
-            push @ans, $out;
+
+            push @ans, {"stdout" => $out, "stderr" => $err};
         }
 
     }
     print $lexicalFH "\n" if $lexicalFH;
 
-    # unlink ".perlstdout", ".perlstderr";
+    unlink ".perlstdout", ".perlstderr";
     return (@ans);
 }
 
