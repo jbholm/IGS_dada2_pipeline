@@ -126,6 +126,10 @@ run a section of the pipeline.
 
 Prints each command to STDOUT and to the log file.
 
+=item B<--nodelete|--no-delete>
+
+Don't delete intermediate files
+
 =back
 
 =head2 INPUT
@@ -286,6 +290,8 @@ my @dbg;
 my $oneStep       = 0;
 my $dada2mem      = "1G";
 my $tbshtBarcodes = 0;
+my $delete        = 1;
+my $trySkip       = 1;
 GetOptions(
            "raw-path|i=s"           => \my $inDir,
            "r1=s"                   => \my $r1file,
@@ -298,7 +304,7 @@ GetOptions(
            "d|debug=s"              => \@dbg,
            "verbose!"               => \my $verbose,
            "dry-run!"               => \my $dryRun,
-           "noskip!"                => \my $noSkip,
+           "skip!"                  => \$trySkip,
            "bclen=i"                => \my $bcLen,
            "dada2-truncLen-f|for=i" => \my $truncLenL,
            "dada2-truncLen-r|rev=i" => \my $truncLenR,
@@ -314,6 +320,7 @@ GetOptions(
            "working-dir|wd=s"       => \$global_config{wd},
            "qsub-project|qp=s"      => \my $qproj,
            "troubleshoot_barcodes!" => \$tbshtBarcodes,
+           "delete!"                => \$delete,
           )
 ##add option for final resting place of important data
 
@@ -363,24 +370,6 @@ if (!$var)
 if (!$global_config{wd})
 {
     die "\n***Please choose a working directory (-wd).";
-}
-
-if ($tbshtBarcodes) {@dbg = ();}
-
-if (@dbg)
-{
-    my $e  = grep(/^barcodes$/,     @dbg);
-    my $de = grep(/^demux$/,        @dbg);
-    my $s  = grep(/^splitsamples$/, @dbg);
-    my $t  = grep(/^tagclean$/,     @dbg);
-    my $da = grep(/^dada2$/,        @dbg);
-    if ($e + $de + $s + $t + $da == scalar @dbg) { }
-    else
-    {
-        die "Illegal debug option. Legal debug options are "
-          . "barcodes, demux, splitsamples, tagclean, and dada2.";
-    }
-    $noSkip = 1;
 }
 
 if ($truncLenL && !$truncLenR)
@@ -530,7 +519,6 @@ my %step2number = (
                    "tagcleaned"    => 6,
                    "dada2part1out" => 7
                   );
-my $skip;
 
 my $models;
 if ($var eq 'V3V4')
@@ -593,6 +581,11 @@ $metadata =
 
 my $qiime = "$global_config{wd}/${run}_qiime_config.txt";
 
+if ($tbshtBarcodes && @dbg) {
+    $logTee->print("Disabling --debug sections because --troubleshoot_barcodes was given.\n");
+    @dbg = ();
+    }
+
 if (@dbg)
 {
     print $logTee "DBG FLAGS: ";
@@ -600,6 +593,22 @@ if (@dbg)
     {
         print $logTee "$_ ";
     }
+
+    my $e  = grep(/^barcodes$/,     @dbg);
+    my $de = grep(/^demux$/,        @dbg);
+    my $s  = grep(/^splitsamples$/, @dbg);
+    my $t  = grep(/^tagclean$/,     @dbg);
+    my $da = grep(/^dada2$/,        @dbg);
+    if ($e + $de + $s + $t + $da != scalar @dbg)
+    {
+        die "Illegal debug option. Legal debug options are "
+          . "barcodes, demux, splitsamples, tagclean, and dada2.";
+    }
+    if($trySkip) {
+        $trySkip = 0;
+        $logTee->print("Disabling skipping because --debug sections were selected.\n");
+    }
+
     print $logTee "\n";
 }
 
@@ -614,6 +623,8 @@ if ($oneStep)
 {
     print $logTee "PCR PREPARATION METHOD: 2-Step\n";
 }
+
+my $skipMe;
 
 if (   !@dbg
     || grep(/^barcodes$/,     @dbg)
@@ -630,18 +641,18 @@ if (   !@dbg
                     msg        => "QIIME CONFIGURATION DETAILS:\nsee $qiime\n"
                    );
 
-    if (!$noSkip)
+    if ($trySkip)
     {
-        $skip = skippable(
-                          [$map],
-                          [$localMap, $mapLog],
-                          $metadata->{"checkpoints"}{"map"},
-                          $metadata->{"checkpoints"}{"meta"},
-                          "map validation"
-                         );
+        $skipMe = skippable(
+                            [$map],
+                            [$localMap, $mapLog],
+                            $metadata->{"checkpoints"}{"map"},
+                            $metadata->{"checkpoints"}{"meta"},
+                            "map validation"
+                           );
     }
 
-    if (!$skip)
+    if (!$skipMe)
     {
         File::Copy::copy($map, $localMap);
         preprocess_map($localMap, $run);
@@ -804,6 +815,13 @@ if (   !@dbg
 ###### BEGIN BARCODES ##########
 #######################################
 
+my $barcodes = "$global_config{wd}/barcodes.fastq";
+
+my $fwdProjDir = "$global_config{wd}/fwdSplit";
+my $revProjDir = "$global_config{wd}/revSplit";
+my $rForSeqsFq = "$fwdProjDir/seqs.fastq";
+my $rRevSeqsFq = "$revProjDir/seqs.fastq";
+
 my $newSamNo;
 if ($tbshtBarcodes)
 {
@@ -917,6 +935,7 @@ if ($tbshtBarcodes)
     # Then continue with code below the two subroutines
 }
 
+
 sub barcodes
 {
     my %arg       = @_;
@@ -943,7 +962,6 @@ sub barcodes
       convert_to_local_if_gz($wd, $readsForInput, $readsRevInput, $index1Input,
                              $index2Input);
 
-    my $barcodes = "$wd/barcodes.fastq";
     my $nSamples = count_samples($localMap);
 
     ## change to full path to full barcodes (flag)
@@ -969,21 +987,21 @@ sub barcodes
 
     my $input  = \@files;
     my $output = [$barcodes];
-    if (!$noSkip)
+    if ($trySkip)
     {
-        $skip = skippable(
-                          $input,
-                          $output,
-                          $metadata->{"checkpoints"}{"raw"},
-                          $metadata->{"checkpoints"}{"barcodes"},
-                          "barcode extraction",
-                          \@names
-                         );
+        $skipMe = skippable(
+                            $input,
+                            $output,
+                            $metadata->{"checkpoints"}{"raw"},
+                            $metadata->{"checkpoints"}{"barcodes"},
+                            "barcode extraction",
+                            \@names
+                           );
     }
 
     my $step1;
 
-    if (!$skip)
+    if (!$skipMe)
     {
 
         my $start = time;
@@ -1140,13 +1158,9 @@ sub demux
     my $step2;
     my $step3;
 
-    my $fwdProjDir = "$wd/fwdSplit";
-    my $revProjDir = "$wd/revSplit";
     my $split_log  = "$fwdProjDir/split_library_log.txt";
 
     my @cmds;
-    my $rForSeqsFq = "$fwdProjDir/seqs.fastq";
-    my $rRevSeqsFq = "$revProjDir/seqs.fastq";
 
     my ($readsForInput, $readsRevInput, $index1Input, $index2Input) =
         $inDir ? find_raw_files($inDir, $oneStep, $logFH)
@@ -1162,9 +1176,9 @@ sub demux
           convert_to_local_if_gz($wd, $readsForInput, $readsRevInput);
     }
 
-    if (!$noSkip)
+    if ($trySkip)
     {
-        $skip = skippable(
+        $skipMe = skippable(
                          [$readsForInput, $readsRevInput, $localMap, $barcodes],
                          [$rForSeqsFq,    $rRevSeqsFq],
                          {
@@ -1179,7 +1193,7 @@ sub demux
         );
     }
 
-    if (!$skip)
+    if (!$skipMe)
     {
         my $start  = time;
         my $step2  = "split_libraries_fastq.py";
@@ -1320,9 +1334,6 @@ sub demux
     return 1;
 }
 
-my $fwdProjDir = "$global_config{wd}/fwdSplit";
-my $revProjDir = "$global_config{wd}/revSplit";
-
 if (!@dbg || grep(/^splitsamples$/, @dbg))
 {
 
@@ -1339,21 +1350,25 @@ if (!@dbg || grep(/^splitsamples$/, @dbg))
     my @fwdOutput = glob("$fwdSampleDir/*.fastq $fwdSampleDir/*.fastq.gz");
     my @revOutput = glob("$revSampleDir/*.fastq $revSampleDir/*.fastq.gz");
 
-    if (!$noSkip)
+    if ($trySkip)
     {
-        $skip = skippable(
-                          [
-                           File::Spec->abs2rel($rForSeqsFq, $global_config{wd}),
-                           File::Spec->abs2rel($rRevSeqsFq, $global_config{wd})
-                          ],
-                          [@fwdOutput, @revOutput],
-                          $metadata->{"checkpoints"}{"library"},
-                          $metadata->{"checkpoints"}{"samples"},
-                          "sample splitting"
-                         );
+        $skipMe = skippable(
+                            [
+                             File::Spec->abs2rel(
+                                                 $rForSeqsFq, $global_config{wd}
+                                                ),
+                             File::Spec->abs2rel(
+                                                 $rRevSeqsFq, $global_config{wd}
+                                                )
+                            ],
+                            [@fwdOutput, @revOutput],
+                            $metadata->{"checkpoints"}{"library"},
+                            $metadata->{"checkpoints"}{"samples"},
+                            "sample splitting"
+                           );
     }
 
-    if (!$skip)
+    if (!$skipMe)
     {
         my $step3  = "split_sequence_file_on_sample_ids.py";
         my $script = qiime_cmd($step3, $config_hashref);
@@ -1551,18 +1566,18 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
     # my @forFilenames = glob("$fwdSampleDir/*.fastq");
     # my @revFilenames = glob("$revSampleDir/*.fastq");
 
-    if (!$noSkip)
+    if ($trySkip)
     {
-        $skip = skippable(
-                          [(@inputsF, @inputsR)],
-                          [@fwdTcFiles, @revTcFiles],
-                          $metadata->{"checkpoints"}{"samples"},
-                          $metadata->{"checkpoints"}{"tagcleaned"},
-                          "primer removal"
-                         );
+        $skipMe = skippable(
+                            [(@inputsF, @inputsR)],
+                            [@fwdTcFiles, @revTcFiles],
+                            $metadata->{"checkpoints"}{"samples"},
+                            $metadata->{"checkpoints"}{"tagcleaned"},
+                            "primer removal"
+                           );
     }
 
-    if (!$skip)
+    if (!$skipMe)
     {
 
         my $fwd_adapt;
@@ -1719,7 +1734,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
             cacheChecksums([glob("$fwdSampleDir/*"), glob("$revSampleDir/*")],
                            "samples");
 
-            my @gzipped = glob("$global_config{wd}/*R[1|2]_tc.fastq.gz");
+            my @gzipped = tagcleaned_files();
             cacheChecksums(\@gzipped, "tagcleaned");
         }
 
@@ -1741,29 +1756,30 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
     }
 }
 
+my $stats_file  = "dada2_part1_stats.txt";
+my $counts_file = "dada2_abundance_table.rds";
+
 ###### BEGIN DADA2 ##########
 #############################
 if ((!@dbg) || grep(/^dada2$/, @dbg))
 {
     my $projrtout   = "$global_config{wd}/${run}_dada2_part1_rTmp.Rout";
-    my $stats_file  = "dada2_part1_stats.txt";
-    my $counts_file = "dada2_abundance_table.rds";
 
     my @outputs = ($stats_file, $counts_file);
     my @inputs  = glob("$global_config{wd}/*R[1|2]_tc.fastq.gz");
 
-    if (!$noSkip)
+    if ($trySkip)
     {
-        $skip = skippable(
-                          \@inputs,
-                          \@outputs,
-                          $metadata->{"checkpoints"}{"tagcleaned"},
-                          $metadata->{"checkpoints"}{"dada2part1out"},
-                          "DADA2"
-                         );
+        $skipMe = skippable(
+                            \@inputs,
+                            \@outputs,
+                            $metadata->{"checkpoints"}{"tagcleaned"},
+                            $metadata->{"checkpoints"}{"dada2part1out"},
+                            "DADA2"
+                           );
     }
 
-    if (!$skip)
+    if (!$skipMe)
     {
         my $truncLen;
 
@@ -2047,6 +2063,24 @@ if ((!@dbg) || grep(/^dada2$/, @dbg))
     }
 }
 
+if ($delete && -e $stats_file && -e $counts_file) {
+
+    my @delete_files = (
+        $barcodes,                        
+        catfile($fwdProjDir, "seqs.fna"), 
+        catfile($revProjDir, "seqs.fna"), 
+        $rForSeqsFq, 
+        $rRevSeqsFq,                      
+        tagcleaned_files(), 
+        glob(catfile("filtered", "*_filt\\.fastq\\.gz"))
+    );
+
+    for my $file (@delete_files) {
+        unlink $file;
+    }
+    rmdir "./filtered/";
+}
+
 ###### COMPLETING $logFH FILE ##############
 #########################################
 
@@ -2233,7 +2267,7 @@ sub skippable
         $logTee->print("Cached files: " . Dumper(%checksumsOut) . "\n");
     }
 
-    my $prevSkip = $skip;                # file-level my-variable
+    my $prevSkip = $trySkip;             # file-level my-variable
     my $step     = shift;
     my $inNames  = shift;
     my $outNames = shift;
@@ -2890,6 +2924,11 @@ sub execute_and_log
     }
     $lexicalFH->print(
          "Finished " . lc(substr($cuteMsg, 0, 1)) . substr($cuteMsg, 1) . "\n");
+}
+
+
+sub tagcleaned_files {
+    return glob("$global_config{wd}/*R[1|2]_tc.fastq.gz");
 }
 
 exit 0;

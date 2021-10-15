@@ -174,6 +174,10 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
             shift 2
         fi
         ;;
+    --no-delete)
+        NODELETE=$1
+        shift 1
+        ;;
     -qp|--qsub-project*)
         if [[ $1 =~ "--qsub-project=" ]]; then 
             QP="${1#*=}"
@@ -410,6 +414,10 @@ if [[ -n "$VERBOSE" ]]; then
     "All shell commands will be printed to: \n${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout"
 fi
 
+if [[ -n "$NODELETE" ]]; then
+    printf "%b\n" "Keeping intermediate files" 
+fi
+
 if [[ -n "$EMAIL" ]]; then
     QSUB_ARGS="$QSUB_ARGS $EMAIL"
 fi
@@ -444,7 +452,7 @@ module load r/4.0.2 2>/dev/null || true
 log="$SD/${RUN}_16S_pipeline_log.txt"
 
 # Remove extra spaces caused by joining empty arguments with a whitespace
-OPTSARR=("$PARAMS" "$BCLENGTH" "$TROUBLESHOOT_BARCODES" "$ONESTEP" "$DADA2" "$DADA2MEM" "$DBG" "$VERBOSE" "$DRY_RUN")
+OPTSARR=("$PARAMS" "$BCLENGTH" "$TROUBLESHOOT_BARCODES" "$ONESTEP" "$NODELETE" "$DADA2" "$DADA2MEM" "$DBG" "$VERBOSE" "$DRY_RUN")
 OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 
