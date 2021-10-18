@@ -1,34 +1,10 @@
 #!/usr/bin/env Rscript
-options(
-    show.error.locations = TRUE,
-    show.error.messages = TRUE,
-    keep.source = TRUE,
-    warn = 1,
-    error = function() {
-      # cat(attr(last.dump,"error.message"))
-      sink(file = stderr())
-      dump.frames("dump", TRUE)
-      cat('\nTraceback:', file = stderr())
-      cat('\n', file = stderr())
-      traceback(2) # Print full traceback of function calls with all parameters. The 2 passed to traceback omits the outermost two function calls.
-      if (!interactive()) quit(status = 1)
-    },
-    stringsAsFactors = FALSE
-)
-
-require(jsonlite)
 
 initial.options <- commandArgs(trailingOnly = FALSE)
 pipelineDir <-
   dirname(dirname(sub("--file=", "", initial.options[grep("--file=", initial.options)])))
-config_file <- file.path(pipelineDir, "config.json")
-config <- jsonlite::read_json(
-    path = file.path(config_file)
-)
-.libPaths(config[["r-lib"]])
-
-library("argparse")
-library(dplyr)
+source(file.path(pipelineDir, "lib", "utils.R"))
+require("argparse")
 
 parser <- ArgumentParser(description = "Do DADA2 filtering and denoising on Illumina reads")
 parser$add_argument(
@@ -65,30 +41,13 @@ parser$add_argument(
 args <- parser$parse_args()
 args$maxEE <- as.numeric(args$maxEE)
 
+library(dplyr)
 library("dada2")
 packageVersion("dada2")
 library(tibble)
 library(magrittr)
 require(ShortRead)
 library(tidyr)
-
-run_meta <- function(new_params = list(), checkpoints = list(), samples = list()) {
-    info_file <- ".meta.json"
-
-    if (!file.exists(info_file)) {
-        run_info <- list()
-    } else {
-        run_info <- jsonlite::read_json(
-            path = info_file
-        )
-    }
-
-    new_info <- list(params = new_params, checkpoints = checkpoints, samples = samples)
-    run_info <- utils::modifyList(run_info, new_info)
-
-    jsonlite::write_json(run_info, info_file, auto_unbox = T)
-    invisible(run_info)
-}
 
 ## perform filtering and trimming
 filtpath <- "filtered"
