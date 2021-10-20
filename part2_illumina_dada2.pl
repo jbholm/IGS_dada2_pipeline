@@ -278,11 +278,9 @@ local $SIG{__WARN__} = sub {
 };    # Warnings go to log file, stdout, and stderr
 
 $ENV{'LD_LIBRARY_PATH'} = "/usr/lib64/:/usr/local/packages/gcc/lib64";
-my $output = `whereis python2`;
-if ($output eq "python2:\n")
-{
-    $ENV{'PATH'} = $ENV{'PATH'} . ":" . dirname($config_hashref->{"python2"});
-}
+
+my $python2 = $config_hashref->{"python2"};
+
 $ENV{'PYTHONPATH'} = "";
 
 $map_file = copy_to_project($project, $map_file);
@@ -479,7 +477,7 @@ if (List::Util::any {!-e $_} ($abundRds, $abund, $fasta, $stats))
 my $run_info_hash = combine_run_metadata(@runs);
 
 # Give ASV's unique and easy-to-look-up IDs
-$cmd = "$scriptsDir/rename_asvs.py $fasta -p $project";
+$cmd = "$python2 $scriptsDir/rename_asvs.py $fasta -p $project";
 execute_and_log(
      $cmd,
      $logTee,
