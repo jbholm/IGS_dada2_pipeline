@@ -1,36 +1,11 @@
 #!/usr/bin/env Rscript
-options(
-    show.error.locations = TRUE,
-    show.error.messages = TRUE,
-    keep.source = TRUE,
-    warn = 1,
-    error = function() {
-        # cat(attr(last.dump,"error.message"))
-        sink(file = stderr())
-        dump.frames("dump", TRUE)
-        cat("\nTraceback:", file = stderr())
-        cat("\n", file = stderr())
-        traceback(2) # Print full traceback of function calls with all parameters. The 2 passed to traceback omits the outermost two function calls.
-        if (!interactive()) quit(status = 1)
-    },
-    stringsAsFactors = FALSE
-)
-
-require(jsonlite)
 
 initial.options <- commandArgs(trailingOnly = FALSE)
 pipelineDir <-
     dirname(dirname(sub("--file=", "", initial.options[grep("--file=", initial.options)])))
 source(file.path(pipelineDir, "lib", "utils.R"))
-config_file <- file.path(pipelineDir, "config.json")
-config <- jsonlite::read_json(
-    path = file.path(config_file)
-)
-.libPaths(config[["r-lib"]])
 require("argparse")
 
-initial.options <- commandArgs(trailingOnly = FALSE)
-pipelineDir <- dirname(dirname(sub("--file=", "", initial.options[grep("--file=", initial.options)])))
 
 parser <- ArgumentParser(description = "Remove chimeras and assign taxa")
 parser$add_argument("--seq",
@@ -75,28 +50,6 @@ suppress_if_not_verbose({
 })
 
 runs <- args$runs %>% setNames(lapply(args$runs, basename))
-
-project_meta <- function(runs = list(), samples = list()) {
-    filepath <- ".meta.json"
-    if (!file.exists(filepath)) {
-        proj_info <- list()
-    } else {
-        proj_info <- jsonlite::read_json(
-            path = filepath
-        )
-    }
-
-    if (length(runs) > 0) {
-        proj_info$runs[names(runs)] <- runs
-    }
-    if (length(samples) > 0) {
-        proj_info$samples <- samples
-    }
-    if(length(runs) > 0 || length(samples) > 0) {
-        jsonlite::write_json(proj_info, filepath, auto_unbox = T)
-    }
-    return(proj_info)
-}
 
 ## INPUT
 ## list all of the files matching the pattern

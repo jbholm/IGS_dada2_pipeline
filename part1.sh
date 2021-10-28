@@ -174,6 +174,10 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
             shift 2
         fi
         ;;
+    --no-delete|--nodelete)
+        NODELETE=$1
+        shift 1
+        ;;
     -qp|--qsub-project*)
         if [[ $1 =~ "--qsub-project=" ]]; then 
             QP="${1#*=}"
@@ -410,6 +414,10 @@ if [[ -n "$VERBOSE" ]]; then
     "All shell commands will be printed to: \n${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout"
 fi
 
+if [[ -n "$NODELETE" ]]; then
+    printf "%b\n" "Keeping intermediate files" 
+fi
+
 if [[ -n "$EMAIL" ]]; then
     QSUB_ARGS="$QSUB_ARGS $EMAIL"
 fi
@@ -444,7 +452,7 @@ module load r/4.0.2 2>/dev/null || true
 log="$SD/${RUN}_16S_pipeline_log.txt"
 
 # Remove extra spaces caused by joining empty arguments with a whitespace
-OPTSARR=("$PARAMS" "$BCLENGTH" "$TROUBLESHOOT_BARCODES" "$ONESTEP" "$DADA2" "$DADA2MEM" "$DBG" "$VERBOSE" "$DRY_RUN")
+OPTSARR=("$PARAMS" "$BCLENGTH" "$TROUBLESHOOT_BARCODES" "$ONESTEP" "$NODELETE" "$DADA2" "$DADA2MEM" "$DBG" "$VERBOSE" "$DRY_RUN")
 OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 
@@ -543,9 +551,11 @@ be specified.
 
 =back
 
-All pipeline products are stored in a directory named after the run. By default,
+Most pipeline products are stored in a directory named after the run. By default,
 run directories are stored in /local/projects-t3/MSL/runs/. A log file is 
-written at ./<RUN>_16S_pipeline_log.txt
+written at ./<RUN>_16S_pipeline_log.txt. Barcodes, raw libraries, and QC'd
+reads are deleted if the DADA2 count table and stats exist when the pipeline
+terminates.
 
 =head1 OPTIONS
 
@@ -591,6 +601,10 @@ run a section of the pipeline.
 =item B<--verbose>
 
 Prints every shell command to the log file and to <run_directory>/qsub_stdout_logs/illumina_dada2.pl.stdout
+
+=item B<--no-delete|--nodelete>
+
+Don't delete intermediate files
 
 =item B<--dry-run>
 

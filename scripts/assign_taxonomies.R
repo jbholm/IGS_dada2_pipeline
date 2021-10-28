@@ -1,23 +1,11 @@
 #!/usr/bin/env Rscript
-options(
-    show.error.locations = TRUE,
-    show.error.messages = TRUE,
-    error = quote(quit(status = 1))
-)
-require(jsonlite)
 
 initial.options <- commandArgs(trailingOnly = FALSE)
 pipelineDir <-
     dirname(dirname(sub("--file=", "", initial.options[grep("--file=", initial.options)])))
 source(file.path(pipelineDir, "lib", "utils.R"))
-config_file <- file.path(pipelineDir, "config.json")
-config <- jsonlite::read_json(
-    path = file.path(config_file)
-)
-
-.libPaths(config[["r-lib"]])
-
 require("argparse")
+
 
 parser <- ArgumentParser(description = "Assign taxa")
 parser$add_argument(
