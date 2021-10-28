@@ -77,6 +77,10 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
             shift 2
         fi
         ;;
+    --no-delete|--nodelete)
+        NODELETE=$1
+        shift 1
+        ;;
     --email)
         EMAIL="-m ea"
         shift 1
@@ -172,6 +176,11 @@ if [[ ! -n "$QP" ]]; then
     QP="jravel-lab"
 fi
 
+if [[ -n "$NODELETE" ]]; then
+    printf "%b\n" "Keeping intermediate files" 
+fi
+
+
 if [[ -n "$EMAIL" ]]; then
     QSUB_ARGS="$QSUB_ARGS $EMAIL"
 fi
@@ -193,7 +202,7 @@ export LD_LIBRARY_PATH=/usr/lib64/:$LD_LIBRARY_PATH # for Rcpp libstdc++.so.6
 # Begin log (will be continued by pacbio_dda2.R)
 log="$SD/${RUN}_16S_pipeline_log.txt"
 
-OPTSARR=("$PARAMS")
+OPTSARR=("$PARAMS" "$NODELETE")
 OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 R=`cat "$MY_DIR/config.json" | \
@@ -272,6 +281,10 @@ from different runs in Part 2.
 
 Override the global run storage location. The working directory will be created
 as a subdirectory of PATH.
+
+=item B<--no-delete|--nodelete>
+
+Don't delete intermediate files
 
 =item B<--qsub> OPTIONS
 

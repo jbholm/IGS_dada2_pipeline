@@ -1,32 +1,9 @@
 #!/usr/bin/env Rscript
-options(
-    show.error.locations = TRUE,
-    show.error.messages = TRUE,
-    keep.source = TRUE,
-    warn = 1,
-    error = function() {
-        # cat(attr(last.dump,"error.message"))
-        sink(file = stderr())
-        dump.frames("dump", TRUE)
-        cat("\nTraceback:", file = stderr())
-        cat("\n", file = stderr())
-        traceback(2) # Print full traceback of function calls with all parameters. The 2 passed to traceback omits the outermost two function calls.
-        if (!interactive()) quit(status = 1)
-    },
-    stringsAsFactors = FALSE
-)
-
-require(jsonlite)
 
 initial.options <- commandArgs(trailingOnly = FALSE)
 pipelineDir <-
   dirname(sub("--file=", "", initial.options[grep("--file=", initial.options)]))
-config_file <- file.path(pipelineDir, "config.json")
-config <- jsonlite::read_json(
-    path = file.path(config_file)
-)
-
-.libPaths(config[["r-lib"]])
+source(file.path(pipelineDir, "lib", "utils.R"))
 require("argparse")
 
 parser <- ArgumentParser(
@@ -58,6 +35,12 @@ parser$add_argument(
     help = "Working directory. The directory's base name will be taken as the run name.",
     required = T
 )
+parser$add_argument(
+    "--nodelete",
+    "--no-delete",
+    action = "store_true",
+    help = "Don't delete intermediate sequence files after denoising."
+)
 args <- parser$parse_args()
 if (any(is.null(args))) {
     stop("Some args missing!")
@@ -84,23 +67,6 @@ if(grepl(run_dir, pattern = paste0("^", config[["run_storage_path"]]))) {
 
 inPath <- args$input
 
-run_meta <- function(new_params = list(), checkpoints = list(), samples = list()) {
-    info_file <- ".meta.json"
-
-    if (!file.exists(info_file)) {
-        run_info <- list()
-    } else {
-        run_info <- jsonlite::read_json(
-            path = info_file
-        )
-    }
-
-    new_info <- list(params = new_params, checkpoints = checkpoints, samples = samples)
-    run_info <- utils::modifyList(run_info, new_info)
-
-    jsonlite::write_json(run_info, info_file, auto_unbox = T)
-    invisible(run_info)
-}
 cache_checksums <- function(files, name) {
     checksums <- lapply(files, function(f) {
         gsub("^\\s+|\\s+$", "", system(paste("sha512sum", f), intern = T))
@@ -428,6 +394,22 @@ write.table(
     stats, "dada2_part1_stats.txt",
     quote = FALSE, append = FALSE, sep = , row.names = TRUE, col.names = TRUE
 )
+
+if(! args$nodelete){
+    unlink("tagcleaned/*_trimmed.fastq.gz", expand = T)
+    if(length(list.files("tagcleaned/")) == 0)  {
+        unlink("tagcleaned", recursive = T)
+    } else {
+        warning("Couldn't remove directory ./tagcleaned/ because it contained unrecognized files.")
+    }
+
+    unlink("filtered/*_filt.fastq.gz", expand = T)
+    if(length(list.files("filtered/")) == 0)  {
+        unlink("filtered", recursive = T)
+    } else {
+        warning("Couldn't remove directory ./filtered/ because it contained unrecognized files.")
+    }
+}
 
 remove_chimeras <- function(args) {
     bim2 <- dada2::isBimeraDenovo(

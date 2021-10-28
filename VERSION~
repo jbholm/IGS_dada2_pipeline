@@ -1,4 +1,10 @@
-4.4.0
+<<<<<<< HEAD
+4.3.7-drop_intermediate_data+2
+||||||| merged common ancestors
+4.3.7
+=======
+4.3.8
+>>>>>>> master
 We use semantic versioning:
 First number: Major version. Incremented for a commit on master that requires a change in how the pipeline is operated.
 Second number: Minor version. Incremented for a commit on master that adds a new feature (usually a new command-line option).
