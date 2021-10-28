@@ -551,9 +551,11 @@ be specified.
 
 =back
 
-All pipeline products are stored in a directory named after the run. By default,
+Most pipeline products are stored in a directory named after the run. By default,
 run directories are stored in /local/projects-t3/MSL/runs/. A log file is 
-written at ./<RUN>_16S_pipeline_log.txt
+written at ./<RUN>_16S_pipeline_log.txt. Barcodes, raw libraries, and QC'd
+reads are deleted if the DADA2 count table and stats exist when the pipeline
+terminates.
 
 =head1 OPTIONS
 
@@ -599,6 +601,10 @@ run a section of the pipeline.
 =item B<--verbose>
 
 Prints every shell command to the log file and to <run_directory>/qsub_stdout_logs/illumina_dada2.pl.stdout
+
+=item B<--no-delete>
+
+Don't delete intermediate files
 
 =item B<--dry-run>
 

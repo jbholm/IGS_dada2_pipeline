@@ -77,9 +77,11 @@ be specified.
 
 =back
 
-All pipeline products are stored in a directory named after the run. By default,
+Most pipeline products are stored in a directory named after the run. By default,
 run directories are stored in /local/projects-t3/MSL/runs/. A log file is 
-written at ./<RUN>_16S_pipeline_log.txt
+written at ./<RUN>_16S_pipeline_log.txt. Barcodes, raw libraries, and QC'd
+reads are deleted if the DADA2 count table and stats exist when the pipeline
+terminates.
 
 =head1 OPTIONS
 
