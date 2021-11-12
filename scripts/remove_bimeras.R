@@ -188,7 +188,7 @@ if (!is.null(args$map)) {
         merge_with_map() %>%
         select(-c(RUN.PLATEPOSITION, sampleID)) %>%
         as.matrix() %>%
-        extract(, apply(seqtab, MAR = 2, function(col) sum(col) > 0))
+        extract(, apply(., MAR = 2, function(col) sum(col) > 0))
 
     message("Using map to subset sample data from stats table")
     stats <- counts_and_stats$stats %>%
