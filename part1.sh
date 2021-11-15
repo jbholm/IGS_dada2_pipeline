@@ -56,6 +56,9 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         elif [[ $1 == "--qsub" ]]; then
             try_assign QSUB_ARGS "$1" "$2"
             shift 2
+        else
+            PARAMS="$PARAMS $1"
+            shift 1
         fi
         ;;
     -i) # update the Perl and bash documentation!!!
@@ -98,6 +101,9 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         elif [[ $1 == "--bclen" ]]; then
             try_assign BCLENGTH "$1" "$2"
             shift 2
+        else
+            PARAMS="$PARAMS $1"
+            shift 1
         fi
         ;;
     --troubleshoot_barcodes)
@@ -140,6 +146,9 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         elif [[ $1 == "--dada2-mem" ]]; then
             try_assign DADA2MEM "$1" "$2"
             shift 2
+        else
+            PARAMS="$PARAMS $1"
+            shift 1
         fi
         ;;
     --dada2*)
@@ -154,6 +163,9 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         elif [[ $1 == "--dada2" ]]; then
             try_assign DADA2 "$1" "$2"
             shift 2
+        else
+            PARAMS="$PARAMS $1"
+            shift 1
         fi
         ;;
     --1Step)
@@ -172,6 +184,9 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         elif [[ $1 == "--run-storage" ]]; then
             try_assign SD "$1" "$2"
             shift 2
+        else
+            PARAMS="$PARAMS $1"
+            shift 1
         fi
         ;;
     --no-delete|--nodelete)
@@ -190,6 +205,9 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         elif [[ $1 == "--qsub-project" || $1 == "-qp" ]]; then
             try_assign QP "$1" "$2"
             shift 2
+        else
+            PARAMS="$PARAMS $1"
+            shift 1
         fi
         ;;
     --email)
@@ -531,9 +549,9 @@ Required inputs:
 
 =over
 
-=item Z<>* ./fwdSplit/split_by_sample_out/<sample_id>_*.fastq
+=item Z<>* ./fwdSplit/split_by_sample_out/<sample_id>_*R1.fastq
 
-=item Z<>* ./revSplit/split_by_sample_out/<sample_id>_*.fastq
+=item Z<>* ./revSplit/split_by_sample_out/<sample_id>_*R2.fastq
 
 =back
 

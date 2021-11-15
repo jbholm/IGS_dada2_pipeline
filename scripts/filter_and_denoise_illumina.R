@@ -52,8 +52,8 @@ library(tidyr)
 ## perform filtering and trimming
 filtpath <- "filtered"
 
-fastqFs <- sort(list.files(pattern="R1_tc\\.fastq(?:.gz)?"))
-fastqRs <- sort(list.files(pattern="R2_tc\\.fastq(?:.gz)?"))
+fastqFs <- sort(list.files(pattern="R1_tc\\.fastq(?:\\.gz)?"))
+fastqRs <- sort(list.files(pattern="R2_tc\\.fastq(?:\\.gz)?"))
 sample.names <- sapply(strsplit(basename(fastqFs), "_"), `[`, 1)
 filtF_files<-file.path(filtpath, paste0(sample.names, "_F_filt.fastq.gz"))
 filtR_files<-file.path(filtpath, paste0(sample.names, "_R_filt.fastq.gz"))
@@ -114,8 +114,8 @@ run_meta(samples = samples)
   ##plotQualityProfile(filtRs)
 
   ## Learn errors
-  filtFs <- list.files(filtpath, pattern="_F_filt.fastq.gz", full.names = TRUE)
-  filtRs <- list.files(filtpath, pattern="_R_filt.fastq.gz", full.names = TRUE)
+  filtFs <- list.files(filtpath, pattern="_F_filt\\.fastq\\.gz", full.names = TRUE)
+  filtRs <- list.files(filtpath, pattern="_R_filt\\.fastq\\.gz", full.names = TRUE)
   sample.names <- sapply(strsplit(basename(filtFs), "_"), `[`, 1)
   sample.namesR <- sapply(strsplit(basename(filtRs), "_"), `[`, 1)
   if(!identical(sample.names, sample.namesR)) stop("Forward and reverse files do not match.")
@@ -145,34 +145,57 @@ run_meta(samples = samples)
   seqtab <- makeSequenceTable(mergers)
   saveRDS(seqtab, "dada2_abundance_table.rds")
 
-    count_reads <- function(file_name) {
-        if(file.exists(file_name)) {
-            ShortRead::countLines(file_name) / 4
-        } else {
-            return(0)
-        }
+count_reads <- function(file_name) {
+    if(file.exists(file_name)) {
+        ShortRead::countLines(file_name) / 4
+    } else {
+        stop("File does not exist")
     }
-  
-  nRaw <- read.table("./fwdSplit/split_library_stats.txt", header = T) %>%
-    mutate(Input = Reads) %>%
-    select(-Reads)
-  nTrimmed <- nTrimmed %>%
+}
+
+nRaw <- tryCatch({
+    # try to use split_library_stats.txt to get stats on raw reads quickly
+    read.table("./fwdSplit/split_library_stats.txt", header = T) %>%
+        mutate(Input = Reads) %>%
+        select(-Reads)
+}, error = function(e) {
+    # that failed, try counting each sample's raw reads
+    tryCatch({
+        nRaw <- lapply(gsub(fastqFs, pattern = "_tc\\.fastq", replace = ".fastq"), function(basename) {
+            filepath <- list.files(
+                path = file.path("fwdSplit", "split_by_sample_out"), 
+                pattern = basename,
+                full.names = T
+            )[1]
+
+            count_reads(filepath)
+        }) %>% unlist()
+
+        data.frame(Sample = rownames(nTrimmed), Input = nRaw)
+    }, error = function(e) {
+        # if that failed, just initialize a data.frame with NA
+        data.frame(Sample = rownames(nTrimmed), Input = rep(NA, nrow(nTrimmed)))
+    })
+}
+)
+
+nTrimmed <- nTrimmed %>%
     set_colnames("Trimmed") %>%
     as.data.frame() %>%
     rownames_to_column("Sample")
     
-  nFiltered <- nFiltered %>%
+nFiltered <- nFiltered %>%
     set_colnames("Filtered") %>%
     as.data.frame() %>%
     rownames_to_column("Sample")
 
-  nMerged <- seqtab %>%
+nMerged <- seqtab %>%
     as.data.frame() %>%
     rownames_to_column("Sample") %>%
     mutate(Denoised = rowSums(.[-1])) %>%
     select(Denoised, Sample)
 
-  track <- nRaw %>% 
+track <- nRaw %>% 
     merge(y = nTrimmed, all.x = T) %>%
     merge(y = nFiltered, all.x = T) %>% 
     merge(y = nMerged, all.x = T) %>%
