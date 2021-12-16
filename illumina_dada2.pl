@@ -366,8 +366,8 @@ if ($oneStep && ($i1file || $i2file))
 }
 if (!$var)
 {
-    die "\n\tPlease indicate the targeted variable region (-v V3V4 or -v V4"
-      . " or -v ITS)\n\n";
+    die "\n\tPlease indicate the targeted variable region (-v {V3V4, V4, ITS,"
+      . "ompA})\n\n";
 }
 if (!$global_config{wd})
 {
@@ -526,8 +526,7 @@ my $models;
 if ($var eq 'V3V4')
 {
     $models = "/local/projects-t2/jholm/PECAN/v1.0/V3V4/merged_models/";
-}
-if ($var eq 'V4' || $var eq 'ITS')
+} else
 {
     $models = "PECAN not used.\n";
 }
@@ -822,8 +821,6 @@ if (   !@dbg
 ###### BEGIN BARCODES ##########
 #######################################
 
-my $barcodes = "$global_config{wd}/barcodes.fastq";
-
 my $fwdProjDir = "$global_config{wd}/fwdSplit";
 my $revProjDir = "$global_config{wd}/revSplit";
 my $rForSeqsFq = "$fwdProjDir/seqs.fastq";
@@ -949,7 +946,8 @@ sub barcodes
     my $switch    = delete $arg{switch} // 0;
 
     # the default working directory is the global working directory
-    my $wd = delete $arg{wd} // $global_config{wd};
+    my $wd       = delete $arg{wd} // $global_config{wd};
+    my $barcodes = "$wd/barcodes.fastq";
 
     my ($readsForInput, $readsRevInput, $index1Input, $index2Input) =
         $inDir ? find_raw_files($inDir, $oneStep)
@@ -1585,97 +1583,133 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
 
     if (!$skipMe)
     {
-
-        my $fwd_adapt;
-        my $rev_adapt;
-        my $base_cmd =
-          "$config_hashref->{'executor'} -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
-          . $config_hashref->{'part1'}->{"tagcleaner"};
-
-        if ($oneStep)
-        {
-            $base_cmd .= " -trim_within 50";
-            if ($var eq "V3V4")
-            {
-                $fwd_adapt = "GGACTACHVGGGTWTCTAAT";
-                $rev_adapt = "ACTCCTACGGGAGGCAGCAG";
-            }
-            if ($var eq "V4")
-            {
-                $fwd_adapt = "GTGCCAGCMGCCGCGGTAA";
-                $rev_adapt = "ACTCCTACGGGAGGCAGCAG";
-            }
-        } else
-        {
-            if ($var eq "V3V4")
-            {
-                $fwd_adapt = "ACTCCTACGGGAGGCAGCAG";
-                $rev_adapt = "GGACTACHVGGGTWTCTAAT";
-            }
-            if ($var eq "V4")
-            {
-                $fwd_adapt = "GTGCCAGCMGCCGCGGTAA";
-                $rev_adapt = "GGACTACHVGGGTWTCTAAT";
-            }
-            if ($var eq "ITS")
-            {
-                $fwd_adapt = "CTGCCCTTTGTACACACCGC";
-                $rev_adapt = "TTTCGCTGCGTTCTTCATCG";
-            }
-        }
-
         my @cmds;
-        my $filename;
-        foreach my $filename (@inputsF)
-        {
-            my ($name, $dir, $ext) = fileparse($filename, qr{\.gz});
-            if ($ext)
-            {
-                my $cmd = "gunzip $filename";
-                push @cmds, $cmd;
 
-                # $name would now contain <sample_name>.fastq
+        $var = uc $var;
+        if (grep(/^${var}$/, ("V3V4", "V4", "ITS")))
+        {
+            my $fwd_adapt;
+            my $rev_adapt;
+            my $base_cmd =
+              "$config_hashref->{'executor'} -l mem_free=400M -P $qproj -e $error_log -o $stdout_log perl "
+              . $config_hashref->{'part1'}->{"tagcleaner"};
+
+            if ($oneStep)
+            {
+                $base_cmd .= " -trim_within 50";
+                if ($var eq "V3V4")
+                {
+                    $fwd_adapt = "GGACTACHVGGGTWTCTAAT";
+                    $rev_adapt = "ACTCCTACGGGAGGCAGCAG";
+                }
+                if ($var eq "V4")
+                {
+                    $fwd_adapt = "GTGCCAGCMGCCGCGGTAA";
+                    $rev_adapt = "ACTCCTACGGGAGGCAGCAG";
+                }
+            } else
+            {
+                if ($var eq "V3V4")
+                {
+                    $fwd_adapt = "ACTCCTACGGGAGGCAGCAG";
+                    $rev_adapt = "GGACTACHVGGGTWTCTAAT";
+                }
+                if ($var eq "V4")
+                {
+                    $fwd_adapt = "GTGCCAGCMGCCGCGGTAA";
+                    $rev_adapt = "GGACTACHVGGGTWTCTAAT";
+                }
+                if ($var eq "ITS")
+                {
+                    $fwd_adapt = "CTGCCCTTTGTACACACCGC";
+                    $rev_adapt = "TTTCGCTGCGTTCTTCATCG";
+                }
             }
-            my @suffixes = (".fastq");
-            my $Prefix   = basename($name, @suffixes);
-            my $tc       = "$global_config{wd}/$Prefix" . "_tc";
-            my $cmd =
-                $base_cmd
-              . " -fastq "
-              . catfile($dir, $name)
-              . " -out $tc -line_width 0 "
-              . "-verbose -tag5 $fwd_adapt -mm5 2 -nomatch 1";
-            push @cmds, $cmd;
+
+            my $filename;
+            foreach my $filename (@inputsF)
+            {
+                my ($name, $dir, $ext) = fileparse($filename, qr{\.gz});
+                if ($ext)
+                {
+                    my $cmd = "gunzip $filename";
+                    push @cmds, $cmd;
+
+                    # $name would now contain <sample_name>.fastq
+                }
+                my @suffixes = (".fastq");
+                my $Prefix   = basename($name, @suffixes);
+                my $tc       = "$global_config{wd}/$Prefix" . "_tc";
+                my $cmd =
+                    $base_cmd
+                  . " -fastq "
+                  . catfile($dir, $name)
+                  . " -out $tc -line_width 0 "
+                  . "-verbose -tag5 $fwd_adapt -mm5 2 -nomatch 1";
+                push @cmds, $cmd;
+            }
+
+            foreach my $filename (@inputsR)
+            {
+                my ($name, $dir, $ext) = fileparse($filename, qr{\.gz});
+                if ($ext)
+                {
+                    my $cmd = "gunzip $filename";
+                    push @cmds, $cmd;
+
+                    # $name would now contain <sample_name>.fastq
+                }
+                my @suffixes = (".fastq");
+                my $Prefix   = basename($name, @suffixes);
+                my $tc       = "$global_config{wd}/$Prefix" . "_tc";
+                my $cmd =
+                    $base_cmd
+                  . " -fastq "
+                  . catfile($dir, $name)
+                  . " -out $tc -line_width 0 "
+                  . "-verbose -tag5 $rev_adapt -mm5 2 -nomatch 1";
+                push @cmds, $cmd;
+            }
+        } elsif ($var eq "OMPA")
+        {
+            my $bbduk = $config_hashref->{"part1"}->{"bbduk.sh"};
+            foreach my $in_F (@inputsF)
+            {
+                my ($name, $dir, $ext) = fileparse($in_F, qr{\.gz});
+                if ($ext)
+                {
+                    my $cmd = "gunzip $in_F";
+                    push @cmds, $cmd;
+
+                    # $name would now contain <sample_name>.fastq
+                }
+                my @suffixes = ("_R1.fastq");
+                my $prefix   = basename($name, @suffixes);
+                my $in_R     = catfile($revSampleDir, "${prefix}_R2.fastq");
+                my $out_F =
+                  catfile($global_config{wd}, "${prefix}_R1_tc.fastq");
+                my $out_R =
+                  catfile($global_config{wd}, "${prefix}_R2_tc.fastq");
+
+                # trim fwd reads first (skipr2) then trim rev reads (skipr1)
+                # max length 301 - (20 - 2) = 283
+                my $cmd =
+                  "$bbduk -Xmx4915m -Xms4327m in=$in_F in2=$in_R out=stdout.fastq  minlen=60 literal=TGGGATCGTTTTGATGTATT,TGGGATCGCTTTGATGTATT copyundefined rcomp=f skipr2=t restrictleft=30 ktrim=l k=20 hdist=2  mink=18 hdist2=0";
+                $cmd .= " 2>>" . catfile($error_log, "bbduk.sh.stderr");
+                $cmd .=
+                  " | $bbduk -Xmx4915m -Xms4327m in=stdin.fastq int=t out=$out_F out2=$out_R  minlen=0 maxlen=283 literal=TAAACTTGCTTGCCACTCATG,ACTTGCTTGCCATTCATGGTA copyundefined rcomp=f skipr1=t restrictleft=30 ktrim=l k=20 hdist=2 mink=18 hdist2=0";
+                $cmd .= " 2>>" . catfile($error_log, "bbduk.sh.stderr");
+                push @cmds, $cmd;
+            }
         }
 
-        foreach my $filename (@inputsR)
-        {
-            my ($name, $dir, $ext) = fileparse($filename, qr{\.gz});
-            if ($ext)
-            {
-                my $cmd = "gunzip $filename";
-                push @cmds, $cmd;
-
-                # $name would now contain <sample_name>.fastq
-            }
-            my @suffixes = (".fastq");
-            my $Prefix   = basename($name, @suffixes);
-            my $tc       = "$global_config{wd}/$Prefix" . "_tc";
-            my $cmd =
-                $base_cmd
-              . " -fastq "
-              . catfile($dir, $name)
-              . " -out $tc -line_width 0 "
-              . "-verbose -tag5 $rev_adapt -mm5 2 -nomatch 1";
-            push @cmds, $cmd;
-        }
-
+        my $qsub = grep(/^${var}$/, ("V3V4", "V4", "ITS"));
         execute_and_log(
                         cmds       => \@cmds,
                         filehandle => $logTee,
                         dry_run    => $dryRun,
                         msg  => "Removing $var primers from all sequences.\n",
-                        qsub => 1
+                        qsub => $qsub
                        );
 
         #
@@ -1992,6 +2026,45 @@ if ((!@dbg) || grep(/^dada2$/, @dbg))
                       $minLen, $minQ,      $logFH
                      );
             }
+            if ($var eq "OMPA")
+            {
+                $truncLenL = 259 if (!$truncLenL);
+                $truncLenR = 150 if (!$truncLenR);
+
+                if (!$maxN)
+                {
+                    $maxN = 0;
+                }
+                if (!$maxEE)
+                {
+                    $maxEE = "2";
+                }
+                if (!$truncQ)
+                {
+                    $truncQ = 2;
+                }
+                if (!$phix)
+                {
+                    $phix = "1";
+                }
+                if (!$maxLen)
+                {
+                    $maxLen = "Inf";
+                }
+                if (!$minLen)
+                {
+                    $minLen = 20;
+                }
+                if (!$minQ)
+                {
+                    $minQ = 0;
+                }
+                dada2(
+                      $run,    $truncLenL, $truncLenR, $maxN,
+                      $maxEE,  $truncQ,    $phix,      $maxLen,
+                      $minLen, $minQ,      $logFH
+                     );
+            }
         }
 
         # Rename DADA2 R files
@@ -2071,9 +2144,8 @@ if ((!@dbg) || grep(/^dada2$/, @dbg))
 
 if ($delete && -e $stats_file && -e $counts_file)
 {
-
     my @delete_files = (
-                        $barcodes,
+                        "$global_config{wd}/barcodes.fastq",
                         catfile($fwdProjDir, "seqs.fna"),
                         catfile($revProjDir, "seqs.fna"),
                         $rForSeqsFq,
@@ -2793,9 +2865,8 @@ sub run_R_script
                 {    # sign of success
 
                     print $logTee "---R script completed without errors.\n";
-                    print $logTee
-                        "---DADA2-specific commands can be found in "
-                        . "$Rscript\n";
+                    print $logTee "---DADA2-specific commands can be found in "
+                      . "$Rscript\n";
                     $exitStatus = 0;    # Move on from DADA2
                     $decided    = 1;    # Stop reading .Rout
 
