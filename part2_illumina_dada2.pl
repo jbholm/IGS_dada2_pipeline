@@ -283,7 +283,13 @@ my $python2 = $config_hashref->{"python2"};
 
 $ENV{'PYTHONPATH'} = "";
 
-$map_file = copy_to_project($project, $map_file);
+if ($map_file !~ /^${projDir}/)
+{
+    $map_file = copy_to_project($project, $map_file);
+} else
+{
+    $map_file = move_to_project($project, $map_file);
+}
 $logTee->print("MAP: $map_file\n");
 
 $logTee->print("\n");
@@ -317,13 +323,14 @@ if (!$region)
 {
     $logTee->print("REGION: $region\n");
 }
+$region = uc $region;
 if (
     List::Util::none {$_ eq $region}
-    ('V3V4', 'V4', 'ITS', 'FULL-LENGTH', 'full-length')
+    ('V3V4', 'V4', 'ITS', 'FULL-LENGTH', 'OMPA')
    )
 {
     die
-      "Illegal --variable-region (-v). V3V4, V4, ITS, and FULL-LENGTH are accepted.";
+      "Illegal --variable-region (-v). V3V4, V4, ITS, ompA, and FULL-LENGTH are accepted.";
 }
 
 my $models;
@@ -335,7 +342,8 @@ my %region_to_scheme = (
                         V3V4          => "PECAN-SILVA",
                         V4            => "SILVA",
                         ITS           => "UNITE",
-                        "FULL-LENGTH" => "SILVA138forPB"
+                        "FULL-LENGTH" => "SILVA138forPB",
+                        OMPA          => "(none)"
                        );
 
 my $vaginal_adj = "vaginal";
@@ -370,7 +378,8 @@ my $s138 = grep(/^SILVA138forPB$/, @schemes);
 my $p    = grep (/^PECAN$/, @schemes);
 my $h    = grep(/^HOMD$/, @schemes);
 my $u    = grep(/^UNITE$/, @schemes);
-if ($ps + $s + $s138 + $p + $h + $u == scalar @schemes) { }
+my $na   = grep(/^\(none\)$/, @schemes);
+if ($ps + $s + $s138 + $p + $h + $u + $na == scalar @schemes) { }
 else
 {
     die
@@ -692,8 +701,10 @@ if ($csts && $pecan)
 }
 
 my $final_merge = glob("*.taxa-merged.csv");
+$final_merge = defined $final_merge ? $final_merge : "(none)";
 unlink glob "*.taxa.csv";
 my $final_ASV_taxa = glob("*.asvs+taxa.csv");
+$final_ASV_taxa = defined $final_ASV_taxa ? $final_ASV_taxa : "(none)";
 
 $cmd =
   "$pipelineDir/report/report16s.sh '$projDir' --map $map_file --runs @runs --project $project";

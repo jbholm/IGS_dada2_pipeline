@@ -308,8 +308,8 @@ fi
 # Validate the variable region
 if [[ ! -n "$VAR" ]]; then
     VAR="V3V4"
-elif [[ !( "$VAR" == "V3V4" || "$VAR" == "V4" || "$VAR" == "ITS" ) ]]; then
-    MSG="Variable region was '$VAR' but only 'V3V4', 'V4', and 'ITS' are "
+elif [[ !( "$VAR" == "V3V4" || "$VAR" == "V4" || "$VAR" == "ITS" || "${VAR^^}" == "OMPA" ) ]]; then
+    MSG="Variable region was '$VAR' but only 'V3V4', 'V4', 'ITS', and 'ompA' (case-insensitive) are "
     MSG+="supported."
     stop "$MSG"
 fi
