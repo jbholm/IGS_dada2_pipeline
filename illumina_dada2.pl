@@ -583,10 +583,13 @@ $metadata =
 
 my $qiime = "$global_config{wd}/${run}_qiime_config.txt";
 
-if ($tbshtBarcodes && @dbg) {
-    $logTee->print("Disabling --debug sections because --troubleshoot_barcodes was given.\n");
+if ($tbshtBarcodes && @dbg)
+{
+    $logTee->print(
+        "Disabling --debug sections because --troubleshoot_barcodes was given.\n"
+    );
     @dbg = ();
-    }
+}
 
 if (@dbg)
 {
@@ -606,9 +609,11 @@ if (@dbg)
         die "Illegal debug option. Legal debug options are "
           . "barcodes, demux, splitsamples, tagclean, and dada2.";
     }
-    if($trySkip) {
+    if ($trySkip)
+    {
         $trySkip = 0;
-        $logTee->print("Disabling skipping because --debug sections were selected.\n");
+        $logTee->print(
+                "Disabling skipping because --debug sections were selected.\n");
     }
 
     print $logTee "\n";
@@ -937,7 +942,6 @@ if ($tbshtBarcodes)
     # Then continue with code below the two subroutines
 }
 
-
 sub barcodes
 {
     my %arg       = @_;
@@ -1160,7 +1164,7 @@ sub demux
     my $step2;
     my $step3;
 
-    my $split_log  = "$fwdProjDir/split_library_log.txt";
+    my $split_log = "$fwdProjDir/split_library_log.txt";
 
     my @cmds;
 
@@ -1765,7 +1769,7 @@ my $counts_file = "dada2_abundance_table.rds";
 #############################
 if ((!@dbg) || grep(/^dada2$/, @dbg))
 {
-    my $projrtout   = "$global_config{wd}/${run}_dada2_part1_rTmp.Rout";
+    my $projrtout = "$global_config{wd}/${run}_dada2_part1_rTmp.Rout";
 
     my @outputs = ($stats_file, $counts_file);
     my @inputs  = glob("$global_config{wd}/*R[1|2]_tc.fastq.gz");
@@ -2065,19 +2069,21 @@ if ((!@dbg) || grep(/^dada2$/, @dbg))
     }
 }
 
-if ($delete && -e $stats_file && -e $counts_file) {
+if ($delete && -e $stats_file && -e $counts_file)
+{
 
     my @delete_files = (
-        $barcodes,                        
-        catfile($fwdProjDir, "seqs.fna"), 
-        catfile($revProjDir, "seqs.fna"), 
-        $rForSeqsFq, 
-        $rRevSeqsFq,                      
-        tagcleaned_files(), 
-        glob(catfile("filtered", "*_filt\\.fastq\\.gz"))
-    );
+                        $barcodes,
+                        catfile($fwdProjDir, "seqs.fna"),
+                        catfile($revProjDir, "seqs.fna"),
+                        $rForSeqsFq,
+                        $rRevSeqsFq,
+                        tagcleaned_files(),
+                        glob(catfile("filtered", "*_filt\\.fastq\\.gz"))
+                       );
 
-    for my $file (@delete_files) {
+    for my $file (@delete_files)
+    {
         unlink $file;
     }
     rmdir "./filtered/";
@@ -2711,13 +2717,13 @@ sub run_R_script
     my $wd      = $global_config{wd};
     chdir $wd;
 
-    my $outR       = "dada2_part1_rTmp.Rout";
+    my $outR;
     my $exitStatus = 1;
 
     while ($exitStatus == 1)
     {
         my $cmd =
-          "rm -rf $wd/filtered $outR $wd/dada2_part1_stats.txt $wd/dada2_abundance_table.rds $wd/.RData";
+          "rm -rf $wd/filtered $wd/dada2_part1_stats.txt $wd/dada2_abundance_table.rds $wd/.RData";
         execute_and_log(
             cmds    => [$cmd],
             dry_run => $dryRun,
@@ -2726,7 +2732,7 @@ sub run_R_script
         );
 
         $cmd =
-          "$config_hashref->{'executor'} -l mem_free=$dada2mem -P $qproj -e $error_log -o $stdout_log -N Rscript \"$config_hashref->{R}script $Rscript $args > $outR\"";
+          "$config_hashref->{'executor'} -l mem_free=$dada2mem -P $qproj -e $error_log -o $stdout_log -N Rscript \"$config_hashref->{R}script $Rscript $args\"";
         execute_and_log(
              cmds       => [$cmd],
              filehandle => $logTee,
@@ -2734,13 +2740,14 @@ sub run_R_script
              msg => "Running DADA2 with fastq files in $wd for $var region...\n"
         );
 
-        while (!-e $outR)
+        # Until DADA2 succeeds, look for the R STDERR file and monitor for
+        # signs of termination
+
+        while (!defined $outR)
         {
-            check_error_log($error_log, "Rscript");
+            $outR = glob(catfile($error_log, "Rscript.e[0-9]+\$"));
         }
 
-        # Until DADA2 succeeds, look for the R output file and monitor for
-        # signs of termination
         if (-e $outR)
         {
             my $decided = 0;    # flag to stop re-reading .Rout
@@ -2751,7 +2758,8 @@ sub run_R_script
                 my $line = <IN>;
                 while ($line && !$decided)
                 {
-                    if (        # signs of bad termination
+                    if (        # signs of bad termination that might be fixed
+                                # with more memory
                         (
                             $line =~ /Error in/
                          || $line =~ /Execution halted/
@@ -2773,20 +2781,25 @@ sub run_R_script
                         print $logTee "---See $outR.old for details.\n";
                         print $logTee "---Attempting to restart R...\n";
 
-                    } elsif (-e "dada2_part1_stats.txt")
-                    {    # sign of success
-
-                        print $logTee "---R script completed without errors.\n";
-                        print $logTee
-                          "---DADA2-specific commands can be found in "
-                          . "$Rscript\n";
-                        $exitStatus = 0;    # Move on from DADA2
-                        $decided    = 1;    # Stop reading .Rout
-
+                    } elsif ($line =~ /(E|e)rror/ || $line =~ /ERROR/)
+                    {
+                        # send execution to check_error_log to die
+                        check_error_log($error_log, "Rscript");
                     }
                     $line = <IN>;
                 }
                 close IN;
+                if (-e "dada2_part1_stats.txt")
+                {    # sign of success
+
+                    print $logTee "---R script completed without errors.\n";
+                    print $logTee
+                        "---DADA2-specific commands can be found in "
+                        . "$Rscript\n";
+                    $exitStatus = 0;    # Move on from DADA2
+                    $decided    = 1;    # Stop reading .Rout
+
+                }
             }
         }
     }
@@ -2928,8 +2941,8 @@ sub execute_and_log
          "Finished " . lc(substr($cuteMsg, 0, 1)) . substr($cuteMsg, 1) . "\n");
 }
 
-
-sub tagcleaned_files {
+sub tagcleaned_files
+{
     return glob("$global_config{wd}/*R[1|2]_tc.fastq.gz");
 }
 
