@@ -51,7 +51,7 @@ def getuser():
         questions, style=examples.custom_style_2)['user_prompt']
     return(user)
     #lister = Popen(
-    #    ["ssh", user + "@10.90.233.174", "-p", "24"],
+    #    ["ssh", user + "@Rosalind.IGS.umaryland.edu", "-p", "24"],
     #    stdin=PIPE, stdout=PIPE, stderr=PIPE)
 
 #    response = lister.stdout.readline()
@@ -218,7 +218,7 @@ def archive_project(user, name, subdirs):
     dest = Path("/") / Path("volume1") / Path("NetBackup") / Path("MSL") / Path("projects")
     year = str(datetime.today().year)
     dest = dest / Path(f"{year}_{name.upper()}")
-    cmd = ["ssh", user + "@10.90.233.174", "-o", "ConnectTimeout=10", "-p", "24", "mkdir", "-p", str(dest)]
+    cmd = ["ssh", user + "@Rosalind.IGS.umaryland.edu", "-o", "ConnectTimeout=10", "-p", "24", "mkdir", "-p", str(dest)]
     print("Creating project directory on Rosalind...")
     print(" ".join(cmd))
     # process = Popen(
@@ -260,7 +260,7 @@ def ask_upload(user, source, dest, ul_type):
     ok = inquire(questions)
 
     if ok:
-        cmd = "rsync -azh --append-verify --progress %s %s@10.90.233.174:%s" % (" ".join(source), user, dest)
+        cmd = "rsync -azh --append-verify --progress %s %s@Rosalind.IGS.umaryland.edu:%s" % (" ".join(source), user, dest)
         print(cmd)
         run(shlex.split(cmd))
     return ok
@@ -268,7 +268,7 @@ def ask_upload(user, source, dest, ul_type):
 # path is automatically cast to str
 # may throw ConnectionError
 def get_remote_tree(user, path=SYNOLOGY_GLOBALS["START_PATH"]):
-    cmd = ["ssh", user + "@10.90.233.174", "-o", "ConnectTimeout=10", "-p", "24", "ls", "-al", "--group-directories-first", str(path)]
+    cmd = ["ssh", user + "@Rosalind.IGS.umaryland.edu", "-o", "ConnectTimeout=10", "-p", "24", "ls", "-al", "--group-directories-first", str(path)]
     print(" ".join(cmd))
     process = Popen(
             cmd,
@@ -367,7 +367,7 @@ def ask_download(user, filepath, dl_type):
         questions,
         style=examples.custom_style_2)['confirm_file']
     if ok:
-        cmd = "rsync -azh --append-verify --progress " + user + "@10.90.233.174:" + str(filepath) + " ./"
+        cmd = "rsync -azh --append-verify --progress " + user + "@Rosalind.IGS.umaryland.edu:" + str(filepath) + " ./"
         print(cmd)
         run(shlex.split(cmd))
     return
@@ -384,9 +384,9 @@ if __name__ == "__main__":
             
     Do this on thanos or magog: https://help.github.com/articles/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent/#generating-a-new-ssh-key
     Then:
-    rsync -a ~/.ssh/id_rsa.pub SYNOLOGY_USER@10.90.233.174:/var/services/homes/SYNOLOGY_USER
+    rsync -a ~/.ssh/id_rsa.pub SYNOLOGY_USER@Rosalind.IGS.umaryland.edu:/var/services/homes/SYNOLOGY_USER
 
-    ssh SYNOLOGY_USER@10.90.233.174 -p 24
+    ssh SYNOLOGY_USER@Rosalind.IGS.umaryland.edu -p 24
     cd /var/services/homes/
     chmod 755 SYNOLOGY_USER
     cd SYNOLOGY_USER
@@ -398,7 +398,7 @@ if __name__ == "__main__":
     chmod 600 authorized_keys
 
     Ensure this command works:
-    rsync --list-only SYNOLOGY_USER@10.90.233.174:/volume1/NetBackup/MSL
+    rsync --list-only SYNOLOGY_USER@Rosalind.IGS.umaryland.edu:/volume1/NetBackup/MSL
 
 
             """
