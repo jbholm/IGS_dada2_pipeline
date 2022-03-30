@@ -360,6 +360,10 @@ if [[ -d "$SD" ]]; then
     done
 fi
 
+if [[ ! -z ${DADA2MEM+x} ]]; then
+    DADA2MEM="--dada2-mem=${DADA2MEM}"
+fi
+
 UMASK_OLD=`umask`
 if [ "${SD##$SD_DEFAULT}" != "$SD" ]; then  
     umask 0002 # if we're in the shared run directory, share the new directories

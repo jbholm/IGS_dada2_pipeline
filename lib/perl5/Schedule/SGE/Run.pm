@@ -257,7 +257,11 @@ sub _run
 #  open(QSUB, "|$pipe > /tmp/$$.out 2>&1") || die "Can't open the pipe to submit jobs to";
 #  print QSUB $command, "\n";
 #  close QSUB;
-    `$command > ./$$.out 2>&1`;
+    $command = "$command > ./$$.out 2>&1";
+    if ($self->{'verbose'}) {
+        print "$command\n";
+    }
+    `$command`;
 
     if ($?)
     {

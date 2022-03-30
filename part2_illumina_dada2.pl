@@ -335,7 +335,6 @@ if (
 
 my $models;
 my %taxonomy_flags;
-my $pecan;
 
 my $base_scheme;
 my %region_to_scheme = (
@@ -674,13 +673,14 @@ if (grep (/^PECAN-SILVA$/, @schemes))
 }
 rename_temps("");
 
-if ($csts && $pecan)
+if ($csts && $taxonomy_flags{PECAN})
 {
     $ENV{'LD_LIBRARY_PATH'} =
       $ENV{'LD_LIBRARY_PATH'} . ':/usr/local/packages/python-3.5/lib';
-    my $pecanCountTbl =
-      basename($projabund, (".csv")) . "_PECAN_taxa-merged.csv";
 
+    my $pecanCountTbl =
+      basename($abund, (".csv")) . ".PECAN.taxa-merged.csv";
+      
     if (!-e basename($pecanCountTbl, (".csv")) . "_StR_CST.csv")
     {
         print $logTee "---Assigning CSTs with Valencia\n";
