@@ -1,4 +1,4 @@
-#!/home/jolim/share/miniconda3/envs/msl_reports/bin/python3.7
+#!/usr/bin/env python3
 
 import subprocess
 import glob

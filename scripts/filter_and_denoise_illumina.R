@@ -1,5 +1,6 @@
 #!/usr/bin/env Rscript
-
+print("Error in")
+cat("Error in")
 initial.options <- commandArgs(trailingOnly = FALSE)
 pipelineDir <-
   dirname(dirname(sub("--file=", "", initial.options[grep("--file=", initial.options)])))
@@ -161,7 +162,7 @@ nRaw <- tryCatch({
 }, error = function(e) {
     # that failed, try counting each sample's raw reads
     tryCatch({
-        nRaw <- lapply(gsub(fastqFs, pattern = "_tc\\.fastq", replace = ".fastq"), function(basename) {
+        nRaw <- lapply(gsub(fastqFs, pattern = "_tc\\.fastq(?:\\.gz)", replace = ".fastq"), function(basename) {
             filepath <- list.files(
                 path = file.path("fwdSplit", "split_by_sample_out"), 
                 pattern = basename,
