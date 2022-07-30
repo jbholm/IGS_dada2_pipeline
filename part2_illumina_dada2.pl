@@ -283,12 +283,15 @@ my $python2 = $config_hashref->{"python2"};
 
 $ENV{'PYTHONPATH'} = "";
 
-if ($map_file !~ /^${projDir}/)
+if ($map_file)
 {
-    $map_file = copy_to_project($project, $map_file);
-} else
-{
-    $map_file = move_to_project($project, $map_file);
+    if ($map_file !~ /^${projDir}/)
+    {
+        $map_file = copy_to_project($project, $map_file);
+    } else
+    {
+        $map_file = move_to_project($project, $map_file);
+    }
 }
 $logTee->print("MAP: $map_file\n");
 
@@ -678,9 +681,8 @@ if ($csts && $taxonomy_flags{PECAN})
     $ENV{'LD_LIBRARY_PATH'} =
       $ENV{'LD_LIBRARY_PATH'} . ':/usr/local/packages/python-3.5/lib';
 
-    my $pecanCountTbl =
-      basename($abund, (".csv")) . ".PECAN.taxa-merged.csv";
-      
+    my $pecanCountTbl = basename($abund, (".csv")) . ".PECAN.taxa-merged.csv";
+
     if (!-e basename($pecanCountTbl, (".csv")) . "_StR_CST.csv")
     {
         print $logTee "---Assigning CSTs with Valencia\n";
