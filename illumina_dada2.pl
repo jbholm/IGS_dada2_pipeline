@@ -221,7 +221,6 @@ are allowed:
 
  --dada2-truncLen-f, -for (defaults: V3V4: 225 | V4: 200 | ITS: 0)
  --dada2-truncLen-r, -rev (defaults: V3V4: 225 | V4: 200 | ITS: 0)
- --dada2-maxN (default: 0)
  --dada2-maxEE (defaults: V3V4: 2 | V4: 2 | ITS: 0)
  --dada2-truncQ (default: 2)
  --dada2-rmPhix (default: TRUE)
@@ -296,6 +295,7 @@ my $dada2mem      = "1G";
 my $tbshtBarcodes = 0;
 my $delete        = 1;
 my $trySkip       = 1;
+my $amplicon_length = 0;
 GetOptions(
            "raw-path|i=s"           => \my $raw_dir,
            "r1=s"                   => \my $r1,
@@ -310,9 +310,12 @@ GetOptions(
            "dry-run!"               => \my $dryRun,
            "skip!"                  => \$trySkip,
            "bclen=i"                => \my $bcLen,
+            "trim-maxlength=i"         => \my $trimMaxLen,
+           "fwd_primer=s"           => \my $primer_L,
+           "rev_primer=s"           => \my $primer_R,
+           "amplicon_length=i"      => \$amplicon_length,
            "dada2-truncLen-f|for=i" => \my $truncLenL,
            "dada2-truncLen-r|rev=i" => \my $truncLenR,
-           "dada2-maxN=s"           => \my $maxN,
            "dada2-maxEE=s"          => \my $maxEE,
            "dada2-truncQ=s"         => \my $truncQ,
            "dada2-rmPhix!"          => \my $phix,
@@ -379,11 +382,6 @@ if (!$map)
 if ($oneStep && ($i1 || $i2))
 {
     die "\n\t--1Step is incompatible with -i1 and -i2.\n\n";
-}
-if (!$var)
-{
-    die "\n\tPlease indicate the targeted variable region (-v {V3V4, V4, ITS,"
-      . "ompA})\n\n";
 }
 if (!$wd)
 {
@@ -499,14 +497,10 @@ local $SIG{__WARN__} = sub {
 # Now that we're done checking parameters, I want the more serious error
 # messages to be printed to the log file.
 $SIG{__DIE__} = sub {
-
-    # if ($^S) {
-    #     die @_;    # If die was called inside an eval, simply pass it along
-    # } else {
+    die @_ if $^S; # If die was called inside an eval, just allow that to happen
+    # otherwise print to the log file and then allow die to happen
     $GLOBAL_PATHS->print(@_ . "\n");
     return 1;
-
-    # }
 };
 
 print "Logging to: " . $GLOBAL_PATHS->part1_log() . "\n";
@@ -541,14 +535,6 @@ my %step2number = (
                    "dada2part1out" => 7
                   );
 
-my $models;
-if ($var eq 'V3V4')
-{
-    $models = "/local/projects-t2/jholm/PECAN/v1.0/V3V4/merged_models/";
-} else
-{
-    $models = "PECAN not used.\n";
-}
 
 if (!$qproj)
 {
@@ -642,10 +628,6 @@ if (@dbg)
     $GLOBAL_PATHS->print("\n");
 }
 
-$GLOBAL_PATHS->print("RUN: $run\nVARIABLE REGION: $var\n"
-  . "R VERSION: "
-  . $config_hashref->{'R'}
-  . "\nPECAN MODELS: $models\n");
 if ($oneStep)
 {
     $GLOBAL_PATHS->print("PCR PREPARATION METHOD: 1-Step\n");
@@ -653,6 +635,128 @@ if ($oneStep)
 {
     $GLOBAL_PATHS->print("PCR PREPARATION METHOD: 2-Step\n");
 }
+$GLOBAL_PATHS->print("RUN: $run\n");
+
+# Resolve all parameters for the variable region
+$var = defined $var ? uc $var : "";
+$GLOBAL_PATHS->print("VARIABLE REGION: $var");
+my $pcrsteps = $oneStep ? "onestep" : "twostep";
+# is hashref of DADA2 params
+if(exists $config_hashref->{'part1 params'}->{$pcrsteps}->{$var}) {
+    $GLOBAL_PATHS->print(" (loading default parameters for this region)\n");
+    # 'part1 params' contains universal params; 
+    # the special 'onestep' and 'twostep' keys contain PCR-and-region-specific
+    # params.
+    # Add the PCR-and-region-specific params to 'part1 params'
+    Hash::Merge::set_behavior('RIGHT_PRECEDENT');
+    $config_hashref->{'part1 params'} = merge($config_hashref->{'part1 params'}, $config_hashref->{'part1 params'}->{$pcrsteps}->{$var});
+} else {
+    $GLOBAL_PATHS->print(" (requires parameters given on command line)\n");
+}
+# remove all other stored params so we don't accidentally find them later
+delete $config_hashref->{'part1 params'}{'onestep'};
+delete $config_hashref->{'part1 params'}{'twostep'};
+
+sub override_default_param {
+    my %arg      = @_;
+    my $value = delete %arg{value};
+    my $name = delete %arg{name};
+    my $filehandle = delete %arg{filehandle};
+
+    $filehandle->print(uc($name) . ": ");
+    my $ans;
+    if(exists $config_hashref->{'part1 params'}->{$name} && ! $value) {
+        $filehandle->print($config_hashref->{'part1 params'}->{$name});
+        $ans = $config_hashref->{'part1 params'}->{$name};
+    } else {
+        if ($value) {
+            $filehandle->print($value);
+            if(exists $config_hashref->{'part1 params'}->{$name}) {
+                $filehandle->print(" (Overriding default value for this region)");
+            }
+            $ans = $value;
+        } else {
+            $filehandle->print(uc($name) . "UNKNOWN\n");
+            die "Variable region unrecognized and parameter was not provided on the command line.";
+        }
+    }
+    $filehandle->print("\n");
+    return($ans);
+}
+# Resolve primer trimming parameters
+$config_hashref->{'part1 params'}->{"fwd primer"} = override_default_param(
+    value => $primer_L,
+    name => "fwd primer",
+    filehandle => $GLOBAL_PATHS
+    );
+$config_hashref->{'part1 params'}->{"rev primer"} = override_default_param(
+    value => $primer_R,
+    name => "rev primer",
+    filehandle => $GLOBAL_PATHS
+    );
+
+$GLOBAL_PATHS->print("R VERSION: " . $config_hashref->{'R'} . "\n");
+# Resolve DADA2 quality-trim and denoise parameters
+$config_hashref->{'part1 params'}->{"fwd trim length"} = eval {
+    override_default_param(
+        value => $truncLenL,
+        name => "fwd trim length",
+        filehandle => $GLOBAL_PATHS
+    );
+};
+$config_hashref->{'part1 params'}->{"rev trim length"} = eval{
+    override_default_param(
+        value => $truncLenR,
+        name => "rev trim length",
+        filehandle => $GLOBAL_PATHS
+        );
+};
+if(! $config_hashref->{'part1 params'}->{"fwd trim length"} || ! $config_hashref->{'part1 params'}->{"rev trim length"}) {
+    # if either of the trim lengths missing...
+    if($amplicon_length) {
+        $GLOBAL_PATHS->print("AMPLICON LENGTH: $amplicon_length\n");
+        $GLOBAL_PATHS->print("TRIMMING PARAMETERS WILL BE OPTIMIZED");
+        if($config_hashref->{'part1 params'}->{"fwd trim length"} || $config_hashref->{'part1 params'}->{"rev trim length"}) {
+            $GLOBAL_PATHS->print(" (Any trim length parameters given will be ignored)\n");
+        } else {
+            $GLOBAL_PATHS->print("\n");
+        }
+    } else {
+        die "TRIMMING PARAMETERS NOT PROVIDED. CANNOT OPTIMIZE TRIM LENGTH BECAUSE AMPLICON LENGTH NOT KNOWN\n";
+    }
+} elsif ($amplicon_length) {
+    $GLOBAL_PATHS->print("Amplicon length not needed because both trim lengths are known. Ignoring.\n");
+}
+$config_hashref->{'part1 params'}->{'trim quality'} = override_default_param(
+    value => $truncQ,
+    name => "trim quality",
+    filehandle => $GLOBAL_PATHS
+    );
+$config_hashref->{'part1 params'}->{'min length'} = override_default_param(
+    value => $minLen,
+    name => "min length",
+    filehandle => $GLOBAL_PATHS
+    );
+$config_hashref->{'part1 params'}->{'max length'} = override_default_param(
+    value => $maxLen,
+    name => "max length",
+    filehandle => $GLOBAL_PATHS
+    );
+$config_hashref->{'part1 params'}->{'filter quality'} = override_default_param(
+    value => $minQ,
+    name => "filter quality",
+    filehandle => $GLOBAL_PATHS
+    );
+$config_hashref->{'part1 params'}->{'max EE'} = override_default_param(
+    value => $maxEE,
+    name => "max EE",
+    filehandle => $GLOBAL_PATHS
+    );
+$config_hashref->{'part1 params'}->{'remove phix'} = override_default_param(
+    value => $phix,
+    name => "remove phix",
+    filehandle => $GLOBAL_PATHS
+    );
 
 my $skipMe;
 
@@ -1115,7 +1219,9 @@ sub barcodes
             cacheChecksums(files => [$barcodes], step_name => "barcodes", pf => $paths);
         }
 
-        # Delete unneeded output of barcodes.py
+        # Delete unneeded output of barcodes.py. extract_barcodes.py outputs
+        # each of the supplied FASTQ's with the barcodes removed, and names them
+        # 'reads1.fastq' and 'reads2.fastq'
         @cmds = ();
         push @cmds, "rm -rf $paths->{'wd'}/reads1.fastq";
         push @cmds, "rm -rf $paths->{'wd'}/reads2.fastq";
@@ -1626,138 +1732,119 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
     {
         my @cmds;
 
-        $var = uc $var;
-        if (grep(/^${var}$/, ("V3V4", "V4", "ITS")))
-        {
-            my $fwd_adapt;
-            my $rev_adapt;
-            my $base_cmd =
-              "$config_hashref->{'executor'} -l mem_free=400M -P $qproj -e " . $GLOBAL_PATHS->part1_error_log() . " -o " . $GLOBAL_PATHS->part1_stdout_log() . " -N tagcleaner.pl 'perl "
-              . $config_hashref->{'part1'}->{"tagcleaner"};
+        # if (grep(/^${var}$/, ("V3V4", "V4", "ITS")))
+        # {
+        #     my $fwd_adapt;
+        #     my $rev_adapt;
+        #     my $base_cmd =
+        #       "$config_hashref->{'executor'} -l mem_free=400M -P $qproj -e " . $GLOBAL_PATHS->part1_error_log() . " -o " . $GLOBAL_PATHS->part1_stdout_log() . " -N tagcleaner.pl 'perl "
+        #       . $config_hashref->{'part1'}->{"tagcleaner"};
 
-            if ($oneStep)
-            {
-                $base_cmd .= " -trim_within 50";
-                if ($var eq "V3V4")
-                {
-                    $fwd_adapt = "GGACTACHVGGGTWTCTAAT";
-                    $rev_adapt = "ACTCCTACGGGAGGCAGCAG";
-                }
-                if ($var eq "V4")
-                {
-                    $fwd_adapt = "GTGCCAGCMGCCGCGGTAA";
-                    $rev_adapt = "ACTCCTACGGGAGGCAGCAG";
-                }
-            } else
-            {
-                if ($var eq "V3V4")
-                {
-                    $fwd_adapt = "ACTCCTACGGGAGGCAGCAG";
-                    $rev_adapt = "GGACTACHVGGGTWTCTAAT";
-                }
-                if ($var eq "V4")
-                {
-                    $fwd_adapt = "GTGCCAGCMGCCGCGGTAA";
-                    $rev_adapt = "GGACTACHVGGGTWTCTAAT";
-                }
-                if ($var eq "ITS")
-                {
-                    $fwd_adapt = "CTGCCCTTTGTACACACCGC";
-                    $rev_adapt = "TTTCGCTGCGTTCTTCATCG";
-                }
-            }
+        #     my $filename;
+        #     foreach my $filename (@inputsF)
+        #     {
+        #         my $cmd = $base_cmd;
+        #         my ($name, $dir, $ext) = fileparse($filename, qr{\.gz});
+        #         if ($ext)
+        #         {
+        #             $cmd =~ s/perl/gunzip $filename; perl/;
+        #         }
+        #         my @suffixes = (".fastq");
+        #         my $Prefix   = basename($name, @suffixes);
+        #         my $tc       = "$GLOBAL_PATHS->{'wd'}/$Prefix" . "_tc";
+        #         $cmd =
+        #             $cmd
+        #           . " -fastq "
+        #           . catfile($dir, $name)
+        #           . " -out $tc -line_width 0 "
+        #           . "-verbose -tag5 " . $config_hashref->{'part1 params'}->{"fwd primer"} . " -mm5 2 -nomatch 1'";
+        #         push @cmds, $cmd;
+        #     }
 
-            my $filename;
-            foreach my $filename (@inputsF)
-            {
-                my $cmd = $base_cmd;
-                my ($name, $dir, $ext) = fileparse($filename, qr{\.gz});
-                if ($ext)
-                {
-                    $cmd =~ s/perl/gunzip $filename; perl/;
-                }
-                my @suffixes = (".fastq");
-                my $Prefix   = basename($name, @suffixes);
-                my $tc       = "$GLOBAL_PATHS->{'wd'}/$Prefix" . "_tc";
-                $cmd =
-                    $cmd
-                  . " -fastq "
-                  . catfile($dir, $name)
-                  . " -out $tc -line_width 0 "
-                  . "-verbose -tag5 $fwd_adapt -mm5 2 -nomatch 1'";
-                push @cmds, $cmd;
-            }
-
-            foreach my $filename (@inputsR)
-            {
-                my $cmd = $base_cmd;
-                my ($name, $dir, $ext) = fileparse($filename, qr{\.gz});
-                if ($ext)
-                {
-                    $cmd =~ s/perl/gunzip $filename; perl/;
-                }
-                my @suffixes = (".fastq");
-                my $Prefix   = basename($name, @suffixes);
-                my $tc       = "$GLOBAL_PATHS->{'wd'}/$Prefix" . "_tc";
-                $cmd =
-                    $cmd
-                  . " -fastq "
-                  . catfile($dir, $name)
-                  . " -out $tc -line_width 0 "
-                  . "-verbose -tag5 $rev_adapt -mm5 2 -nomatch 1'";
-                push @cmds, $cmd;
-            }
-        } elsif ($var eq "OMPA")
-        {
+        #     foreach my $filename (@inputsR)
+        #     {
+        #         my $cmd = $base_cmd;
+        #         my ($name, $dir, $ext) = fileparse($filename, qr{\.gz});
+        #         if ($ext)
+        #         {
+        #             $cmd =~ s/perl/gunzip $filename; perl/;
+        #         }
+        #         my @suffixes = (".fastq");
+        #         my $Prefix   = basename($name, @suffixes);
+        #         my $tc       = "$GLOBAL_PATHS->{'wd'}/$Prefix" . "_tc";
+        #         $cmd =
+        #             $cmd
+        #           . " -fastq "
+        #           . catfile($dir, $name)
+        #           . " -out $tc -line_width 0 "
+        #           . "-verbose -tag5 " . $config_hashref->{'part1 params'}->{"rev primer"} . " -mm5 2 -nomatch 1'";
+        #         push @cmds, $cmd;
+        #     }
+        # } elsif ($var eq "OMPA")
+        # {
             my $bbduk = $config_hashref->{"part1"}->{"bbduk.sh"};
             foreach my $in_F (@inputsF)
             {
                 my ($name, $dir, $ext) = fileparse($in_F, qr{\.gz});
-                if ($ext)
-                {
-                    my $cmd = "gunzip $in_F";
-                    push @cmds, $cmd;
+                # if ($ext)
+                # {
+                #     my $cmd = "gunzip $in_F";
+                #     push @cmds, $cmd;
 
-                    # $name would now contain <sample_name>.fastq
-                }
+                #     # $name would now contain <sample_name>.fastq
+                # }
                 my @suffixes = ("_R1.fastq");
                 my $prefix   = basename($name, @suffixes);
                 my $in_R     = catfile($GLOBAL_PATHS->rev_sample_dir(),
-                                   "${prefix}_R2.fastq");
+                                   "${prefix}_R2.fastq${ext}");
                 my $out_F =
-                  catfile($GLOBAL_PATHS->{'wd'}, "${prefix}_R1_tc.fastq");
+                  catfile($GLOBAL_PATHS->{'wd'}, "${prefix}_R1_tc.fastq.gz");
                 my $out_R =
-                  catfile($GLOBAL_PATHS->{'wd'}, "${prefix}_R2_tc.fastq");
+                  catfile($GLOBAL_PATHS->{'wd'}, "${prefix}_R2_tc.fastq.gz");
+                my $stats_F = catfile($GLOBAL_PATHS->part1_stdout_log(), "${prefix}_R1_tc.stats");
+                my $stats_R = catfile($GLOBAL_PATHS->part1_stdout_log(), "${prefix}_R2_tc.stats");
+
+                sub min_primer_length {
+                    my $primers = shift;
+                    my @primers = split ",", $primers;
+                    my @primer_lengths = map length, @primers;
+                    return(List::Util::min(@primer_lengths));
+                }
+                my $k_F = min_primer_length($config_hashref->{'part1 params'}->{"fwd primer"});
+                my $k_R = min_primer_length($config_hashref->{'part1 params'}->{"rev primer"});
+                my $maxlen = $trimMaxLen ? $trimMaxLen : 283;
 
                 # trim fwd reads first (skipr2) then trim rev reads (skipr1)
                 # max length 301 - (20 - 2) = 283
                 my $cmd =
-                  "$bbduk -Xmx4915m -Xms4327m in=$in_F in2=$in_R out=stdout.fastq  minlen=60 literal=TGGGATCGTTTTGATGTATT,TGGGATCGCTTTGATGTATT copyundefined rcomp=f skipr2=t restrictleft=30 ktrim=l k=20 hdist=2  mink=18 hdist2=0";
+                  "$bbduk -Xmx4915m -Xms4327m in=$in_F in2=$in_R literal=" . $config_hashref->{'part1 params'}->{"fwd primer"} . " copyundefined out=stdout.fastq stats=$stats_F overwrite=t ziplevel=9 ktrim=l k=$k_F rcomp=f hdist=2 mink=18 hdist2=0 skipr2=t restrictleft=30 minlen=60";
                 $cmd .= " 2>>"
                   . catfile($GLOBAL_PATHS->part1_error_log(), "bbduk.sh.stderr");
                 $cmd .=
-                  " | $bbduk -Xmx4915m -Xms4327m in=stdin.fastq int=t out=$out_F out2=$out_R  minlen=0 maxlen=283 literal=TAAACTTGCTTGCCACTCATG,ACTTGCTTGCCATTCATGGTA copyundefined rcomp=f skipr1=t restrictleft=30 ktrim=l k=20 hdist=2 mink=18 hdist2=0";
+                  " | $bbduk -Xmx4915m -Xms4327m in=stdin.fastq interleaved=t literal=" . $config_hashref->{'part1 params'}->{"rev primer"} . " copyundefined out=$out_F out2=$out_R stats=$stats_R overwrite=t ziplevel=9 ktrim=l k=$k_R rcomp=f hdist=2 mink=18 hdist2=0 skipr1=t minlen=0 restrictleft=30 maxlen=$maxlen";
                 $cmd .= " 2>>"
                   . catfile($GLOBAL_PATHS->part1_error_log(), "bbduk.sh.stderr");
                 push @cmds, $cmd;
             }
-        }
+        # }
 
-        my $qsub = grep(/^${var}$/, ("V3V4", "V4", "ITS"));
+        # Do not submit bbduk.sh to grid. Not sure why. One thing that needs to
+        # to be changed before submitting to grid is pre-pending the executor
+        # string.
         execute_and_log(
                         cmds       => \@cmds,
                         logger => $GLOBAL_PATHS,
                         dry_run    => $dryRun,
                         msg  => "Removing $var primers from all sequences.\n",
-                        qsub => $qsub
+                        qsub => 0
                        );
 
         $GLOBAL_PATHS->print("---Finished trimming primers from all samples.\n");
 
-        my @fwdFiles = glob("$GLOBAL_PATHS->{'wd'}/*R1_tc.fastq");
+        my @fwdFiles = glob("$GLOBAL_PATHS->{'wd'}/*R1_tc.fastq.gz");
         for (my $i = 0; $i < scalar @fwdFiles; $i++)
         {
-            my $revFile = $fwdFiles[$i] =~ s/R1_tc.fastq$/R2_tc.fastq/r;
+            my $revFile = $fwdFiles[$i] =~ s/R1_tc.fastq.gz$/R2_tc.fastq.gz/r;
             if (-z $fwdFiles[$i] || -z $revFile)
             {
                 if (-z $fwdFiles[$i])
@@ -1776,16 +1863,16 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
             }
         }
 
-        my $to_gzip = join ",", "*_tc.fastq", catfile($GLOBAL_PATHS->fwd_sample_dir(), "*.fastq"), catfile($GLOBAL_PATHS->rev_sample_dir(), "*.fastq");
-        my $cmd =
-          "gzip -f9 {" . $to_gzip . "}";
-        execute_and_log(
-                        cmds       => [$cmd],
-                        logger => $GLOBAL_PATHS,
-                        dry_run    => $dryRun,
-                        msg        => "Compressing tagcleaned FASTQ's...\n"
-                       );
-        $GLOBAL_PATHS->print("---Raw and tagcleaned FASTQ's compressed.\n");
+        # my $to_gzip = join ",", "*_tc.fastq", catfile($GLOBAL_PATHS->fwd_sample_dir(), "*.fastq"), catfile($GLOBAL_PATHS->rev_sample_dir(), "*.fastq");
+        # my $cmd =
+        #   "gzip -f9 {" . $to_gzip . "}";
+        # execute_and_log(
+        #                 cmds       => [$cmd],
+        #                 logger => $GLOBAL_PATHS,
+        #                 dry_run    => $dryRun,
+        #                 msg        => "Compressing tagcleaned FASTQ's...\n"
+        #                );
+        # $GLOBAL_PATHS->print("---Raw and tagcleaned FASTQ's compressed.\n");
 
         if (!@dbg)
         {
@@ -1845,225 +1932,17 @@ if ((!@dbg) || grep(/^dada2$/, @dbg))
 
     if (!$skipMe)
     {
-        my $truncLen;
-
-        if ($oneStep)
-        {
-            if ($var eq "V3V4")
-            {
-
-                $truncLenL = 255 if (!$truncLenL);
-                $truncLenR = 255 if (!$truncLenR);
-
-                if (!$maxN)
-                {
-                    $maxN = 0;
-                }
-                if (!$maxEE)
-                {
-                    $maxEE = "2";
-                }
-                if (!$truncQ)
-                {
-                    $truncQ = 2;
-                }
-                if (!$phix)
-                {
-                    $phix = "1";
-                }
-                if (!$maxLen)
-                {
-                    $maxLen = "Inf";
-                }
-                if (!$minLen)
-                {
-                    $minLen = 20;
-                }
-                if (!$minQ)
-                {
-                    $minQ = 0;
-                }
-            }
-
-            if ($var eq "V4")
-            {
-                $truncLenL = 200 if (!$truncLenL);
-                $truncLenR = 200 if (!$truncLenR);
-
-                if (!$maxN)
-                {
-                    $maxN = 0;
-                }
-                if (!$maxEE)
-                {
-                    $maxEE = "2";
-                }
-                if (!$truncQ)
-                {
-                    $truncQ = 2;
-                }
-                if (!$phix)
-                {
-                    $phix = "1";
-                }
-                if (!$maxLen)
-                {
-                    $maxLen = "Inf";
-                }
-                if (!$minLen)
-                {
-                    $minLen = 20;
-                }
-                if (!$minQ)
-                {
-                    $minQ = 0;
-                }
-            }
-        } else
-        {
-            if ($var eq "V3V4")
-            {
-                $truncLenL = 255 if (!$truncLenL);
-                $truncLenR = 225 if (!$truncLenR);
-
-                if (!$maxN)
-                {
-                    $maxN = 0;
-                }
-                if (!$maxEE)
-                {
-                    $maxEE = "2";
-                }
-                if (!$truncQ)
-                {
-                    $truncQ = 2;
-                }
-                if (!$phix)
-                {
-                    $phix = "1";
-                }
-                if (!$maxLen)
-                {
-                    $maxLen = "Inf";
-                }
-                if (!$minLen)
-                {
-                    $minLen = 20;
-                }
-                if (!$minQ)
-                {
-                    $minQ = 0;
-                }
-            }
-
-            if ($var eq "V4")
-            {
-                $truncLenL = 200 if (!$truncLenL);
-                $truncLenR = 200 if (!$truncLenR);
-
-                if (!$maxN)
-                {
-                    $maxN = 0;
-                }
-                if (!$maxEE)
-                {
-                    $maxEE = "2";
-                }
-                if (!$truncQ)
-                {
-                    $truncQ = 2;
-                }
-                if (!$phix)
-                {
-                    $phix = "1";
-                }
-                if (!$maxLen)
-                {
-                    $maxLen = "Inf";
-                }
-                if (!$minLen)
-                {
-                    $minLen = 20;
-                }
-                if (!$minQ)
-                {
-                    $minQ = 0;
-                }
-            }
-
-            if ($var eq "ITS")
-            {
-                $truncLenL = 0 if (!$truncLenL);
-                $truncLenR = 0 if (!$truncLenR);
-
-                if (!$maxN)
-                {
-                    $maxN = 0;
-                }
-                if (!$maxEE)
-                {
-                    $maxEE = "1";
-                }
-                if (!$truncQ)
-                {
-                    $truncQ = 2;
-                }
-                if (!$phix)
-                {
-                    $phix = "1";
-                }
-                if (!$maxLen)
-                {
-                    $maxLen = "Inf";
-                }
-                if (!$minLen)
-                {
-                    $minLen = 50;
-                }
-                if (!$minQ)
-                {
-                    $minQ = 0;
-                }
-            }
-            if ($var eq "OMPA")
-            {
-                $truncLenL = 259 if (!$truncLenL);
-                $truncLenR = 150 if (!$truncLenR);
-
-                if (!$maxN)
-                {
-                    $maxN = 0;
-                }
-                if (!$maxEE)
-                {
-                    $maxEE = "2";
-                }
-                if (!$truncQ)
-                {
-                    $truncQ = 2;
-                }
-                if (!$phix)
-                {
-                    $phix = "1";
-                }
-                if (!$maxLen)
-                {
-                    $maxLen = "Inf";
-                }
-                if (!$minLen)
-                {
-                    $minLen = 20;
-                }
-                if (!$minQ)
-                {
-                    $minQ = 0;
-                }
-            }
-        }
         my $r_out = dada2(
-                      $run,    $truncLenL, $truncLenR, $maxN,
-                      $maxEE,  $truncQ,    $phix,      $maxLen,
-                      $minLen, $minQ,      $dada2mem
+                      truncLenL => $config_hashref->{'part1 params'}->{"fwd trim length"}, 
+                      truncLenR => $config_hashref->{'part1 params'}->{"rev trim length"}, 
+                      maxEE => $config_hashref->{'part1 params'}->{"max EE"}, 
+                      truncQ => $config_hashref->{'part1 params'}->{"trim quality"},    
+                      "rm.phix" => $config_hashref->{'part1 params'}->{"remove phix"},      
+                      maxLen => $config_hashref->{'part1 params'}->{"max length"},
+                      minLen => $config_hashref->{'part1 params'}->{"min length"}, 
+                      minQ => $config_hashref->{'part1 params'}->{"filter quality"},      
+                      amplicon_length => $amplicon_length,
+                      dada2mem => $dada2mem
                      );
 
 ###### EVALUATING DADA2 OUTPUT ##########
@@ -2096,12 +1975,6 @@ if ((!@dbg) || grep(/^dada2$/, @dbg))
 
         if (List::Util::all {-e $_} @outputs)
         {
-            $GLOBAL_PATHS->print(
-              "\nFor $var region, dada2 used the following filtering "
-              . "requirements:\ntruncLen = $truncLenL, $truncLenR\n"
-              . "maxN = $maxN\nmaxEE = $maxEE\ntruncQ = $truncQ\n"
-              . "rm.phix = $phix\n");
-
             # "dada2 completed successfully" is a key phrase that causes
             # an appropriate message printed to STDOUT
             $GLOBAL_PATHS->print("dada2 completed successfully!\nAbundance table for "
@@ -2243,6 +2116,7 @@ sub project_metadata
         if (!$replace)
         {
             # recursively merge params and checkpoints with $project_metadata
+            Hash::Merge::set_behavior('LEFT_PRECEDENT');
             $combined_metadata = merge($old_metadata, $new_metadata);
         } else
         {
@@ -2751,22 +2625,27 @@ sub readSplitLog
 
 sub dada2
 {
-    my $run       = shift;
-    my $truncLenL = shift;
-    my $truncLenR = shift;
-    my $maxN      = shift;
-    my $maxEE     = shift;
-    my $truncQ    = shift;
-    my $phix      = shift;
-    my $maxLen    = shift;
-    my $minLen    = shift;
-    my $minQ      = shift;
-    my $dada2mem  = shift;
-
+    my %arg      = @_;
+    my $truncLenL = delete %arg{"truncLenL"};
+    my $truncLenR = delete %arg{"truncLenR"};
+    my $maxEE     = delete %arg{"maxEE"};
+    my $truncQ    = delete %arg{"truncQ"};
+    my $rm_phix      = delete %arg{"rm.phix"};
+    my $maxLen    = delete %arg{"maxLen"};
+    my $minLen    = delete %arg{"minLen"};
+    my $minQ      = delete %arg{"minQ"};
+    my $amplicon_length = delete %arg{"amplicon_length"};
+    my $dada2mem  = delete %arg{"dada2mem"};
+    
     my $Rscript =
       catfile($pipelineDir, "scripts", "filter_and_denoise_illumina.R");
-    my $args =
-      "--truncLenL=$truncLenL --truncLenR=$truncLenR --maxN=$maxN --maxEE=$maxEE --truncQ=$truncQ --rm.phix=$phix";
+    my $args = "--maxN=0 --maxEE=$maxEE --truncQ=$truncQ";
+    $args .= " --rm.phix" if($rm_phix);
+    if($truncLenL && $truncLenR) {
+        $args .= " --truncLenL=$truncLenL --truncLenR=$truncLenR";
+    } else {
+        $args .= " --optimize_trim --amplicon_length=$amplicon_length --verbose";
+    }
 
     chdir $GLOBAL_PATHS->{'wd'};
 
@@ -2841,7 +2720,7 @@ sub dada2
                     $GLOBAL_PATHS->print("---Attempting to restart R...\n");
 
                     $previous_mem = $dada2mem;
-                    $dada2mem     = List::Util::min($dada2mem * 2, 1);
+                    $dada2mem     = List::Util::min($dada2mem * 2, 64);
 
                     last;
                 } elsif ($line =~ /(E|e)rror/ || $line =~ /ERROR/)

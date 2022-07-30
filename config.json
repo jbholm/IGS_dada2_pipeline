@@ -20,5 +20,55 @@
     "qiime_env": "/local/projects-t3/MSL/pipelines/packages/envs/qiime1",
     "conda_init": "/usr/local/packages/miniconda3/etc/profile.d/conda.sh",
     "run_storage_path": "/local/projects-t3/MSL/runs",
-    "executor": "qsub -w w -b y -P jravel-lab -q threaded.q -pe thread 4 -cwd -l mem_free=1G"
+    "executor": "qsub -w w -b y -P jravel-lab -q threaded.q -pe thread 4 -cwd -l mem_free=1G",
+    "part1 params": {
+        "trim quality": 2,
+        "remove phix": 1,
+        "max length": "Inf",
+        "filter quality": 0,
+        "max EE": 2,
+        "min length": 12,
+        "onestep": {
+            "V3V4": {
+                "fwd primer": "GGACTACHVGGGTWTCTAAT",
+                "rev primer": "ACTCCTACGGGAGGCAGCAG",
+                "fwd trim length": 255,
+                "rev trim length": 255
+            },
+            "V4": {
+                "fwd primer": "GTGCCAGCMGCCGCGGTAA",
+                "rev primer": "ACTCCTACGGGAGGCAGCAG",
+                "fwd trim length": 200,
+                "rev trim length": 200
+            }
+        },
+        "twostep": {
+            "V3V4": {
+                "fwd primer": "ACTCCTACGGGAGGCAGCAG",
+                "rev primer": "GGACTACHVGGGTWTCTAAT",
+                "fwd trim length": 255,
+                "rev trim length": 225
+            },
+            "V4": {
+                "fwd primer": "GTGCCAGCMGCCGCGGTAA",
+                "rev primer": "GGACTACHVGGGTWTCTAAT",
+                "fwd trim length": 200,
+                "rev trim length": 200            },
+            "ITS": {
+                "fwd primer": "CTGCCCTTTGTACACACCGC",
+                "rev primer": "TTTCGCTGCGTTCTTCATCG",
+                "fwd trim length": 0,
+                "rev trim length": 0,
+                "max EE": 1,
+                "min length": 50
+            },
+            "OMPA": {
+                "fwd primer": "TGGGATCGYTTTGATGTATT",
+                "rev primer": "TAAACTTGCTTGCCACTCATG,ACTTGCTTGCCATTCATGGTA",
+                "fwd trim length": 259,
+                "rev trim length": 150
+            }
+
+        }
+    }
 }
