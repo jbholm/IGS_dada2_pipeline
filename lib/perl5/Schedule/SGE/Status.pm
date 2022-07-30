@@ -97,7 +97,7 @@ sub status
             unless (defined $states) {$states = ''}
             $allstats->{$node} = [$type, $procs, $load_avg, $states];
         } elsif ($line =~
-            m#^(\d+)\s+(\d+\.\d+)\s+(\S+)\s+(\S+)\s+([a-z]+)\s+(\d+\/\d+\/\d+\s+\d+\:\d+\:\d+)\s+\S+\s?#
+            m#^\s?(\d+)\s+(\d+\.\d+)\s+(\S+)\s+(\S+)\s+([a-z]+)\s+(\d+\/\d+\/\d+\s+\d+\:\d+\:\d+)\s+\S+\s?#
           )
         {
           # it is a job

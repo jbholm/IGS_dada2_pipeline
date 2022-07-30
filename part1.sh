@@ -134,6 +134,42 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         VERBOSE=$1
         shift 1
         ;;
+    --fwd_primer*)
+        if [[ $1 =~ "--fwd_primer=" ]]; then 
+            FWD_PRIMER="${1#*=}"
+            shift 1
+        elif [[ $1 == "--fwd_primer" ]]; then
+            try_assign FWD_PRIMER "$1" "$2"
+            shift 2
+        fi
+        ;;
+    --rev_primer*)
+        if [[ $1 =~ "--rev_primer=" ]]; then 
+            REV_PRIMER="${1#*=}"
+            shift 1
+        elif [[ $1 == "--rev_primer" ]]; then
+            try_assign REV_PRIMER "$1" "$2"
+            shift 2
+        fi
+        ;;
+    --trim-maxlength*)
+        if [[ $1 =~ "--trim-maxlength=" ]]; then 
+            TRIM_MAXLENGTH="${1#*=}"
+            shift 1
+        elif [[ $1 == "--trim-maxlength" ]]; then
+            try_assign TRIM_MAXLENGTH "$1" "$2"
+            shift 2
+        fi
+        ;;
+    --amplicon_length*)
+        if [[ $1 =~ "--amplicon_length=" ]]; then 
+            AMPLICON_LENGTH="${1#*=}"
+            shift 1
+        elif [[ $1 == "--amplicon_length" ]]; then
+            try_assign AMPLICON_LENGTH "$1" "$2"
+            shift 2
+        fi
+        ;;
     --dada2-mem*)
         if [[ $1 =~ "--dada2-mem=" ]]; then 
             DADA2MEM="${1#*=}"
@@ -149,6 +185,24 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         else
             PARAMS="$PARAMS $1"
             shift 1
+        fi
+        ;;
+    --dada2-truncLen-f*)
+        if [[ $1 =~ "--dada2-truncLen-f=" ]]; then 
+            TRIM_LENGTH_FWD="${1#*=}"
+            shift 1
+        elif [[ $1 == "--dada2-truncLen-f" ]]; then
+            try_assign TRIM_LENGTH_FWD "$1" "$2"
+            shift 2
+        fi
+        ;;
+    --dada2-truncLen-r*)
+        if [[ $1 =~ "--dada2-truncLen-r=" ]]; then 
+            TRIM_LENGTH_REV="${1#*=}"
+            shift 1
+        elif [[ $1 == "--dada2-truncLen-r" ]]; then
+            try_assign TRIM_LENGTH_REV "$1" "$2"
+            shift 2
         fi
         ;;
     --dada2*)
@@ -306,14 +360,48 @@ fi
 # fi
 
 # Validate the variable region
+[[ $ONESTEP ]] && onestep_key="onestep" || onestep_key="twostep"
+supported_regions=( `cat "$MY_DIR/config.json" | \
+    python3 -sc "import sys, json; \
+    regions = json.load(sys.stdin)['part1 params']['$onestep_key'].keys(); \
+    print(' '.join(regions))"` )
 if [[ ! -n "$VAR" ]]; then
     VAR="V3V4"
-elif [[ !( "$VAR" == "V3V4" || "$VAR" == "V4" || "$VAR" == "ITS" || "${VAR^^}" == "OMPA" ) ]]; then
-    MSG="Variable region was '$VAR' but only 'V3V4', 'V4', 'ITS', and 'ompA' (case-insensitive) are "
-    MSG+="supported."
-    stop "$MSG"
+else
+    for reg in "${supported_regions[@]}"; do
+        if [[ ${VAR^^} == $reg ]]; then
+            supported="t"
+        fi
+    done
+    if [[ ! -n $supported ]]; then
+        if [[ ! -n $FWD_PRIMER || ! -n $REV_PRIMER || ! ( -n $TRIM_LENGTH_FWD && -n $TRIM_LENGTH_REV || -n $AMPLICON_LENGTH  ) ]]; then
+            MSG="Variable region was '$VAR' but only the following are supported (case-insensitive):\n"
+            MSG+="${supported_regions[*]}\n"
+            MSG+="For unsupported regions, the pipeline requires:\n--fwd_primer\n--rev_primer\n"
+            MSG+="either --fwd_trim_length and --rev_trim_length, or --amplicon_length.\n"
+            stop "$MSG"
+        fi
+    fi
 fi
 printf "VARIABLE REGION: $VAR\n"
+if [[ -n "$FWD_PRIMER" ]]; then
+    FWD_PRIMER="--fwd_primer=$FWD_PRIMER"
+fi
+if [[ -n "$REV_PRIMER" ]]; then
+    REV_PRIMER="--rev_primer=$REV_PRIMER"
+fi
+if [[ -n "$TRIM_LENGTH_FWD" ]]; then
+    TRIM_LENGTH_FWD="--dada2-truncLen-f=$TRIM_LENGTH_FWD"
+fi
+if [[ -n "$TRIM_LENGTH_REV" ]]; then
+    TRIM_LENGTH_REV="--dada2-truncLen-r=$TRIM_LENGTH_REV"
+fi
+if [[ -n "$AMPLICON_LENGTH" ]]; then
+    AMPLICON_LENGTH="--amplicon_length=$AMPLICON_LENGTH"
+fi
+if [[ -n "$TRIM_MAXLENGTH" ]]; then
+    TRIM_MAXLENGTH="--trim-maxlength=$TRIM_MAXLENGTH"
+fi
 
 SD_DEFAULT=`cat "$MY_DIR/config.json" | \
     python3 -c "import sys, json; print(json.load(sys.stdin)['run_storage_path'])"`
@@ -474,7 +562,7 @@ module load r/4.0.2 2>/dev/null || true
 log="$SD/${RUN}_16S_pipeline_log.txt"
 
 # Remove extra spaces caused by joining empty arguments with a whitespace
-OPTSARR=("$PARAMS" "$BCLENGTH" "$TROUBLESHOOT_BARCODES" "$ONESTEP" "$NODELETE" "$DADA2" "$DADA2MEM" "$DBG" "$VERBOSE" "$DRY_RUN")
+OPTSARR=("$PARAMS" "$BCLENGTH" "$TROUBLESHOOT_BARCODES" "$ONESTEP" "$NODELETE" "$FWD_PRIMER" "$REV_PRIMER" "$TRIM_MAXLENGTH" "$DADA2" "$TRIM_LENGTH_FWD" "$TRIM_LENGTH_REV" "$AMPLICON_LENGTH" "$DADA2MEM" "$DBG" "$VERBOSE" "$DRY_RUN")
 OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 
