@@ -94,7 +94,7 @@ names(filt) <- names(filt.rev) <- sample.names
 
 learn_errors_and_denoise <- function(filt, filt.rev, fast = F, verbose = T, debug = F, multithread = T) {
 	# Learn error rates
-	nBases = if(debug) 10^2 else if(fast) 10^6 else 10^9
+	nBases = if(debug) 10^2 else if(fast) 10^6 else 10^8
 	if(!verbose) { s <- file(tempfile()); sink(file=s)}
 	errF <- learnErrors(
 		filt, nbases=nBases, multithread=multithread, randomize = T, verbose = verbose,
@@ -291,11 +291,13 @@ if(args$optimize_trim) {
 	args$truncLenR <- trunc_lens$R
 }
 
+# this is here purely to count incoming reads (that is, after primer trimming)
 nTrimmed <- filterAndTrim(
     fwd = fastqFs,
     filt = filt,
     rev = fastqRs,
     filt.rev = filt.rev,
+	minLen = 0,
     maxN = Inf,
     truncQ = 0,
     rm.phix = F,

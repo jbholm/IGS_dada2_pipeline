@@ -89,21 +89,15 @@ terminates.
 
 =over
 
+=item B<-h>, B<--help>
+
+Print help message and exit successfully.
+
 =item B<--working-dir>=PATH, B<-wd> PATH
 
 Indicate an existing directory in which to place output, and from which the
 run name will be parsed. The last directory on PATH must be named after the run.
 (Many of the result files will be named after the run.)
-
-=item B<--1Step>
-
-Use this flag if the data are prepared by 1-Step PCR (only forward & reverse read files
-available). This processes the input files correctly and activates appropriate
-parameters during adapter trimming, quality trimming/filtering, and denoising.
-
-=item B<-h>, B<--help>
-
-Print help message and exit successfully.
 
 =item B<--qsub-project>=space, B<-qp> space
 
@@ -180,6 +174,12 @@ with B<--1step>. Gzip compression optional.
 
 The full path to the Qiime-formatted mapping file.
 
+=item B<--1Step>
+
+Use this flag if the data are prepared by 1-Step PCR (only forward & reverse read files
+available). This processes the input files correctly and activates appropriate
+parameters during adapter trimming, quality trimming/filtering, and denoising.
+
 =back
 
 =head2 BARCODE EXTRACTION AND DEMULTIPLEXING
@@ -210,29 +210,73 @@ overall demux is incorrect.
 
 =over
 
+This pipeline stores configurations for various hypervariable regions in its 
+config file, located at <pipeline_path>/config.json. Some configurations are 
+specific to one-step PCR library prep too. When the targeted variable region is 
+not described in the config file, use the following options to specify the 
+processing parameters. These options will also override any parameters specified 
+by the config file.
+
 =item B<--var-reg>={V3V4, V4, ITS}, B<-v> {V3V4, V4, ITS}
 
 The targeted variable region.
 
-=item B<--dada2>="options"
+=item B<--fwd_primer>="SEQUENCE"
 
-Overrides the default DADA2 parameters used at the MSL. The following options
-are allowed:
+The primer(s) to trim from the forward reads. This value is passed on to 
+bbduk.sh's "literal" option, so IUPAC ambiguity codes and comma-separated 
+sequences are allowed.
 
- --dada2-truncLen-f, -for (defaults: V3V4: 225 | V4: 200 | ITS: 0)
- --dada2-truncLen-r, -rev (defaults: V3V4: 225 | V4: 200 | ITS: 0)
- --dada2-maxEE (defaults: V3V4: 2 | V4: 2 | ITS: 0)
- --dada2-truncQ (default: 2)
- --dada2-rmPhix (default: TRUE)
- --dada2-maxLen (default: Inf)
- --dada2-minLen (default: V3V4: 20 | V4: 20 | ITS: 50)
- --dada2-minQ (default: 0)
+=item B<--rev_primer>="SEQUENCE"
 
-Please see https://rdrr.io/bioc/dada2/man/filterAndTrim.html for descriptions
-of the parameters. The parameters should be given within double quotes as shown 
-below:
+The primer(s) to trim from the reverse reads. See the note about B<--fwd_primer>.
 
-part1.sh --dada2="--dada2-maxEE 5 --dada2-minQ 10" ...
+=item B<--trim-maxlength>=LENGTH
+
+After trimming primers, filter out reads longer than LENGTH. This value is
+passed on to bbduk.sh's maxlen option. When primer trimming could yield various 
+output read lengths, set this parameter to the maximum expected output read 
+length.
+
+=item B<--dada2-truncQ>=SCORE
+
+Trim reads at the first instance of a quality score less than or equal to SCORE.
+
+=item B<--dada2-truncLen-f>=LENGTH
+
+Forward reads will be trimmed to LENGTH. Reads shorter than LENGTH will be
+removed.
+
+=item B<--dada2-truncLen-r>=LENGTH
+
+Reverse reads will be trimmed to LENGTH. Reads shorter than LENGTH will be 
+removed.
+
+=item B<--amplicon_length>=LENGTH
+
+The expected amplicon length. When determining the ideal trimming lengths, any
+combination that prevents mate pair merging (due to excessive trimming) will be 
+avoided. Amplicon length is not needed when B<--dada2-truncLen-f> and 
+B<--dada2-truncLen-R> are both given.
+
+=item B<--dada2-minLen>=LENGTH
+
+Remove reads with length less than LENGTH. This filter is enforced after 
+trimming.
+
+=item B<--dada2-minQ>=SCORE
+
+After trimming, reads contain a quality score less than SCORE will be discarded.
+
+=item B<--dada2-maxEE>=VALUE
+
+After trimming, reads with higher than VALUE "expected errors" will be 
+discarded. 
+
+=item B<--dada2-rmPhix>, B<--no-dada2-rmPhix>
+
+Remove reads aligning to the Phi.X genome. (Give --no-dada2-rmPhix to override
+a default value in the config file.)
 
 =item B<--dada2-mem> memory
 
@@ -295,7 +339,6 @@ my $dada2mem      = "1G";
 my $tbshtBarcodes = 0;
 my $delete        = 1;
 my $trySkip       = 1;
-my $amplicon_length = 0;
 GetOptions(
            "raw-path|i=s"           => \my $raw_dir,
            "r1=s"                   => \my $r1,
@@ -310,18 +353,17 @@ GetOptions(
            "dry-run!"               => \my $dryRun,
            "skip!"                  => \$trySkip,
            "bclen=i"                => \my $bcLen,
-            "trim-maxlength=i"         => \my $trimMaxLen,
            "fwd_primer=s"           => \my $primer_L,
            "rev_primer=s"           => \my $primer_R,
-           "amplicon_length=i"      => \$amplicon_length,
+            "trim-maxlength=i"         => \my $trimMaxLen,
+           "amplicon_length=i"      => \my $amplicon_length,
            "dada2-truncLen-f|for=i" => \my $truncLenL,
            "dada2-truncLen-r|rev=i" => \my $truncLenR,
-           "dada2-maxEE=s"          => \my $maxEE,
            "dada2-truncQ=s"         => \my $truncQ,
-           "dada2-rmPhix!"          => \my $phix,
-           "dada2-maxLen=s"         => \my $maxLen,
            "dada2-minLen=s"         => \my $minLen,
            "dada2-minQ=s"           => \my $minQ,
+           "dada2-maxEE=s"          => \my $maxEE,
+           "dada2-rmPhix!"          => \my $phix,
            "dada2-mem:s"            => \$dada2mem,
            "1Step!"                 => \$oneStep,
            "working-dir|wd=s"       => \my $wd,
@@ -643,11 +685,11 @@ sub override_default_param {
 
     $filehandle->print(uc($name) . ": ");
     my $ans;
-    if(exists $config_hashref->{'part1 params'}->{$name} && ! $value) {
+    if(exists $config_hashref->{'part1 params'}->{$name} && ! defined($value)) {
         $filehandle->print($config_hashref->{'part1 params'}->{$name});
         $ans = $config_hashref->{'part1 params'}->{$name};
     } else {
-        if ($value) {
+        if (defined($value)) {
             $filehandle->print($value);
             if(exists $config_hashref->{'part1 params'}->{$name}) {
                 $filehandle->print(" (Overriding default value for this region)");
@@ -691,7 +733,7 @@ $config_hashref->{'part1 params'}->{"rev trim length"} = eval{
 };
 if(! $config_hashref->{'part1 params'}->{"fwd trim length"} || ! $config_hashref->{'part1 params'}->{"rev trim length"}) {
     # if either of the trim lengths missing...
-    if($amplicon_length) {
+    if(defined($amplicon_length)) {
         $GLOBAL_PATHS->print("AMPLICON LENGTH: $amplicon_length\n");
         $GLOBAL_PATHS->print("TRIMMING PARAMETERS WILL BE OPTIMIZED");
         if($config_hashref->{'part1 params'}->{"fwd trim length"} || $config_hashref->{'part1 params'}->{"rev trim length"}) {
@@ -702,7 +744,7 @@ if(! $config_hashref->{'part1 params'}->{"fwd trim length"} || ! $config_hashref
     } else {
         die "TRIMMING PARAMETERS NOT PROVIDED. CANNOT OPTIMIZE TRIM LENGTH BECAUSE AMPLICON LENGTH NOT KNOWN\n";
     }
-} elsif ($amplicon_length) {
+} elsif (defined($amplicon_length)) {
     $GLOBAL_PATHS->print("Amplicon length not needed because both trim lengths are known. Ignoring.\n");
 }
 $config_hashref->{'part1 params'}->{'trim quality'} = override_default_param(
@@ -713,11 +755,6 @@ $config_hashref->{'part1 params'}->{'trim quality'} = override_default_param(
 $config_hashref->{'part1 params'}->{'min length'} = override_default_param(
     value => $minLen,
     name => "min length",
-    filehandle => $GLOBAL_PATHS
-    );
-$config_hashref->{'part1 params'}->{'max length'} = override_default_param(
-    value => $maxLen,
-    name => "max length",
     filehandle => $GLOBAL_PATHS
     );
 $config_hashref->{'part1 params'}->{'filter quality'} = override_default_param(
@@ -1695,6 +1732,9 @@ if (!@dbg || grep(/^splitsamples$/, @dbg))
             }
             $GLOBAL_PATHS->check_error_log(prefix => $step3);
         }
+        print "--All samples ($n_fq) and reads (@{[$nLines / 4]}) accounted for"
+          . " in "
+          . $GLOBAL_PATHS->rev_sample_dir() . "\n";
 
         # Append _R1 or _R2 to each filename
         {
@@ -1724,9 +1764,6 @@ if (!@dbg || grep(/^splitsamples$/, @dbg))
                            pf        => $GLOBAL_PATHS
                           );
         }
-        print "--All samples ($n_fq) and reads (@{[$nLines / 4]}) accounted for"
-          . " in "
-          . $GLOBAL_PATHS->rev_sample_dir() . "\n";
     } else
     {
         $GLOBAL_PATHS->print(
@@ -1955,7 +1992,6 @@ if ((!@dbg) || grep(/^dada2$/, @dbg))
                       maxEE => $config_hashref->{'part1 params'}->{"max EE"}, 
                       truncQ => $config_hashref->{'part1 params'}->{"trim quality"},    
                       "rm.phix" => $config_hashref->{'part1 params'}->{"remove phix"},      
-                      maxLen => $config_hashref->{'part1 params'}->{"max length"},
                       minLen => $config_hashref->{'part1 params'}->{"min length"}, 
                       minQ => $config_hashref->{'part1 params'}->{"filter quality"},      
                       amplicon_length => $amplicon_length,
@@ -2661,7 +2697,6 @@ sub dada2
     my $maxEE     = delete %arg{"maxEE"};
     my $truncQ    = delete %arg{"truncQ"};
     my $rm_phix      = delete %arg{"rm.phix"};
-    my $maxLen    = delete %arg{"maxLen"};
     my $minLen    = delete %arg{"minLen"};
     my $minQ      = delete %arg{"minQ"};
     my $amplicon_length = delete %arg{"amplicon_length"};

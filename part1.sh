@@ -4,19 +4,6 @@ set -e # exit when any command fails (returns non-0 exit status)
 # working directory is stale file handle.)
 cd ~ && cd - 1>/dev/null
 
-# QSUB_ARGS=""
-# DRY_RUN=""
-# FOR=""
-# REV=""
-# MAXN=''
-# MAXEE=""
-# TRUNCQ=""
-# RMPHIX=""
-# MAXLEN=""
-# MINQ=""
-# ONESTEP=""
-# PARAMS=""
-
 stop()
 {
     printf "\n%b\n\n" "$1"
@@ -44,6 +31,80 @@ assign_default()
 
 while [[ ! "$1" == "--" && "$#" != 0 ]]; do
   case "$1" in
+    --help|-h)
+        perldoc -F "${0}"
+        exit 0
+        ;;
+    -r|--run-ID)
+        try_assign RUN "$1" "$2"
+        shift 2
+        ;;
+    --run-storage*)
+        if [[ $1 =~ "--run-storage=" ]]; then 
+            SD="${1#*=}"
+            if [[ ! -n "$SD" || ! $1 =~ "=" ]]; then  
+                MSG="--run-storage missing value."
+                MSG+=" --run-storage=\"\" and --run-storage= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--run-storage" ]]; then
+            try_assign SD "$1" "$2"
+            shift 2
+        else
+            PARAMS="$PARAMS $1"
+            shift 1
+        fi
+        ;;
+    --1Step)
+        ONESTEP=$1
+        shift 1
+        ;;
+    --verbose)
+        VERBOSE=$1
+        shift 1
+        ;;
+    --dry-run)
+        DRY_RUN=$1
+        shift 1
+        ;;
+    --debug|-d)
+        if [[ "$2" =~ ^- || ! -n "$2" ]]; then
+            stop "--debug missing its value. Unable to continue."
+        else 
+            DBG="$DBG --debug $2"
+            shift 2
+        fi
+        ;;
+    --noskip|--no-skip)
+        NOSKIP=$1
+        shift 1
+        ;;
+    --no-delete|--nodelete)
+        NODELETE=$1
+        shift 1
+        ;;
+    --email)
+        EMAIL="-m ea"
+        shift 1
+        ;;
+    -qp|--qsub-project*)
+        if [[ $1 =~ "--qsub-project=" ]]; then 
+            QP="${1#*=}"
+            if [[ ! -n "$QP" || ! $1 =~ "=" ]]; then  
+                MSG="--qsub-project missing value."
+                MSG+=" --qsub-project=\"\" and --qsub-project= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--qsub-project" || $1 == "-qp" ]]; then
+            try_assign QP "$1" "$2"
+            shift 2
+        else
+            PARAMS="$PARAMS $1"
+            shift 1
+        fi
+        ;;
     --qsub*)
         if [[ $1 =~ "--qsub=" ]]; then 
             QSUB_ARGS="${1#*=}"
@@ -61,7 +122,7 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
             shift 1
         fi
         ;;
-    -i) # update the Perl and bash documentation!!!
+    -i)
         try_assign RAW_PATH "$1" "$2"
         shift 2
         ;;
@@ -79,10 +140,6 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         ;;
     -i2|--i2)
         try_assign I2 "$1" "$2"
-        shift 2
-        ;;
-    -r|--run-ID)
-        try_assign RUN "$1" "$2"
         shift 2
         ;;
     -m|--map)
@@ -114,26 +171,6 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         try_assign VAR "$1" "$2"
         shift 2
         ;;
-    --help|-h)
-        perldoc -F "${0}"
-        exit 0
-        ;;
-    --debug|-d)
-        if [[ "$2" =~ ^- || ! -n "$2" ]]; then
-            stop "--debug missing its value. Unable to continue."
-        else 
-            DBG="$DBG --debug $2"
-            shift 2
-        fi
-        ;;
-    --dry-run)
-        DRY_RUN=$1
-        shift 1
-        ;;
-    --verbose)
-        VERBOSE=$1
-        shift 1
-        ;;
     --fwd_primer*)
         if [[ $1 =~ "--fwd_primer=" ]]; then 
             FWD_PRIMER="${1#*=}"
@@ -141,6 +178,9 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         elif [[ $1 == "--fwd_primer" ]]; then
             try_assign FWD_PRIMER "$1" "$2"
             shift 2
+        else
+            PARAMS="$PARAMS $1"
+            shift 1
         fi
         ;;
     --rev_primer*)
@@ -150,25 +190,152 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         elif [[ $1 == "--rev_primer" ]]; then
             try_assign REV_PRIMER "$1" "$2"
             shift 2
+        else
+            PARAMS="$PARAMS $1"
+            shift 1
         fi
         ;;
     --trim-maxlength*)
         if [[ $1 =~ "--trim-maxlength=" ]]; then 
             TRIM_MAXLENGTH="${1#*=}"
+            if [[ ! -n "$TRIM_MAXLENGTH" || ! $1 =~ "=" ]]; then  
+                MSG="--bclen missing value."
+                MSG+=" --bclen=\"\" and --bclen= are not accepted."
+                stop "$MSG"
+            fi
             shift 1
         elif [[ $1 == "--trim-maxlength" ]]; then
             try_assign TRIM_MAXLENGTH "$1" "$2"
             shift 2
+        else
+            PARAMS="$PARAMS $1"
+            shift 1
+        fi
+        ;;
+    --dada2-truncQ*)
+        if [[ $1 =~ "--dada2-truncQ=" ]]; then 
+            DADA2_TRUNCQ="${1#*=}"
+            if [[ ! -n "$DADA2_TRUNCQ" || ! $1 =~ "=" ]]; then  
+                MSG="--dada2-truncQ missing value."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--dada2-truncQ" ]]; then
+            try_assign DADA2_TRUNCQ "$1" "$2"
+            shift 2
+        else
+            PARAMS="$PARAMS $1"
+            shift 1
+        fi
+        ;;
+    --dada2-truncLen-f*)
+        if [[ $1 =~ "--dada2-truncLen-f=" ]]; then 
+            TRIM_LENGTH_FWD="${1#*=}"
+            if [[ ! -n "$TRIM_LENGTH_FWD" || ! $1 =~ "=" ]]; then  
+                MSG="--dada2-truncLen-f missing value."
+                MSG+=" --dada2-truncLen-f=\"\" and --dada2-truncLen-f= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--dada2-truncLen-f" ]]; then
+            try_assign TRIM_LENGTH_FWD "$1" "$2"
+            shift 2
+        else
+            PARAMS="$PARAMS $1"
+            shift 1
+        fi
+        ;;
+    --dada2-truncLen-r*)
+        if [[ $1 =~ "--dada2-truncLen-r=" ]]; then 
+            TRIM_LENGTH_REV="${1#*=}"
+            if [[ ! -n "$TRIM_LENGTH_REV" || ! $1 =~ "=" ]]; then  
+                MSG="--dada2-truncLen-r missing value."
+                MSG+=" --dada2-truncLen-r=\"\" and --dada2-truncLen-r= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--dada2-truncLen-r" ]]; then
+            try_assign TRIM_LENGTH_REV "$1" "$2"
+            shift 2
+        else
+            PARAMS="$PARAMS $1"
+            shift 1
         fi
         ;;
     --amplicon_length*)
         if [[ $1 =~ "--amplicon_length=" ]]; then 
             AMPLICON_LENGTH="${1#*=}"
+            if [[ ! -n "$AMPLICON_LENGTH" || ! $1 =~ "=" ]]; then  
+                MSG="--amplicon_length missing value."
+                stop "$MSG"
+            fi
             shift 1
         elif [[ $1 == "--amplicon_length" ]]; then
             try_assign AMPLICON_LENGTH "$1" "$2"
             shift 2
+        else
+            PARAMS="$PARAMS $1"
+            shift 1
         fi
+        ;;
+    --dada2-minLen*)
+        if [[ $1 =~ "--dada2-minLen=" ]]; then 
+            DADA2_MINLEN="${1#*=}"
+            if [[ ! -n "$DADA2_MINLEN" || ! $1 =~ "=" ]]; then  
+                MSG="--dada2-minLen missing value."
+                MSG+=" --dada2-minLen=\"\" and --dada2-minLen= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--dada2-minLen" ]]; then
+            try_assign DADA2_MINLEN "$1" "$2"
+            shift 2
+        else
+            PARAMS="$PARAMS $1"
+            shift 1
+        fi
+        ;;
+    --dada2-minQ*)
+        if [[ $1 =~ "--dada2-minQ=" ]]; then 
+            DADA2_MINQ="${1#*=}"
+            if [[ ! -n "$DADA2_MINQ" || ! $1 =~ "=" ]]; then  
+                MSG="--dada2-minQ missing value."
+                MSG+=" --dada2-minQ=\"\" and --dada2-minQ= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--dada2-minQ" ]]; then
+            try_assign DADA2_MINQ "$1" "$2"
+            shift 2
+        else
+            PARAMS="$PARAMS $1"
+            shift 1
+        fi
+        ;;
+    --dada2-maxEE*)
+        if [[ $1 =~ "--dada2-maxEE=" ]]; then 
+            DADA2_MAXEE="${1#*=}"
+            if [[ ! -n "$DADA2_MAXEE" || ! $1 =~ "=" ]]; then  
+                MSG="--dada2-maxEE missing value."
+                MSG+=" --dada2-maxEE=\"\" and --dada2-maxEE= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--dada2-maxEE" ]]; then
+            try_assign DADA2_MAXEE "$1" "$2"
+            shift 2
+        else
+            PARAMS="$PARAMS $1"
+            shift 1
+        fi
+        ;;
+    --dada2-rmPhix)
+        DADA2_RMPHIX=$1
+        shift 1
+        ;;
+    --no-dada2-rmPhix)
+        DADA2_RMPHIX=$1
+        shift 1
         ;;
     --dada2-mem*)
         if [[ $1 =~ "--dada2-mem=" ]]; then 
@@ -186,87 +353,6 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
             PARAMS="$PARAMS $1"
             shift 1
         fi
-        ;;
-    --dada2-truncLen-f*)
-        if [[ $1 =~ "--dada2-truncLen-f=" ]]; then 
-            TRIM_LENGTH_FWD="${1#*=}"
-            shift 1
-        elif [[ $1 == "--dada2-truncLen-f" ]]; then
-            try_assign TRIM_LENGTH_FWD "$1" "$2"
-            shift 2
-        fi
-        ;;
-    --dada2-truncLen-r*)
-        if [[ $1 =~ "--dada2-truncLen-r=" ]]; then 
-            TRIM_LENGTH_REV="${1#*=}"
-            shift 1
-        elif [[ $1 == "--dada2-truncLen-r" ]]; then
-            try_assign TRIM_LENGTH_REV "$1" "$2"
-            shift 2
-        fi
-        ;;
-    --dada2*)
-        if [[ $1 =~ "--dada2=" ]]; then 
-            DADA2="${1#*=}"
-            if [[ ! -n "$DADA2" || ! $1 =~ "=" ]]; then  
-                MSG="--dada2 missing value."
-                MSG+=" --dada2=\"\" and --dada2= are not accepted."
-                stop "$MSG"
-            fi
-            shift 1
-        elif [[ $1 == "--dada2" ]]; then
-            try_assign DADA2 "$1" "$2"
-            shift 2
-        else
-            PARAMS="$PARAMS $1"
-            shift 1
-        fi
-        ;;
-    --1Step)
-        ONESTEP=$1
-        shift 1
-        ;;
-    --run-storage*)
-        if [[ $1 =~ "--run-storage=" ]]; then 
-            SD="${1#*=}"
-            if [[ ! -n "$SD" || ! $1 =~ "=" ]]; then  
-                MSG="--run-storage missing value."
-                MSG+=" --run-storage=\"\" and --run-storage= are not accepted."
-                stop "$MSG"
-            fi
-            shift 1
-        elif [[ $1 == "--run-storage" ]]; then
-            try_assign SD "$1" "$2"
-            shift 2
-        else
-            PARAMS="$PARAMS $1"
-            shift 1
-        fi
-        ;;
-    --no-delete|--nodelete)
-        NODELETE=$1
-        shift 1
-        ;;
-    -qp|--qsub-project*)
-        if [[ $1 =~ "--qsub-project=" ]]; then 
-            QP="${1#*=}"
-            if [[ ! -n "$QP" || ! $1 =~ "=" ]]; then  
-                MSG="--qsub-project missing value."
-                MSG+=" --qsub-project=\"\" and --qsub-project= are not accepted."
-                stop "$MSG"
-            fi
-            shift 1
-        elif [[ $1 == "--qsub-project" || $1 == "-qp" ]]; then
-            try_assign QP "$1" "$2"
-            shift 2
-        else
-            PARAMS="$PARAMS $1"
-            shift 1
-        fi
-        ;;
-    --email)
-        EMAIL="-m ea"
-        shift 1
         ;;
     *) # preserve positional arguments even if they fall between other params
     # note that options and their operands will be separate elements of $PARAMS
@@ -340,19 +426,23 @@ else
 fi
 
 # Validate that mapping file was given and exists
-if [[ ! -n "$MAP" ]]; then
+if [[ -z ${MAP+x} ]]; then
     stop "\tPlease provide a full path to the run mapping file (-m)"
 elif [[ ! -e "$MAP" ]]; then
     stop "\tMapping file (-m) does not exist or is inaccessible."
 fi
 printf "MAPPING FILE: $MAP\n"
 
-if [[ -n "$BCLENGTH" ]]; then
-    BCLENGTH="--bclen=$BCLENGTH"
+if [[ ! -z ${BCLENGTH+x} ]]; then
+    if [[ "$BCLENGTH" =~ [0-9]+ ]]; then
+        BCLENGTH="--bclen=$BCLENGTH"
+    else
+        stop "--bclen must be a positive integer"
+    fi
 fi
 
 # -r is mandatory
-if [[ ! -n "$RUN" ]]; then
+if [[ -z ${RUN+x} ]]; then
     stop "Run ID (-r) required."
 fi
 # if [[ $RUN =~ "[^a-zA-Z0-9\.]" ]]; then
@@ -365,7 +455,7 @@ supported_regions=( `cat "$MY_DIR/config.json" | \
     python3 -sc "import sys, json; \
     regions = json.load(sys.stdin)['part1 params']['$onestep_key'].keys(); \
     print(' '.join(regions))"` )
-if [[ ! -n "$VAR" ]]; then
+if [[ -z ${VAR+x} ]]; then
     VAR="V3V4"
 else
     for reg in "${supported_regions[@]}"; do
@@ -384,23 +474,77 @@ else
     fi
 fi
 printf "VARIABLE REGION: $VAR\n"
-if [[ -n "$FWD_PRIMER" ]]; then
-    FWD_PRIMER="--fwd_primer=$FWD_PRIMER"
+if [[ ! -z ${FWD_PRIMER+x} ]]; then
+    if [[ $FWD_PRIMER =~ [^ACTGactg] ]]; then
+        stop "Unrecognized characters in --fwd_primer"
+    else
+        FWD_PRIMER="--fwd_primer=$FWD_PRIMER"
+    fi
 fi
-if [[ -n "$REV_PRIMER" ]]; then
-    REV_PRIMER="--rev_primer=$REV_PRIMER"
+if [[ ! -z ${REV_PRIMER+x} ]]; then
+    if [[ $REV_PRIMER =~ [^ACTGactg] ]]; then
+        stop "Unrecognized characters in --rev_primer"
+    else
+        REV_PRIMER="--rev_primer=$REV_PRIMER"
+    fi
 fi
-if [[ -n "$TRIM_LENGTH_FWD" ]]; then
-    TRIM_LENGTH_FWD="--dada2-truncLen-f=$TRIM_LENGTH_FWD"
+if [[ ! -z ${TRIM_LENGTH_FWD+x} ]]; then
+    if [[ "$TRIM_LENGTH_FWD" =~ [0-9]+ ]]; then
+        TRIM_LENGTH_FWD="--dada2-truncLen-f=$TRIM_LENGTH_FWD"
+    else
+        stop "--dada2-truncLen-f must be a positive integer"
+    fi
 fi
-if [[ -n "$TRIM_LENGTH_REV" ]]; then
-    TRIM_LENGTH_REV="--dada2-truncLen-r=$TRIM_LENGTH_REV"
+if [[ ! -z ${TRIM_LENGTH_REV+x} ]]; then
+    if [[ "$TRIM_LENGTH_REV" =~ [0-9]+ ]]; then
+        TRIM_LENGTH_REV="--dada2-truncLen-r=$TRIM_LENGTH_REV"
+    else
+        stop "--dada2-truncLen-r must be a positive integer"
+    fi
 fi
-if [[ -n "$AMPLICON_LENGTH" ]]; then
-    AMPLICON_LENGTH="--amplicon_length=$AMPLICON_LENGTH"
+if [[ ! -z ${AMPLICON_LENGTH+x} ]]; then
+    if [[ "$AMPLICON_LENGTH" =~ [0-9]+ ]]; then
+        AMPLICON_LENGTH="--amplicon_length=$AMPLICON_LENGTH"
+    else
+        stop "--amplicon_length must be a positive integer"
+    fi
 fi
-if [[ -n "$TRIM_MAXLENGTH" ]]; then
-    TRIM_MAXLENGTH="--trim-maxlength=$TRIM_MAXLENGTH"
+if [[ ! -z ${TRIM_MAXLENGTH+x} ]]; then
+    if [[ "$TRIM_MAXLENGTH" =~ [0-9]+ ]]; then
+        TRIM_MAXLENGTH="--trim-maxlength=$TRIM_MAXLENGTH"
+    else
+        stop "--trim-maxlength must be a positive integer"
+    fi
+fi
+
+if [[ ! -z ${DADA2_TRUNCQ+x} ]]; then
+    if [[ "$DADA2_TRUNCQ" =~ [0-9]+ ]]; then
+        DADA2_TRUNCQ="--dada2-truncQ=$DADA2_TRUNCQ"
+    else
+        stop "--dada2-truncQ must be an integer"
+    fi
+fi
+
+if [[ ! -z ${DADA2_MINLEN+x} ]]; then
+    if [[ "$DADA2_MINLEN" =~ [0-9]+ ]]; then
+        DADA2_MINLEN="--dada2-minLen=$DADA2_MINLEN"
+    else
+        stop "--dada2-minLen must be an integer"
+    fi
+fi
+if [[ ! -z ${DADA2_MINQ+x} ]]; then
+    if [[ "$DADA2_MINQ" =~ [0-9]+ ]]; then
+        DADA2_MINQ="--dada2-minQ=$DADA2_MINQ"
+    else
+        stop "--dada2-minQ must be an integer"
+    fi
+fi
+if [[ ! -z ${DADA2_MAXEE+x} ]]; then
+    if [[ "$DADA2_MAXEE" =~ [0-9\.]+ ]]; then
+        DADA2_MAXEE="--dada2-maxEE=$DADA2_MAXEE"
+    else
+        stop "--dada2-maxEE must be a number"
+    fi
 fi
 
 SD_DEFAULT=`cat "$MY_DIR/config.json" | \
@@ -562,7 +706,7 @@ module load r/4.0.2 2>/dev/null || true
 log="$SD/${RUN}_16S_pipeline_log.txt"
 
 # Remove extra spaces caused by joining empty arguments with a whitespace
-OPTSARR=("$PARAMS" "$BCLENGTH" "$TROUBLESHOOT_BARCODES" "$ONESTEP" "$NODELETE" "$FWD_PRIMER" "$REV_PRIMER" "$TRIM_MAXLENGTH" "$DADA2" "$TRIM_LENGTH_FWD" "$TRIM_LENGTH_REV" "$AMPLICON_LENGTH" "$DADA2MEM" "$DBG" "$VERBOSE" "$DRY_RUN")
+OPTSARR=("$PARAMS" "$DBG" "$NOSKIP" "$NODELETE" "$VERBOSE" "$BCLENGTH" "$TROUBLESHOOT_BARCODES" "$ONESTEP" "$FWD_PRIMER" "$REV_PRIMER" "$TRIM_MAXLENGTH" "$DADA2_TRUNCQ" "$TRIM_LENGTH_FWD" "$TRIM_LENGTH_REV" "$AMPLICON_LENGTH" "$DADA2_MINLEN" "$DADA2_MINQ" "$DADA2_MAXEE" "$DADA2_RMPHIX" "$DADA2MEM" "$DRY_RUN")
 OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 
@@ -673,6 +817,10 @@ terminates.
 
 =over
 
+=item B<-h>, B<--help>
+
+Print help message and exit.
+
 =item B<--run-ID>, B<-r> name
 
 Create the run folder with this name.
@@ -687,34 +835,9 @@ path is in the pipeline configuration file.
 Use this flag if the data are prepared by 1-Step PCR (only r1 & r2 raw files
 available)
 
-=item B<-h>, B<--help>
-
-Print help message and exit successfully.
-
-=item B<--qsub-project>, B<-qp> space
-
-Indicate which qsub-project space should be used for all qsubmissions. The
-default is jravel-lab.
-
-=item B<--debug>, B<-d> {barcodes, demux, splitsamples, tagclean, dada2}
-
-Runs the specified section of the pipeline. Multiple --debug options can be given
-to run multiple consecutive parts of the pipeline, provided that the input to
-the earliest requested step is present. Any non-consecutive steps will be 
-ignored.
-
-=item B<--noskip>
-
-Will not check for any possible existing output files when deciding whether to 
-run a section of the pipeline.
-
 =item B<--verbose>
 
 Prints every shell command to the log file and to <run_directory>/qsub_stdout_logs/illumina_dada2.pl.stdout
-
-=item B<--no-delete|--nodelete>
-
-Don't delete intermediate files
 
 =item B<--dry-run>
 
@@ -723,10 +846,31 @@ combined with B<--verbose>. (Currently with B<--dry-run>, the pipeline may not
 progress far due to checkpoints that halt the pipeline if any step seems to 
 fail.)
 
+=item B<--debug>, B<-d> {barcodes, demux, splitsamples, tagclean, dada2}
+
+Runs the specified section of the pipeline. Multiple --debug options can be given
+to run multiple consecutive parts of the pipeline, provided that the input to
+the earliest requested step is present. Any non-consecutive steps will be 
+ignored.
+default is jravel-lab.
+
+=item B<--no-skip|--noskip>
+
+Will not check for any possible existing output files when deciding whether to 
+run a section of the pipeline.
+
+=item B<--no-delete|--nodelete>
+
+Don't delete intermediate files
+
 =item B<--email>
 
 Notify by email when the job is finished. Does this by adding "-m ea" to the
 outermost qsub call. Compatible with --qsub.
+
+=item B<--qsub-project>, B<-qp> space
+
+Indicate which qsub-project space should be used for all qsubmissions. The
 
 =item B<--qsub>="options"
 
@@ -827,30 +971,73 @@ overall demux is incorrect.
 
 =over
 
+This pipeline stores configurations for various hypervariable regions in its 
+config file, located at <pipeline_path>/config.json. Some configurations are 
+specific to one-step PCR library prep too. When the targeted variable region is 
+not described in the config file, use the following options to specify the 
+processing parameters. These options will also override any parameters specified 
+by the config file.
+
 =item B<--var-reg>, B<-v> {V3V4, V4, ITS}
 
 The targeted variable region. V3V4 is default.
 
-=item B<--dada2>="options"
+=item B<--fwd_primer>="SEQUENCE"
 
-Overrides the default DADA2 parameters used at the MSL. The following options
-are allowed:
+The primer(s) to trim from the forward reads. This value is passed on to 
+bbduk.sh's "literal" option, so IUPAC ambiguity codes and comma-separated 
+sequences are allowed.
 
- --dada2-truncLen-f, -for (defaults: V3V4: 225 | V4: 200 | ITS: 0)
- --dada2-truncLen-r, -rev (defaults: V3V4: 225 | V4: 200 | ITS: 0)
- --dada2-maxN (default: 0)
- --dada2-maxEE (defaults: V3V4: 2 | V4: 2 | ITS: 0)
- --dada2-truncQ (default: 2)
- --dada2-rmPhix (default: TRUE)
- --dada2-maxLen (default: Inf)
- --dada2-minLen (default: V3V4: 20 | V4: 20 | ITS: 50)
- --dada2-minQ (default: 0)
+=item B<--rev_primer>="SEQUENCE"
 
-Please see https://rdrr.io/bioc/dada2/man/filterAndTrim.html for descriptions
-of the parameters. The parameters should be given within double quotes as shown 
-below:
+The primer(s) to trim from the reverse reads. See the note about B<--fwd_primer>.
 
-part1.sh --dada2="--dada2-maxEE 5 --dada2-minQ 10" ...
+=item B<--trim-maxlength>=LENGTH
+
+After trimming primers, filter out reads longer than LENGTH. This value is
+passed on to bbduk.sh's maxlen option. When primer trimming could yield various 
+output read lengths, set this parameter to the maximum expected output read 
+length.
+
+=item B<--dada2-truncQ>=SCORE
+
+Trim reads at the first instance of a quality score less than or equal to SCORE.
+
+=item B<--dada2-truncLen-f>=LENGTH
+
+Forward reads will be trimmed to LENGTH. Reads shorter than LENGTH will be
+removed.
+
+=item B<--dada2-truncLen-r>=LENGTH
+
+Reverse reads will be trimmed to LENGTH. Reads shorter than LENGTH will be 
+removed.
+
+=item B<--amplicon_length>=LENGTH
+
+The expected amplicon length. When determining the ideal trimming lengths, any
+combination that prevents mate pair merging (due to excessive trimming) will be 
+avoided. Amplicon length is not needed when B<--dada2-truncLen-f> and 
+B<--dada2-truncLen-R> are both given.
+
+=item B<--dada2-minLen>=LENGTH
+
+Remove reads with length less than LENGTH. This filter is enforced after 
+trimming.
+
+=item B<--dada2-minQ>=SCORE
+
+After trimming, reads contain a quality score less than SCORE will be discarded.
+
+=item B<--dada2-maxEE>=VALUE
+
+After trimming, reads with higher than VALUE "expected errors" will be 
+discarded. 
+
+=item B<--dada2-rmPhix>, B<--no-dada2-rmPhix>
+
+Remove reads aligning to the Phi.X genome. (Give --no-dada2-rmPhix to override
+a default value in the config file.)
 
 =item B<--dada2-mem> memory
 

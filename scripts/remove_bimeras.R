@@ -204,7 +204,7 @@ if (!is.null(args$map)) {
 
 # Remove chimeras
 message("Removing chimeras")
-mfpoa <- if (args$seq == "ILLUMINA") 2 else 3.5
+mfpoa <- if (args$seq == "ILLUMINA") 1.5 else 3.5
 seqtab <- dada2::removeBimeraDenovo(seqtab, method = "consensus", minFoldParentOverAbundance = mfpoa, multithread = TRUE)
 
 # Write to disk
