@@ -5,7 +5,11 @@ pipelineDir <-
     dirname(dirname(sub("--file=", "", initial.options[grep("--file=", initial.options)])))
 source(file.path(pipelineDir, "lib", "utils.R"))
 require("argparse")
-
+if(length(grep("--verbose", initial.options, fixed = T)) > 0) {
+    require("dada2")
+} else {
+	suppressMessages(suppressWarnings(require("dada2")))
+}
 
 parser <- ArgumentParser(description = "Assign taxa")
 parser$add_argument(
@@ -29,7 +33,7 @@ parser$add_argument(
     "--minBoot",
     metavar = "BOOTSTRAP_CONFIDENCE",
     type = "integer",
-    default = 80
+    default = formals(dada2::assignTaxonomy)$minBoot
 )
 parser$add_argument(
     "--verbose",
@@ -50,7 +54,6 @@ if (!is.null(args$log)) {
 #   stop("No taxonomy given.\n")
 # }
 suppress_if_not_verbose({
-    require("dada2")
     require("Biostrings")
 })
 path <- getwd()

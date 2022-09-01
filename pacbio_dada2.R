@@ -304,8 +304,7 @@ denoise <- function(ins) {
     err <- dada2::learnErrors(drp,
         BAND_SIZE = 32, multithread = TRUE,
         errorEstimationFunction = dada2:::PacBioErrfun,
-        randomize = TRUE,
-        nbases = 1e9
+        randomize = TRUE
     ) # seconds
 
     png("04_error_profiles.png", height = 1000, width = 1000)

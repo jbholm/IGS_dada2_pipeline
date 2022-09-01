@@ -857,43 +857,44 @@ sub R
     my $script = shift;
     my $args   = shift;
 
-    open my $scriptFH, "<$script", or die "cannot read header of $script: $!\n";
     my $R       = $config_hashref->{'R'};
-    my $pathsep = catfile('', '');
-
-    # my $outR    = catfile( $projDir, basename($script) . "out" );
-
     my $cmd = "${R}script --verbose $script $args";
+    
+    $logTee->print("\$ $cmd\n");
 
-# Get stdout and stderr; print stderr to the logfile/stdout because R sends
-# normal status messages through STDERR. Save STDOUT because all my R
-# scripts give the paths to their output files as STDOUT.
-# $logTee->print("\$ $cmd\n");
-# if ($verbose)
-# {
-#     $cmd .= " --verbose";
-# }
-# $cmd .= " 2>&1 1>.rstdout";    # print stderr to stdout in real time.
-#                                # capture stdout
-# system($cmd) == 0
-#   or die
-#   "system($cmd) failed with exit code $?. See this script's STDOUT for error description.";
+    # Get stdout and stderr; print stderr to the logfile/stdout because R sends
+    # normal status messages through STDERR. Save STDOUT as file because all my R
+    # scripts give the paths to their output files as STDOUT.
+    if ($verbose)
+    {
+        $cmd .= " --verbose";
+    }
+    my $stdout_file = basename($script) . ".stdout";
+    $cmd .= " 2>&1 1>$stdout_file";    
+
+    system($cmd) == 0
+    or die
+    "system($cmd) failed with exit code $?. See this script's STDOUT for error description.";
+    my $out = do {
+        local $/ = undef;
+        open my $fh, "<", $stdout_file
+            or die "Could not open STDOUT captured from " . basename($script) . " to $stdout_file: $OS_ERROR\n";
+        <$fh>;
+    };
+    unlink $stdout_file;
 
     # the above solution would work, except that on our SGE, a slew of nonsense
     # gets printed to STDERR whenever a new shell is started. So instead of
     # redirecting R's STDERR to STDOUT, we give R our log file to print to.
     # One disadvantage is, it doesn't go to perl's STDOUT.
-    $logTee->print("\$ $cmd\n");
+    # my $out = `$cmd`;
+    # if ($?)
+    # {
+    #     die
+    #       "system($cmd) failed with exit code $?. See the part2 LOG file for error description.";
+    # }
 
-    my $out = `$cmd`;
-    if ($?)
-    {
-        die
-          "system($cmd) failed with exit code $?. See the part2 LOG file for error description.";
-    }
     print("\n");
-
-    # check_R_for_error(\$stdout); execute_and_log should die on error
     return ($out);
 }
 
@@ -912,7 +913,7 @@ sub dada2_combine
 
     my $script = catfile($pipelineDir, "scripts", "remove_bimeras.R");
 
-    my $args = "--seq=$sequencer --map $map_file --log $log";
+    my $args = "--seq=$sequencer --map $map_file";
     if ($verbose)
     {
         $args .= " --verbose";
@@ -941,24 +942,6 @@ sub dada2_classify
     return @taxonomic_refs;
 }
 
-sub check_R_for_error
-{
-    my $outR = shift;
-    open IN, "$outR" or die "Cannot open $outR for reading: $OS_ERROR\n";
-    my $exitStatus = 1;
-
-    foreach my $line (<IN>)
-    {
-        if ($line =~ /Error/)
-        {
-            print "R script crashed. Check $outR for details\n";
-            print "";
-            $exitStatus = 0;
-            exit;
-        }
-    }
-    close IN;
-}
 ################################################################################
 # Execute the given commands;
 # The third to last argument is a user-readable message.
