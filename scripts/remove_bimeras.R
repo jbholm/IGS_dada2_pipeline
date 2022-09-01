@@ -204,8 +204,17 @@ if (!is.null(args$map)) {
 
 # Remove chimeras
 message("Removing chimeras")
-mfpoa <- if (args$seq == "ILLUMINA") 1.5 else 3.5
-seqtab <- dada2::removeBimeraDenovo(seqtab, method = "consensus", minFoldParentOverAbundance = mfpoa, multithread = TRUE)
+arg_list <- list(method = "consensus")
+arg_list <- c(arg_list, as.list(formals(isBimeraDenovoTable)))
+arg_list$minFoldParentOverAbundance <- if (args$seq == "ILLUMINA") formals(isBimeraDenovoTable)$minFoldParentOverAbundance else 3.5
+arg_list$multithread <- T
+arg_list$seqtab <- NULL
+message("dada2::removeBimeraDenovo() parameters:")
+sink(file = stderr(), type = "output")
+print(arg_list)
+sink()
+arg_list$unqs <- seqtab
+seqtab <- do.call(dada2::removeBimeraDenovo, arg_list)
 
 # Write to disk
 message("Writing final abunadnce table, stats, ASVs")

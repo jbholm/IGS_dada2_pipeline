@@ -5,6 +5,7 @@ pipelineDir <-
 source(file.path(pipelineDir, "lib", "utils.R"))
 require("argparse")
 
+
 parser <- ArgumentParser(description = "Do DADA2 filtering and denoising on Illumina reads")
 parser$add_argument(
     "--truncLenL",
@@ -93,23 +94,27 @@ filt.rev<-file.path(filtpath, paste0(sample.names, "_R_tc.fastq.gz"))
 names(filt) <- names(filt.rev) <- sample.names
 
 learn_errors_and_denoise <- function(filt, filt.rev, fast = F, verbose = T, debug = F, multithread = T) {
+	# prepare two reusable lists of derep-class objects
+	derepF <- derepFastq(filt)
+	derepR <- derepFastq(filt.rev)
+
 	# Learn error rates
-	nBases = if(debug) 10^2 else if(fast) 10^6 else 10^8
+	arg_list <- list(
+		nbases = if(debug) 10^2 else if(fast) 10^6 else formals(learnErrors)$nbases,
+		multithread = multithread,
+		randomize = T, 
+		verbose = verbose,
+		MAX_CONSIST = if(debug) 2 else formals(learnErrors)$MAX_CONSIST
+		)
 	if(!verbose) { s <- file(tempfile()); sink(file=s)}
-	errF <- learnErrors(
-		filt, nbases=nBases, multithread=multithread, randomize = T, verbose = verbose,
-		MAX_CONSIST= if(debug) 2 else 10
-	)
-	errR <- learnErrors(
-		filt.rev, nbases=nBases, multithread=multithread, randomize = T, verbose = verbose,
-		MAX_CONSIST= if(debug) 2 else 10
-	)
+	print("Executing dada2::learnErrors() with args:")
+	print(arg_list)
+	errF <- do.call(learnErrors, c(list(derepF), arg_list))
+	errR <- do.call(learnErrors, c(list(derepR), arg_list))
 	if(!verbose) { sink(); close(s) }
 	
 	# Sample inference and merger of paired-end reads
-	derepF <- derepFastq(filt)
 	ddF <- dada(derepF, err=errF, multithread=multithread, verbose = F)
-	derepR <- derepFastq(filt.rev)
 	ddR <- dada(derepR, err=errR, multithread=multithread, verbose = F)
 	merger <- mergePairs(ddF, derepF, ddR, derepR)
 	rm(derepF); rm(derepR)
