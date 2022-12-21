@@ -478,23 +478,17 @@ def fastqc(pw):
 
         # Get the directory names of the forward and reverse FastQC folders.
         fwdFastQc = [
-            os.path.join(x, "seqs_fastqc.zip")
+            os.path.join(x, "fwd", "seqs_fastqc.zip")
             for x in subdirs
-            if os.path.basename(x) in ["R1split", "fwdSplit"]
-            and os.path.isfile(os.path.join(x, "seqs_fastqc.zip"))
+            if os.path.basename(x) in ["libraries"]
+            and os.path.isfile(os.path.join(x, "fwd", "seqs_fastqc.zip"))
         ]
         revFastQc = [
-            os.path.join(x, "seqs_fastqc.zip")
+            os.path.join(x, "rev", "seqs_fastqc.zip")
             for x in subdirs
-            if os.path.basename(x) in ["R2split", "R4split", "revSplit"]
-            and os.path.isfile(os.path.join(x, "seqs_fastqc.zip"))
+            if os.path.basename(x) in ["libraries"]
+            and os.path.isfile(os.path.join(x, "rev", "seqs_fastqc.zip"))
         ]
-        # for subdir in subdirs:
-        #
-        #     if subdir == "R1split" or subdir == "fwdSplit":
-        #         fwdFastQc = os.path.join(subdir, "seqs_fastqc")
-        #     elif (subdir in ["R2split", "R4split", "revSplit"]):
-        #         revFastQc = os.path.join(subdir, "seqs_fastqc")
 
         ### UNTESTED ###
         if len(revFastQc) > 1:
@@ -576,12 +570,7 @@ def fastqc(pw):
             )
         else:
             if len(fwdFastQc) == 0:
-                checkedDirs = "\n".join(
-                    [
-                        os.path.join(str(rundir), subdir, "seqs_fastqc")
-                        for subdir in ["R1split", "fwdSplit"]
-                    ]
-                )
+                checkedDirs = os.path.join(str(rundir), "libraries", "fwd", "seqs_fastqc")
                 print(
                     "Warning: FastQC files for forward reads in run "
                     + os.path.basename(str(rundir))
@@ -590,12 +579,7 @@ def fastqc(pw):
                     + "\n"
                 )
             if len(revFastQc) == 0:
-                checkedDirs = "\n".join(
-                    [
-                        os.path.join(str(rundir), subdir)
-                        for subdir in ["R2split", "R4split", "revSplit"]
-                    ]
-                )
+                checkedDirs = os.path.join(str(rundir), "libraries", "rev", "seqs_fastqc")
                 print(
                     "Warning: FastQC files for reverse reads in run "
                     + os.path.basename(str(rundir))
@@ -1448,10 +1432,11 @@ Required project folder hierarchy:
 PROJECT
 +-- RUNS
     +-- *mapping*.txt
-    +-- fwdSplit
-        +-- seqs_fastqc.zip
-    +-- revSplit
-        +-- seqs_fastqc.zip
+    +-- libraries
+        +-- fwd
+            +-- seqs_fastqc.zip
+        +-- rev
+            +-- seqs_fastqc.zip
 +-- *DADA2_stats.txt
 +-- *.csv
 """,

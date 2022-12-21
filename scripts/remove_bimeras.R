@@ -130,13 +130,13 @@ if (!is.null(args$map)) {
     })
     plates <- c("A", "B", "C", "D")
     control_positions <- suppress_if_not_verbose(
-        read_csv(file.path(pipelineDir, "share", "controls_platepositions.csv"), quote = "", na = "", trim_ws = T)
+        read_csv(file.path(pipelineDir, config[["controls_platepositions"]]), quote = "", na = "", trim_ws = T)
     )
 
     message("Looking for UDI plates")
 
     for (plate in plates) {
-        matches <- regexpr(text = map$RUN.PLATEPOSITION, pattern = paste0("UDI", plate, "\\.[A-H]\\.[1-9]{1,2}$"), perl = T)
+        matches <- regexpr(text = map$RUN.PLATEPOSITION, pattern = paste0("UDI", plate, "\\.[A-H]\\.[0-9]{1,2}$"), perl = T)
         if (any(matches > -1)) {
             message(paste("Found instances of UDI plate", plate))
 

@@ -427,7 +427,10 @@ fi
 
 # Validate that mapping file was given and exists
 if [[ -z ${MAP+x} ]]; then
-    stop "\tPlease provide a full path to the run mapping file (-m)"
+    MAP=`cat "$MY_DIR/config.json" | \
+        python3 -sc "import sys, json; print(json.load(sys.stdin)['part1 params']['demux_map'])"`
+    MAP=$(realpath $MY_DIR/$MAP)
+    echo "Using default mapping file..."
 elif [[ ! -e "$MAP" ]]; then
     stop "\tMapping file (-m) does not exist or is inaccessible."
 fi
@@ -735,7 +738,7 @@ part1.sh
 
 =head1 SYNOPSIS
 
-part1.sh (-i <input directory> | -r1 <fwd reads> -r2 <rev reads> [-i1 <index 1> -i2 <index 2>]) -r <run> -m <map> [<options>]
+part1.sh (-i <input directory> | -r1 <fwd reads> -r2 <rev reads> [-i1 <index 1> -i2 <index 2>]) -r <run> [-m <map>] [<options>]
 
 =head1 DESCRIPTION
 
@@ -775,9 +778,9 @@ Required inputs:
 
 =over
 
-=item Z<>* ./fwdSplit/seqs.fastq
+=item Z<>* ./libraries/fwd/seqs.fastq
 
-=item Z<>* ./revSplit/seqs.fastq
+=item Z<>* ./libraries/rev/seqs.fastq
 
 =back
 
@@ -785,9 +788,9 @@ Required inputs:
 
 =over
 
-=item Z<>* ./fwdSplit/split_by_sample_out/<sample_id>_*R1.fastq
+=item Z<>* ./demultiplexed/<sample_id>_*R1.fastq
 
-=item Z<>* ./revSplit/split_by_sample_out/<sample_id>_*R2.fastq
+=item Z<>* ./demultiplexed/<sample_id>_*R2.fastq
 
 =back
 
@@ -939,7 +942,8 @@ with B<--1step>. Gzip compression optional.
 
 =item B<--map>, B<-m> file
 
-The full path to the Qiime-formatted mapping file.
+The full path to a Qiime-formatted mapping file. The default generic UDI map is 
+specified in config.json.
 
 =back
 
@@ -954,8 +958,8 @@ removed from the index 1 and index 2 of each read, concatenated, and used to
 demultiplex the reads according to the provided map.
 
 In our current sequencing configuration, the indexes ARE exactly this length.
-By default, the pipeline sets the barcode length equal to the length of the
-first index.
+When this option is not given, the pipeline sets the barcode length equal to the
+length of the first index.
 
 =item B<--troubleshoot_barcodes>
 
@@ -971,12 +975,11 @@ overall demux is incorrect.
 
 =over
 
-This pipeline stores configurations for various hypervariable regions in its 
-config file, located at <pipeline_path>/config.json. Some configurations are 
+This pipeline stores default configurations for various hypervariable regions in
+its config file, located at <pipeline_path>/config.json. Some configurations are 
 specific to one-step PCR library prep too. When the targeted variable region is 
 not described in the config file, use the following options to specify the 
-processing parameters. These options will also override any parameters specified 
-by the config file.
+processing parameters. These options will also override the config file.
 
 =item B<--var-reg>, B<-v> {V3V4, V4, ITS}
 
@@ -995,9 +998,8 @@ The primer(s) to trim from the reverse reads. See the note about B<--fwd_primer>
 =item B<--trim-maxlength>=LENGTH
 
 After trimming primers, filter out reads longer than LENGTH. This value is
-passed on to bbduk.sh's maxlen option. When primer trimming could yield various 
-output read lengths, set this parameter to the maximum expected output read 
-length.
+passed on to bbduk.sh's maxlen option. If not set, minlen is set to 
+(readlength - 1) to filter out untrimmed reads.
 
 =item B<--dada2-truncQ>=SCORE
 

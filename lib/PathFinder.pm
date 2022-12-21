@@ -86,17 +86,16 @@ sub part1_local_map {
 
 sub fwd_demux_dir {
     my $self = shift;
-    return catdir($self->{'wd'}, "fwdSplit");
+    return catdir($self->{'wd'}, "libraries", "fwd");
 }
 
 sub rev_demux_dir {
     my $self = shift;
-    return catdir($self->{'wd'}, "revSplit");
+    return catdir($self->{'wd'}, "libraries", "rev");
 }
 
 sub fwd_library {
     my $self = shift;
-    print(catdir($self->fwd_demux_dir(), "seqs.fastq"));
     return catdir($self->fwd_demux_dir(), "seqs.fastq");
 }
 
@@ -105,37 +104,31 @@ sub rev_library {
     return catdir($self->rev_demux_dir(), "seqs.fastq");
 }
 
-sub fwd_sample_dir {
+sub sample_dir {
     my $self = shift;
-    return catdir($self->fwd_demux_dir(), "split_by_sample_out");
-}
-
-sub rev_sample_dir {
-    my $self = shift;
-    return catdir($self->rev_demux_dir(), "split_by_sample_out");
+    return catdir($self->{'wd'}, "demultiplexed");
 }
 
 sub splitsamples_output_fwd {
     my $self = shift;
     my %arg      = @_;
-    my $exts     = delete %arg{"exts"};
+    my $exts     = [ "fastq", "fastq.gz" ];
     my @extensions = @$exts;
 
     my @globs = map {
-        catfile($self->fwd_sample_dir(), "*.$_")
+        catfile($self->sample_dir(), "*_R1.$_")
         } @extensions;
     my @result = glob(join " ", @globs);
     return @result;
 }
-
 sub splitsamples_output_rev {
     my $self = shift;
     my %arg      = @_;
-    my $exts     = delete %arg{"exts"};
+    my $exts     = [ "fastq", "fastq.gz" ];
     my @extensions = @$exts;
 
     my @globs = map {
-        catfile($self->rev_sample_dir(), "*.$_")
+        catfile($self->sample_dir(), "*_R2.$_")
         } @extensions;
     my @result = glob(join " ", @globs);
     return @result;

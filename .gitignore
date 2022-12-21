@@ -3,3 +3,5 @@ report/**/*.frag
 report/**/*.pyc
 taxonomy/*.idx_8
 **/__pycache__/
+data/PECAN_models_v1.0_v3v4 
+data/rdp_classifier_dbs

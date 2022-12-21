@@ -1,6 +1,6 @@
 #! /local/projects-t3/MSL/pipelines/packages/miniconda3/envs/interactive/bin/python3
 
-import argparse, sys, os, glob, re, shlex, json, shutil, gzip, getpass, stat, tempfile, time
+import argparse, sys, os, glob, re, shlex, json, shutil, gzip, getpass, stat, tempfile, time, csv
 from pathlib import Path # Use of Paths as os.pathlike objects requires Python3.6
 import PyInquirer  # MUST USE PYTHON3.6 FOUND IN interactive TO USE THIS
 import examples
@@ -19,7 +19,9 @@ pathfinder = {
     "intermediate_taxonomies": Path("TAXONOMY_INTERMEDIATES"),
     "final_taxonomies": Path("TAXONOMY_FINAL"),
     "counts-by-taxon": Path("COUNTS_BY_TAXON"),
-    "counts-by-ASV": Path("COUNTS_BY_ASV")
+    "counts-by-ASV": Path("COUNTS_BY_ASV"),
+    "report": Path("REPORT"),
+    "fastqs": Path("FASTQ")
 }
 
 
@@ -63,6 +65,7 @@ def main(args):
             else:
                 continue
             
+            proj_map = choose_map()
             #if not organize_trimmed(args.project, run_paths): continue
             if not organize_counts_by_asv(args.project): continue
             if not organize_counts_by_taxon(args.project): continue
@@ -71,7 +74,7 @@ def main(args):
             if not organize_taxonomies_intermediates(args.project): continue
             if not add_index(): continue
             if not add_references(args.project, run_paths): continue
-            if not organize_reads(args.project, run_paths): continue
+            if not organize_reads(args.project, proj_map, run_paths): continue
             if not share_unix_perms(args.project): continue
 
             if not remove_trash(args.project, run_paths): continue
@@ -139,16 +142,6 @@ def find_trimmed(run):
     return files
 
 
-# untested. returns list of strings
-def find_raw(run, ori):
-    if ori == "fwd":
-        return glob.glob(str(run / Path("fwdSplit/split_by_sample_out/*.fastq")))
-    elif ori == "rev":
-        return glob.glob(str(run / Path("revSplit/split_by_sample_out/*.fastq")))
-    else:
-        raise ValueError("Incorrect orientation. 'fwd' and 'rev' are allowed.")
-
-
 # choose_upload_dest is a misnomer becaues it actually follows up by guiding user
 # through the upload.
 def upload_to_synology(dirpath):
@@ -170,7 +163,6 @@ def upload_to_synology(dirpath):
         dirs_to_upload = [
             str(pathfinder['counts-by-ASV']),
             str(pathfinder['counts-by-taxon']),
-            "MAP",
             "REPORT",
             "FASTQ",
             str(pathfinder['final_taxonomies']),
@@ -181,14 +173,13 @@ def upload_to_synology(dirpath):
             synology.archive_project(
                 user,
                 dirpath.name,
-                dirs_to_upload, 
+                dirs_to_upload
             )
             done = True
         except Exception as e:
             print(e)
 
     return
-
 
 def share_unix_perms(path):
     print("Expanding owner file permissions to group file permissions...")
@@ -204,24 +195,21 @@ def share_unix_perms(path):
             else:
                 continue
         usr_perms = st.st_mode & stat.S_IRWXU
-        if usr_perms > 0:
+        try:
+            path.chmod(st.st_mode | int(usr_perms / user_to_group_divisor))
+        except Exception as e:
+            # Likely PermissionError
             if os.geteuid() == st.st_uid:
-                try:
-                    path.chmod(st.st_mode | int(usr_perms / user_to_group_divisor))
-                except PermissionError as e:
-                    print(f"Unable to expand permissions to group for: {str(path)}\n{str(e)}")
-                    # don't ask if the user wants to "continue". this is the last step, 
-                    # so the user's choice doesn't make a difference
-                    return False
+                print(f"Cannot process {str(path)}. The problem may be lack of ownership\n")
+            elif usr_perms <= 0:
+                print(f"Cannot process {str(path)}. Owner has no permissions on {str(path)}.\n")
             else:
-                print(f"Cannot process {str(path)} without ownership\n")
-                return False 
-        else:
-            print(f"Owner has no permissions on {str(path)}.\n")
-            return False 
-
+                print(f"Unable to expand permissions to group for: {str(path)}\n{str(e)}")
+                # don't ask if the user wants to "continue". this is the last step, 
+                # so the user's choice doesn't make a difference
+            if not ask_continue():
+                return False
     return True
-
 
 def getuser(prompt="User: "):
     try:
@@ -340,7 +328,7 @@ def upload_to_jira(proj):
                 done = True
         else:
             for choice in choices:
-                filepath = str(proj / pathfinder["counts-by-taxon"] / Path(choice))
+                filepath = str(proj / Path(choice))
                 if not attach_to_issue(j_connection, issue_name, filepath):
                     return
             done = True
@@ -538,6 +526,17 @@ def choose_project(default=None):
 
     return project
 
+def choose_map():
+    files = sorted([str(child) for child in Path(".").iterdir() if child.is_file()])
+    questions = [
+        {
+            "type": "list",
+            "name": "chooser",
+            "message": "",
+            "choices": [{"name": file} for file in files],
+        }
+    ]
+    return inquire(questions, "Choose project map:")
 
 def confirm(prompt, default=False):
     questions = [
@@ -607,7 +606,7 @@ def read_metadata(run_path):
 
     return run_info
 
-def organize_reads(proj_path, run_paths):
+def organize_reads(proj_path, map, run_paths):
     try:
         organized_dir = "FASTQ"
         filepaths = []
@@ -619,63 +618,70 @@ def organize_reads(proj_path, run_paths):
         if confirm("Use executor to transfer large files? (Choose yes if not using screen or tmux)", default=True):
             external_exec = True
 
-        for run_path in run_paths:
-            ill_fwd_dir = proj_path / run_path / Path("fwdSplit") / Path("split_by_sample_out")
-            ill_rev_dir = proj_path / run_path / Path("revSplit") / Path("split_by_sample_out")
+        any_run_files = {}
+        # for file in map, find where it should be, and copy in if present
+        transfers = {}
+        with open(map) as fd:
+            dr = csv.DictReader(fd, delimiter="\t", quotechar='"')
+            list_of_samples = list(dr)
 
-            # try:
-            #     run_info = read_metadata(proj_path / run_path)
-            # except Exception as e:
-            #     print(str(e))
-            #     print("WARNING: Can't open run metadata from " + run_path.name + ". Unable to locate raw reads")
-            #     return True # NOT A SHOWSTOPPER
+        for row in list_of_samples:
+            platepos = row["RUN.PLATEPOSITION"]
+            sample = row["sampleID"]
+            for run_path in run_paths:
+                # R1 and R2 files for Illumina, just one file for PacBio
+                patt = str(proj_path / run_path / Path("demultiplexed") / Path(platepos + "*"))
+                reads = glob.glob(patt)
+                if(len(reads) > 0):
+                    transfers[sample] = reads
+                    any_run_files[run_path] = True
+                else:
+                    print("No read files for sample %s with plate position %s could be found.\n" % (sample, platepos))
+                    print("Expected path: %s \n" % patt)
+                    if not ask_continue():
+                        return False
+        
+        if len(transfers) > 0:
+            make_for_contents(organized_dir)
+            nFiles = len(transfers.keys())
+        else:
+            raise(f"Skipping creation of {organized_dir} (no demuxed reads found)")
+        
+        for run_path in any_run_files.keys():
+            subdir_destination = str(Path(organized_dir) / Path(run_path.name))
+            make_for_contents(subdir_destination)
 
-            # try:
-            #     filepaths += [
-            #         os.path.join(run_path, rel_path) for rel_path in run_info['checkpoints']["samples"].keys()
-            #     ]
-            # except KeyError:
-            #     print("WARNING: Incompatible with the pipeline version used on this run. Cannot find raw read files.")
-            #     return True # not a show-stopper
+        if external_exec:
+            print(f"Using executor to copy raw read files for {nFiles} samples to {subdir_destination}.\n")
+            print("\nRemember to delete any stray STDOUT and STDERR files from the working directory.\n")
+            time.sleep(5)
+        else:
+            print(f"Copying raw read files for {nFiles} samples to {subdir_destination}.")
 
-            if ill_fwd_dir.is_dir() and ill_rev_dir.is_dir():
-                nFiles = len(list(ill_fwd_dir.iterdir()))
-                nFiles += len(list(ill_rev_dir.iterdir()))
-                any_files = True
-                
-                make_for_contents(organized_dir, any_files)
-                subdir_destination = str(Path(organized_dir) / Path(run_path.name))
-                make_for_contents(subdir_destination)
+
+        for sample, files in transfers.items():
+            for source in files:
+                if source.endswith("_R1.fastq.gz"):
+                    ext = "_R1.fastq.gz" 
+                elif source.endswith("_R2.fastq.gz"):
+                    ext = "_R2.fastq.gz" 
+                elif source.endswith(".fastq.gz"):
+                    ext = ".fastq.gz"
+                dest = Path(subdir_destination) / Path(sample + ext)
 
                 if external_exec:
-                    print(f"Using executor to copy {nFiles} raw read files to {subdir_destination}.\n")
-                    
-                    fwd_wildcard = str(ill_fwd_dir / Path("*"))
-                    rev_wildcard = str(ill_rev_dir / Path("*"))
-
-                    cmd = "module load sge && " + executor + " -V \'cp -f %s " + subdir_destination + "\'"
-                    print(cmd % fwd_wildcard)
-                    run(cmd % fwd_wildcard, shell=True)
-                    print(cmd % rev_wildcard)
-                    run(cmd % rev_wildcard, shell=True)
-
-                    print("\nRemember to delete any stray STDOUT and STDERR files from the working directory.\n")
-
-                    time.sleep(5)
-
+                    cmd = "module load sge && " + executor + " -N copy -V \'cp -f %s %s\'"
+                    this_cmd = cmd % (source, dest)
+                    print(this_cmd)
+                    run(this_cmd, shell=True)
                 else:
-                    print(f"Copying {nFiles} raw read files to {subdir_destination}.")
-                    for filepath in filepaths:
-                        shutil.copy2(filepath, Path(subdir_destination) / Path(filepath).name)
+                        shutil.copy2(source, dest)
 
-                # gzip all if needed
-                for f in Path(subdir_destination).iterdir():
-                    if f.suffix != ".gz":
-                        gz(str(f))
-                            
+        # gzip all if needed
+        for f in Path(subdir_destination).iterdir():
+            if f.suffix != ".gz":
+                gz(str(f))
 
-        if not any_files:
-            print(f"Skipping creation of {organized_dir} (no demuxed reads found)")
     except Exception as e:
         print(str(e))
         if not ask_continue():
@@ -793,7 +799,7 @@ def organize_logs(proj_path, run_paths):
             print(f"Moving {len(filepaths)} log files to LOGS/.")
 
             for filepath in filepaths:
-                shutil.copy(Path(filepath), Path(organized_dir) / Path(filepath).name)
+                Path(filepath).rename(Path(organized_dir) / Path(filepath).name)
         else:
             print(f"Skipping creation of {organized_dir} (no logs found)")
 
@@ -1034,12 +1040,11 @@ def remove_trash(proj_path, run_paths):
 index_contents = """
 *_all_runs_dada2_ASV.fasta: Denoised ASVs (Amplicon Sequence Variants).
 *_DADA2_stats.txt: Table of sample read throughput.
+*_sample_plate_map.txt: Map showing plate position of each sample.
 COUNTS_BY_ASV: Read count tables with reads counted by ASV
 COUNTS_BY_TAXON: Read count tables with reads counted by taxon. Corresponding taxonomic assignment files in ./TAXONOMY_FINAL and ./TAXONOMY_INTERMEDIATES.
 FASTQ: Raw reads per sample
-FASTQ_TRIMMED: Sample reads trimmed of primers
 LOGS: Documentation of MSL computational pipeline parameters and workflow.
-MAPS: Barcodes used to demultiplex reads to samples. This directory may be absent if all runs were PacBio runs, or if files sent to MSL did not require demultiplexing.
 REPORT: An HTML document and accompanying assets summarizing the results. To display the report in a browser, all contents of the directory must be present.
 TAXONOMY_FINAL: File(s) documenting taxonomies assigned to ASVs, drawing on results in TAXONOMY_INTERMEDIATES. Each taxonomically-annotated file in ./COUNTS_BY_ASV and ./COUNTS_BY_TAXON is named after a file in this directory.
 TAXONOMY_INTERMEDIATES: Taxonomic classifications rendered by one or more taxonomic classifiers, including full taxonomic output from the RDP classifier.

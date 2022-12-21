@@ -126,28 +126,6 @@ my $header= <IN>;
 chomp $header;
 my ($id, @colNames) = split ",", $header;
 
-## Substitution block --- alter known taxon names within the column header array to improve merging##
-## The order of substitution is important --- longest names first and then short.
-if ($vaginal) {
-  s/Lactobacillus_crispatus_Lactobacillus_helveticus/Lactobacillus_crispatus/g for @colNames;
-  s/Lactobacillus_gasseri_Lactobacillus_johnsonii/Lactobacillus_gasseri/g for @colNames;
-  s/Lactobacillus_gasseri_johnsonii/Lactobacillus_gasseri/g for @colNames;
-}
-s/Paenibacillus_polymyxa_Paenibacillus_peoriae_Paenibacillus_borealis_Paenibacillus_durus_Paenibacillus_barcinonensis_Paenibacillus_chibensis_Paenibacillus_glacialis_Paenibacillus_lautus_Paenibacillus_amylolyticus_Paenibacillus_graminis_Paenibacillus_agarexedens_Paenibacillus_lactis_Paenibacillus_nanensis_Paenibacillus_cineris_Paenibacillus_xylanexedens_Paenibacillus_cookii/Paenibacillus_Cluster_1/g for @colNames;
-s/Bacillus_subtilis_Bacillus_vallismortis_Bacillus_mojavensis_Bacillus_amyloliquefaciens_Bacillus_tequilensis_Bacillus_licheniformis_Bacillus_sonorensis_Bacillus_velezensis/Bacillus_Cluster_1/g for @colNames;
-s/Pseudomonas_reactans_Pseudomonas_fluorescens_Pseudomonas_salomonii_Pseudomonas_moraviensis_Pseudomonas_veronii_Pseudomonas_arsenicoxydans_Pseudomonas_koreensis_Pseudomonas_mandelii_Pseudomonas_marginalis_Pseudomonas_gessardii_Pseudomonas_jessenii/Pseudomonas_Cluster_1/g for @colNames;
-if ($vaginal) {
-  s/Proteobacteria_bacterium/BVAB_TM7/g for @colNames;
-  s/Lactobacillus_kitasatonis/Lactobacillus_crispatus/g for @colNames;
-  s/Lactobacillus_acidophilus/Lactobacillus_crispatus/g for @colNames;
-  s/Lactobacillus_jensenii_1/Lactobacillus_jensenii/g for @colNames;
-  s/Lactobacillus_jensenii_3/Lactobacillus_jensenii/g for @colNames;
-  s/f_Beggiatoaceae/BVAB_TM7/g for @colNames;
-  s/Lactobacillus_kitasatonis_Lactobacillus_gallinarum_Lactobacillus_crispatus/Lactobacillus_crispatus/g for @colNames;
-  s/Atopobium_sp_Atopobium_parvulum_Atopobium_rimae_Atopobium_vaginae/Atopobium_vaginae/g for @colNames;
-  s/Lactobacillus_acidophilus_Lactobacillus_sp_Lactobacillus_taiwanensis_Lactobacillus_johnsonii/Lactobacillus_johnsonii/g for @colNames;
-  s/Lactobacillus_crispatus_helveticus/Lactobacillus_crispatus/g for @colNames;
-}
 my @uqTxs = unique(\@colNames);
 my %txIdx;
 for my $tx ( @uqTxs )

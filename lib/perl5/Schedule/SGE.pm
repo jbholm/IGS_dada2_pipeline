@@ -22,7 +22,7 @@ package Schedule::SGE;
 use strict;
 
 use Schedule::SGE::Run
-  qw/command execute environment name project output_file error_file use_cwd notify mailto job_id/;
+  qw/command execute environment l b name project output_file error_file use_cwd notify mailto job_id/;
 use Schedule::SGE::Status qw/user status brief_job_stats all_jobs/;
 
 #use Schedule::SGE::Control qw/qdel/;

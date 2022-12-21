@@ -8,7 +8,7 @@ require("argparse")
 if(length(grep("--verbose", initial.options, fixed = T)) > 0) {
     require("dada2")
 } else {
-	suppressMessages(suppressWarnings(require("dada2")))
+    suppressMessages(suppressWarnings(require("dada2")))
 }
 
 parser <- ArgumentParser(description = "Assign taxa")
@@ -33,7 +33,7 @@ parser$add_argument(
     "--minBoot",
     metavar = "BOOTSTRAP_CONFIDENCE",
     type = "integer",
-    default = formals(dada2::assignTaxonomy)$minBoot
+    default = 80 # DADA2 default is 50, which is low; if doing post-processing, you can lower this default so more of the output is retained
 )
 parser$add_argument(
     "--verbose",
@@ -80,7 +80,7 @@ stdout <- lapply(args$tax, function(taxonomy) {
             "Genus",
             "Species"
         ) # SILVA doesn't have species, but this is trivial to DADA2
-    } else if (taxonomy %in% c("HOMD", "UNITE", "SILVA132", "SILVA138", "SILVA138forPB")) {
+    } else if (taxonomy %in% names(config[["taxonomy_dbs"]])) {
         taxLevels <- c(
             "Kingdom",
             "Phylum",
@@ -103,31 +103,55 @@ stdout <- lapply(args$tax, function(taxonomy) {
     message("Assigning taxonomy")
     tryCatch(
         {
-            invisible(
-                capture.output(
-                    assignments <- dada2::assignTaxonomy(
-                        seqs,
-                        db,
-                        multithread = TRUE,
-                        taxLevels = taxLevels,
-                        outputBootstraps = TRUE,
-                        minBoot = args$minBoot
-                    )
-                )
+			sink(file = stderr(), type = "output")
+            taxtab <- dada2::assignTaxonomy(
+                seqs,
+                db,
+                multithread = TRUE,
+                taxLevels = taxLevels,
+                outputBootstraps = TRUE,
+                minBoot = args$minBoot,
+                verbose = T
             )
+
+            binom <- dada2::assignSpecies(
+                seqs, 
+                file.path(config$ref_16s_dir, config$species_inhouse_db),
+                verbose = T
+            )
+			sink()
         },
         error = function(e) {
-            print("Error in dada2::assignTaxonomy:")
+            print("Error in dada2::assignTaxonomy or dada2::assignSpecies:")
             stop(e)
         }
     )
-    assignments$tax <- gsub("^[a-zA-Z]__", "", assignments$tax, perl = TRUE)
-    # assignments <- apply(assignments, MAR = 1, function(taxon) {
-    #   # remove any taxon level hints (k__, p__, c__, o__, g__, s__)
-    #   return(gsub('^[a-zA-Z]__', '', taxon, perl = TRUE))
-    # })
-    rownames(assignments$tax) <- names(seqs)
-    write.csv(assignments$tax,
+    taxtab$tax <- gsub("^[a-zA-Z]__", "", taxtab$tax, perl = TRUE)
+    
+    # for each seq where the genuses don't match, delete assignments above genus
+    # and override genus with the genus from assignSpecies
+    if ("Genus" %in% colnames(taxtab$tax)) {
+        gcol <- which(colnames(taxtab$tax) == "Genus")
+    } else {
+        gcol <- ncol(taxtab)
+    }
+    # if genuses don't match, and there IS an assignment to species level by
+    # exact match, then trust the exact match
+    gen.match <- mapply(dada2:::matchGenera, taxtab$tax[, gcol], binom[, 1])
+    binom_override <- !gen.match & !is.na(binom[, 2]) 
+    taxtab$tax[binom_override, 1:(gcol - 1)] <- NA_character_
+    taxtab$tax[binom_override, gcol] <- binom[binom_override, 1]
+    
+    # Where there was species annotation from an exact match, use it
+    species <- binom[, 2]
+    if(ncol(taxtab$tax) > gcol ) {
+        species[is.na(species)] <- taxtab$tax[is.na(species), gcol + 1]
+        taxtab$tax[, gcol + 1] <- species
+    } else {
+        taxtab$tax <- cbind(taxtab$tax, species)
+    }
+    rownames(taxtab$tax) <- names(seqs)
+    write.csv(taxtab$tax,
         paste(taxonomy, "classification.csv", sep = "."),
         quote = FALSE
     )

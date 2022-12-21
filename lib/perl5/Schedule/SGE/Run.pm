@@ -21,7 +21,7 @@ use Exporter;
 use vars qw(@ISA @EXPORT_OK);
 @ISA = qw(Schedule::SGE Exporter);
 @EXPORT_OK =
-  qw(command execute environment name project output_file error_file use_cwd notify mailto job_id);
+  qw(command execute environment l b name project output_file error_file use_cwd notify mailto job_id);
 our $VERSION = '0.01';
 
 =head2 command()
@@ -161,6 +161,32 @@ sub error_file
     return $self->{'error_file'};
 }
 
+sub l
+{
+    my ($self, $val) = @_;
+    if ($val)
+    {
+        $self->{'l'} = $val;
+    }
+    return $self->{'l'};
+    # if (!defined $self->{'l'}) {$self->{'l'} = []}
+    # if ($val)
+    # {
+    #     push @{$self->{'l'}}, $val;
+    # }
+    # return " ".join(@{$self->{'l'}});
+}
+
+sub b
+{
+    my ($self, $val) = @_;
+    if ($val)
+    {
+        $self->{'b'} = $val;
+    }
+    return $self->{'b'};
+}
+
 =head2 use_cwd()
 
 Boolean whether to set the cwd directory. NOTE: By default this is set to true, and you have to turn it off if you don't want it.
@@ -238,18 +264,20 @@ sub _run
     &_dieout('qsub') unless ($pipe);
     &_dieout('command') unless ($self->{'command'});
 
-    #  my %tags=(
-    #   'name' 	=> ' -N ',
-    #   'project'	=> ' -P ',
-    #   'mailto'	=> ' -M ',
-    #   'output_file'	=> ' -o ',
-    #   'error_file'	=> ' -e ',
-    #  );
+     my %tags=(
+      'name' 	=> ' -N ',
+      'project'	=> ' -P ',
+      'mailto'	=> ' -M ',
+      'output_file'	=> ' -o ',
+      'error_file'	=> ' -e ',
+      'l'           => ' -l ',
+      'w'           => ' -w ',
+      'b'           => ' -b '
+     );
 
-#  foreach my $tag (keys %tags) {if ($self->{$tag}) {$pipe .= $tags{$tag}.$self->{$tag}}}
-
-    #  if ($self->use_cwd) 		{$pipe .= " -cwd"}
-    #  if ($self->notify)		{$pipe .= " -notify"}
+    foreach my $tag (keys %tags) {if ($self->{$tag}) {$pipe .= $tags{$tag} . $self->{$tag}}}
+     if ($self->use_cwd) 		{$pipe .= " -cwd"}
+     if ($self->notify)		{$pipe .= " -notify"}
 
     my $command = $self->{'command'};
 
@@ -257,7 +285,7 @@ sub _run
 #  open(QSUB, "|$pipe > /tmp/$$.out 2>&1") || die "Can't open the pipe to submit jobs to";
 #  print QSUB $command, "\n";
 #  close QSUB;
-    $command = "$command > ./$$.out 2>&1";
+    $command = "$pipe $command > ./$$.out 2>&1";
     if ($self->{'verbose'}) {
         print "$command\n";
     }

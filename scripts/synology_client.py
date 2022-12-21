@@ -114,10 +114,10 @@ def choose_upload_source(user):
                 try:
                     choose_upload_dest(user, path, "directory")
                 except ConnectionError as e:
-                    print(e)
+                    print(str(e) + "\n")
                     return
                 except Exception as e:
-                    print(e + "\n")
+                    print(str(e) + "\n")
         # FILE OR LINK
         if choice[0] == "-":
             basename = choice.split()[8]
@@ -206,7 +206,7 @@ def choose_upload_dest(user, source, ul_type):
             wd = fullpath
 
         elif choice == "UPLOAD HERE":
-            if ask_upload(user, list(source), wd, "%s to directory" % ul_type):
+            if ask_upload(user, source, wd, "%s to directory" % ul_type):
                 break
 
         elif choice == "BROWSE MODE":
@@ -240,6 +240,9 @@ def archive_project(user, name, subdirs):
             raise Exception(dir + " is not a directory")
     ask_upload(user, full_paths, dest, "directory to directory")
 
+    files = [str(child) for child in Path(".").iterdir() if child.is_file()]
+    ask_upload(user, files, dest, "file_to_directory")
+
 def ask_upload(user, source, dest, ul_type):
     if ul_type == "directory to directory":
         msg = "Upload the following directory/ies\n\n%s\n\nto %s now?"
@@ -248,7 +251,7 @@ def ask_upload(user, source, dest, ul_type):
     elif ul_type == "file to file":
         msg = "Overwrite file %s to %s now?"
 
-    msg = msg % ("\n".join(source), dest)
+    msg = msg % (str(source), dest)
     questions = [
         {
             'type': 'confirm',
@@ -260,7 +263,7 @@ def ask_upload(user, source, dest, ul_type):
     ok = inquire(questions)
 
     if ok:
-        cmd = "rsync -azh --append-verify --progress %s %s@Rosalind.IGS.umaryland.edu:%s" % (" ".join(source), user, dest)
+        cmd = "rsync -azh --chmod=ugo=rwX --append-verify --progress %s %s@Rosalind.IGS.umaryland.edu:%s" % (str(source), user, dest)
         print(cmd)
         run(shlex.split(cmd))
     return ok

@@ -25,8 +25,7 @@ parser$add_argument(
     "--pattern",
     metavar = "GLOB",
     type = "character",
-    help = "Regex pattern that will match all DEMUXED .ccs.fastq.gz files. Use () in place of sample name. Remember to escape regex special characters. For correct bash syntax, enclose the pattern in double quotes.",
-    required = T
+    help = "Regex pattern that will match all DEMUXED .ccs.fastq.gz files. Use () in place of sample name. Remember to escape regex special characters. For correct bash syntax, enclose the pattern in double quotes."
 )
 parser$add_argument(
     "--wd",
@@ -45,6 +44,7 @@ args <- parser$parse_args()
 if (any(is.null(args))) {
     stop("Some args missing!")
 }
+
 setwd(args$wd)
 run <- basename(getwd())
 sink(
@@ -80,7 +80,7 @@ cache_checksums <- function(files, name) {
 }
 run_meta(new_params = list(platform = "PACBIO"))
 
-glob_pattern <- gsub("()", "(.*)", args$pattern, fixed = T)
+glob_pattern <- gsub("()", "(.*?)", args$pattern, fixed = T)
 fastqs <- sort(list.files(inPath, pattern = glob_pattern, full.names = T)) # B01\..+\.css\.fastq\.gz
 print(fastqs)
 sample.names <- sapply(fastqs, function(filename) {
@@ -89,7 +89,7 @@ sample.names <- sapply(fastqs, function(filename) {
 
 # copy to a local directory regardless of original location, and pre-pend the
 # run name while we're at it
-demuxed_path <- file.path("demuxed")
+demuxed_path <- file.path("demultiplexed")
 dir.create(demuxed_path, showWarnings = T)
 demuxed_filepaths <- file.path(
     demuxed_path, paste(sample.names, "fastq.gz", sep = ".")
@@ -391,7 +391,7 @@ stats <- collectStats(
 colnames(stats) <- c("Input", "Trimmed", "Filtered", "Denoised")
 write.table(
     stats, "dada2_part1_stats.txt",
-    quote = FALSE, append = FALSE, sep = , row.names = TRUE, col.names = TRUE
+    quote = FALSE, append = FALSE, sep ="\t", row.names = TRUE, col.names = TRUE
 )
 
 if(! args$nodelete){

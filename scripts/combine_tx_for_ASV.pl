@@ -219,16 +219,20 @@ if ( $silvaFile || $homdFile ) {
 
         if ($pecanFile) {
             # If the SILVA annotation is one of these genuses, use PECAN
-            # NB: The annotations, as they are parsed from the file, may look
-            # like 'g_Prevotella_7', which is why we simply search the string
-            # for the genus name.
-            if (   $tx && $tx =~ /Lactobacillus/
-                || $tx && $tx =~ /Shuttleworthia/
-                || $tx && $tx =~ /Saccharibacteria/
-                || $tx && $tx =~ /Gardnerella/
-                || $tx && $tx =~ /Prevotella/
-                || $tx && $tx =~ /Sneathia/
-                || $tx && $tx =~ /Atopobium/ )
+            # NB The exact matches that yield species assignments, done during 
+            # assign_taxonomies.R, take precedence over PECAN. They are however,
+            # excluded by these very strict regex patterns
+            if (   $tx && $tx =~ /^g_Lactobacillus$/
+                || $tx && $tx =~ /^g_Shuttleworthia$/
+                || $tx && $tx =~ /^p_Saccharibacteria$/
+                || $tx && $tx =~ /^c_Saccharimonadia$/
+                || $tx && $tx =~ /^o_Saccharimonadales$/
+                || $tx && $tx =~ /^f_Saccharimonadaceae$/
+                || $tx && $tx =~ /^g_Candidatus_Saccharimonas$/
+                || $tx && $tx =~ /^g_Gardnerella$/
+                || $tx && $tx =~ /^g_Prevotella$/
+                || $tx && $tx =~ /^g_Sneathia$/
+                || $tx && $tx =~ /^g_Atopobium$/ )
             {
                 #print "The PECAN taxonomy of $x is $pecan{$x}\n";
                 $tx = $pecan{$x};
@@ -256,41 +260,6 @@ if ( $silvaFile || $homdFile ) {
             }
         }
 
-    }
-
-# Sequence-specific name substitutions applicable only to SILVA (unlikely to appear in oral samples, but doesn't hurt to check)
-    my %subs;
-
-    %subs = (
-"GTACGTAAAAGTCGTAACAAGGTTTCCGTAGGTGAACCTGCGGAAGGATCATTACTGATTTGCTTAATTGCACCACATGTGTTTTTCTTTGAAACAAACTTGCTTTGGCGGTGGGCCCAGCCTGCCGCCAGAGGTCTAAACTTACAACCAATTTTTTATCAACTTGTCACACCAGATTATTACTAATAGTCAAAACTTTCAACAACGGATCTCTTGGTTCTCGCATCGATGAAGAACGCAGCGAAATGCGATACGTAATATGAATTGCAGATATTCGTGAATCATCGAGTCTTTGAACCATGAT"
-          => "Candida_albicans", );
-    if ($vaginal) {
-        $subs{
-"TGAGGAATATTCCACAATGGGCGAAAGCCTGATGGAGCAATGCCGCGTGCAGGATGAAGGCCCTCGGGTCGTAAACTGCTTTTATTAGAGAAGAATATGACGGTAACTAATGAATAAGGGACGGCTAACTACGTGCCAGCAGCCGCGGTCATACGTAGGTCCCAAGCGTTATCCGGAGTGACTGGGCGTAAAGAGTTGCGTAGGCGGCTAAGTAAGCGAGTAATGAAAACTATCGGCTCAACCGGTAGCCTGTTATTCGAACTGCTTGGCTCGAGATTATCAGAGGTCGCTGGAATTCCTAGTGTAGCAGTGAAATGCGTAGATATTAGGAAGAACACCAATGGCGTAGGCAGGCGACTGGGGTATTTCTGACGCTAAGGCACGAAAGCGTGGGGAGCGAACCGG"
-        } = "BVAB_TM7";
-        $subs{
-"GTATTTAGCCGGAGCTTCTTAGTAAGGTACCGTCATTTTCTTCCCTTCTGATAGAGCTTTACATACCGAAATACTTCTTCGCTCACGCGGCGTCGCTGCATCAGGCTTTCGCCCATTGTGCAATATTCCCCACTGCTGCCTCCCGTAGGAGTCTGGGCCGTGTCTCAGTCCCAATGTGGCCGGTCAGTCTCTCAACTCGGCTACTGATCTTCGCTTTGGTAGGCTTTTACCCCACCAACCGGCTAATCAGACGCGGGTCCATCCTATACCACCGGAGTTTTTCACACCATGTCATGCGACATTCGTGCGCTTATGCGGTATTATCAGCCGTTTCCGGCTGCTATCCCCCGGTACAGGGCAGGTTCCCCACGCGTTACTCACCCGTCCGCCACTAAGTAACTACATCTTCCGTCCGAAAACTTCCGTCGTAGCACTTCGTTCGACTTGCAT"
-        } = "BVAB1";
-        $subs{
-"GTATTTAGCCGGAGCTTCTTAGTAAGGTACCGTCATTTTCTTCCCTTCTGATAGAGCTTTACATACCGAAATACTTCTTCGCTCACGCGGCGTCGCTGCATCAGGCTTTCGCCCATTGTGCAATATTCCCCACTGCTGCCTCCCGTAGGAGTCTGGGCCGTGTCTCAGTCCCAATGTGGCCGGTCAGTCTCTCAACTCGGCTACTGATCTTCGCTTTGGTAGGCTTTTACCCCACCAACTGGCTAATCAGACGCGGGTCCATCCTATACCACCGGAGTTTTTCACACCATGTCATGCGACATTCGTGCGCTTATGCGGTATTATCAGCCGTTTCCGGCTGCTATCCCCCGGTACAGGGCAGGTTCCCCACGCGTTACTCACCCGTCCGCCACTAAGTAACTACATCTTCCGTCCGAAAACTTCCGTCGTAGCACTTCGTTCGACTTGCAT"
-        } = "BVAB1";
-        $subs{
-"GTATTTAGCCGGAGCTTCTTAGTAAGGTACCGTCATTTTCTTCCCTTCTGATAGAGCTTTACATACCGAAATACTTCTTCGCTCACGCGGCGTCGCTGCATCAGGCTTTCGCCCATTGTGCAATATTCCCCACTGCTGCCTCCCGTAGGAGTCTGGGCCGTGTCTCAGTCCCAATGTGGCCGGTCAGTCTCTCAACTCGGCTACTGATCTTCGCTTTGGTAGGCTTTTACCCCACC"
-        } = "BVAB1";
-    }
-
-    # First search the ASV name-sequence reference:
-    open my $refFH, "<all_runs_dada2_ASV.fasta";
-    my $previous;    # contents of previous line
-    while ( my $line = <$refFH> ) {
-        chomp $line;
-        ( my $match ) = grep ( /$line/, keys %subs );
-        if ($match) {
-            my $asvName = substr $previous, 1;
-            chomp $asvName;
-            $cmbTx{$asvName} = $subs{$match};
-        }
-        $previous = $line;
     }
 
 } elsif ($ezBioFile) {

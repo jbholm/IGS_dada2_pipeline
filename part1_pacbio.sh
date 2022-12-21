@@ -185,6 +185,10 @@ if [[ -n "$EMAIL" ]]; then
     QSUB_ARGS="$QSUB_ARGS $EMAIL"
 fi
 
+if [[ ! -n "$PATTERN" ]]; then
+    PATTERN=".*-([^-]*?)(-bc[0-9]{4}){2}\.ccs\.fastq(\.gz)?$"
+fi
+
 use () 
 { 
     eval `/usr/local/packages/usepackage/bin/usepackage -b $*` || true

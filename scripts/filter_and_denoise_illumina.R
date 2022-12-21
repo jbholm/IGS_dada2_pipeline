@@ -363,7 +363,7 @@ saveRDS(seqtab, "dada2_abundance_table.rds")
 # Collect statistics
 nRaw <- tryCatch({
     # try to use split_library_stats.txt to get stats on raw reads quickly
-    read.table("./fwdSplit/split_library_stats.txt", header = T) %>%
+    read.table("./libraries/fwd/split_library_stats.txt", header = T) %>%
         mutate(Input = Reads) %>%
         select(-Reads)
 }, error = function(e) {
@@ -371,7 +371,7 @@ nRaw <- tryCatch({
     tryCatch({
         nRaw <- lapply(gsub(fastqFs, pattern = "_tc\\.fastq(?:\\.gz)", replace = ".fastq"), function(basename) {
             filepath <- list.files(
-                path = file.path("fwdSplit", "split_by_sample_out"), 
+                path = file.path("libraries", "fwd", "split_by_sample_out"), 
                 pattern = basename,
                 full.names = T
             )[1]

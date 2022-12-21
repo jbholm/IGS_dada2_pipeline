@@ -5,54 +5,45 @@
   part2_illumina_dada2_devel.pl  
 
 =head1 DESCRIPTION
-
-  Given a comma-separated list of Illumina amplicon runs and the variable region for the amplicons,
-  and assuming these runs are also the names of the directories containing sequence abundance tables 
-  written by R(dada2) saveRDS(seqtab, "dada2_abundance_table.rds") for those runs, this script will:
-
-    -Read in each .rds file to R
-    -Remove chimeras
-    -Write a chimera-removed abundance table
-    -Assign taxonomy via SILVA
-    -Assign taxonomy via RDP
-    -Classify sequences with PECAN
-
-    -Default: 
-      Classify ASVs with PECAN and SILVA
-      For count table, write only PECAN classifications using vaginal merging rules.
-
-  *** If providing multiple runs, this script cannot be q-submitted at this time.***
-  *** Run from qlogin within the project directory produced in Part 1.***
-  *** Recommended running w/multiple runs:
-
-      From RHEL8:
-      screen
-      qlogin -P jravel-lab -l mem_free=16G -q interactive.q
-      part2_illumina_dada2.pl -i <comma-separated-input-run-names> -v <variable-region> -p <project-ID>
-
-      You can close the terminal at any time. 
-      To return to this process the next time you login simply type:
-      screen -r
+  
+  This is the second part of the MD Genomics 16S analysis pipeline. This script
+  will create a project from one or more runs, remove bimeras, produce sequence
+  (ASV) count tables, assign taxonomy to each ASV, create count tables using all
+  taxonomic annotations, and create an HTML report.
+  
+  Most parameters are stored in config.json.
+  
+  Recommended to submit to SGE grid with request for 64G memory.
 
 =head1 SYNOPSIS
 
-  part2_illumina_dada2.pl -i <input-run-names> -v <variable-region> -p <project-ID>
+  part2_illumina_dada2.pl -r <run> [-r <run2> … ] -p 16stest -m <map> [--pacbio] 
+    [-v {V3V4, V4, ITS, FULL-LENGTH, OMPA}] [--oral]
+    [--tax {SILVA, PECAN, PECAN-SILVA, UNITE, HOMD, SILVA138forPB}]
 
 =head1 OPTIONS
 
 =over
 
-=item B<--input-run-names, -i>
-  Comma-separated list of input run names (directories)
+=item B<--run, -r> RUN
+  Input run names (name of the run's directory)
+
+=item B<--run-storage> PATH
+  Full path to the parent directory where runs will be found. The default is in 
+  config.json.
 
 =item B<--project-ID, -p>
-  Provide the project ID
+  Provide the project ID. A timestamp in the format "YYMMDD_" will be prepended.
 
 =item B<--map, -m>
   A tab-delimited file listing the samples to add to this project. The file must
   have two columns named RUN.PLATEPOSITION and sampleID. RUN.PLATEPOSITION
   must be identical to the sample names in the "corrected" map created by Part 1.
   Default: project_map.txt.
+
+=item B<--pacbio> 
+  Use this flag for PacBio runs. Sets B<--variable-region> to "FULL-LENGTH" and 
+  uses PacBio-specific chimera removal parameters.
 
 =item B<--variable-region>|B<-v> {V3V4, V4, ITS, FULL-LENGTH}
   The targeted variable region, V3V4 by default. The variable region determines 
@@ -83,9 +74,10 @@
   UNITE - Assigns from the UNITE database, usually to species level. Use only 
     for the fungal ITS region.
 
-=item B<--pacbio> 
-  Use this flag for PacBio runs. Sets B<--variable-region> to "FULL-LENGTH" and 
-  uses PacBio-specific chimera removal parameters.
+=item B<--notVaginal>
+  Use when project is NOT just vaginal sequences to prevent renaming of several
+  SILVA-derived taxonomic assignments, including two that are renamed to 
+  BVAB_TM7.
 
 =item B<--oral>
   Changes the base taxonomic annotation scheme to "HOMD", regardless of
@@ -100,13 +92,14 @@
   Flag to skip CST assignment. By default, CSTs are assigned if the V3V4 variable region is being analyzed and samples are non-oral. Assignment data are written to *_PECAN_taxa-merged_StR_CST.csv.
 
 
-=item B<--notVaginal>
-  Use when project is NOT just vaginal sequences to prevent renaming of several
-  SILVA-derived taxonomic assignments, including two that are renamed to 
-  BVAB_TM7.
-
 =item B<--noreport>
   Flag to skip creating HTML report.
+
+=item B<--verbose>
+  Print extra messages to the log file.
+
+=item B<--dry-run>
+  Unsupported, probably doesn't work.
 
 =item B<-h|--help>
   Print help message and exit successfully.
@@ -155,6 +148,7 @@ use Data::Dumper;
 use File::Spec;
 require IO::Tee;
 use JSON;
+use Time::Piece;
 
 $OUTPUT_AUTOFLUSH = 1;
 
@@ -180,12 +174,9 @@ GetOptions(
            "variable-region|v=s" => \$region,
            "project-ID|p=s"      => \my $project,
            "map|m=s"             => \$map_file,
-           "overwrite|o=s"       => \my $overwrite,
            "help|h!"             => \my $help,
-           "debug"               => \my $debug,
            "verbose!"            => \my $verbose,
            "dry-run"             => \my $dryRun,
-           "skip-err-thld"       => \my $skipErrThldStr,
            "notVaginal"          => \$notVaginal,
            "tax|t=s"             => \@schemes,
            "oral"                => \my $oral,
@@ -207,8 +198,17 @@ if (!$project)
     die "Please provide a project name\n\n";
 }
 
-chdir catdir(File::Spec->rootdir(), "local", "scratch", $project);
-my $projDir = Cwd::cwd;
+# No, make the year directory if needed, and add yymmdd to project name
+my $t = Time::Piece->new();
+my $year = $t->year;
+my $yeardir = catdir($config_hashref->{"project_storage_path"}, $year);
+if ( ! -d $yeardir) {
+    mkdir( $yeardir ) or print "Didn't create $yeardir directory, $!\n";
+}
+$project = $t->strftime("\%y\%m\%d") . "_$project";
+my $projDir = catdir($yeardir, $project);
+mkdir( $projDir ) or print "Didn't create $projDir directory, $!";
+chdir $projDir;
 
 $run_path = abs_path($run_path) or die "Can't find run storage path.\n$!";
 
@@ -285,6 +285,9 @@ $ENV{'PYTHONPATH'} = "";
 
 if ($map_file)
 {
+    my $orig_map_file = $map_file;
+    # rather roundabout...all I want is to rename this to <project>_sample_plate_map.txt
+    # Nextflow when
     if ($map_file !~ /^${projDir}/)
     {
         $map_file = copy_to_project($project, $map_file);
@@ -292,8 +295,12 @@ if ($map_file)
     {
         $map_file = move_to_project($project, $map_file);
     }
+    rename $map_file, catfile(dirname($map_file), "sample_plate_map.txt");
+    $map_file = move_to_project($project, catfile(dirname($map_file), "sample_plate_map.txt"));
+    $logTee->print("MAP: $orig_map_file => $map_file\n");
+} else {
+    $logTee->print("MAP: NONE (all samples from specified runs will be processed)\n");
 }
-$logTee->print("MAP: $map_file\n");
 
 $logTee->print("\n");
 $logTee->print("RUN(s):\n");
@@ -336,7 +343,6 @@ if (
       "Illegal --variable-region (-v). V3V4, V4, ITS, ompA, and FULL-LENGTH are accepted.";
 }
 
-my $models;
 my %taxonomy_flags;
 
 my $base_scheme;
@@ -395,10 +401,9 @@ $logTee->print(join(" ", @schemes) . "\n");
 # Which taxonomies need to be assigned from? (this is necessary bc PECAN-SILVA
 # specifies two taxonomies)
 %taxonomy_flags =
-  (SILVA138 => 0, SILVA => 0, HOMD => 0, UNITE => 0, PECAN => 0);
+  (SILVA138forPB => 0, SILVA => 0, HOMD => 0, UNITE => 0, PECAN => 0);
 if ($ps)
 {
-    $models = "/local/projects-t2/jholm/PECAN/v1.0/V3V4/merged_models/";
     if ($csts)
     {
         print $logTee "Using Valencia to assign samples to CSTs\n";
@@ -406,16 +411,12 @@ if ($ps)
     {
         print $logTee "Skipping CST assignment.\n";
     }
-    $taxonomy_flags{PECAN} = 1;
-    $taxonomy_flags{SILVA} = 1;
+    $taxonomy_flags{PECAN} += $ps;
+    $taxonomy_flags{SILVA} += $ps;
 }
-if ($s)
-{
-    $taxonomy_flags{SILVA} = 1;
-}
+$taxonomy_flags{SILVA} += $s;
 if ($p)
 {
-    $models = "/local/projects-t2/jholm/PECAN/v1.0/V3V4/merged_models/";
     if ($csts)
     {
         print $logTee "Using Valencia to assign samples to CSTs\n";
@@ -423,20 +424,11 @@ if ($p)
     {
         print $logTee "Skipping CST assignment.\n";
     }
-    $taxonomy_flags{PECAN} = 1;
+    $taxonomy_flags{PECAN} += $p;
 }
-if ($s138)
-{
-    $taxonomy_flags{SILVA138forPB} = 1;
-}
-if ($h)
-{
-    $taxonomy_flags{HOMD} = 1;
-}
-if ($u)
-{
-    $taxonomy_flags{UNITE} = 1;
-}
+$taxonomy_flags{SILVA138forPB} += $s138;
+$taxonomy_flags{HOMD} += $h;
+$taxonomy_flags{UNITE} += $u;
 
 print $logTee "\n";
 ####################################################################
@@ -449,6 +441,12 @@ my $projabund;
 # my $cmd = "rm -f *-dada2_abundance_table.rds";
 # execute_and_log( $cmd, *STDOUT, $dryRun, "" );
 my $cmd;
+
+my $vopt = "";
+if ($vaginal)
+{
+    $vopt = "--vaginal";
+}
 
 ##loop over array to copy the file to the main current working directory
 ## using the array string to also add a name
@@ -468,7 +466,7 @@ my ($abundRds, $abund, $stats, $fasta) = (
 if (List::Util::any {!-e $_} ($abundRds, $abund, $fasta, $stats))
 {
     print $logTee "Combining runs and removing bimeras.\n";
-    ($abundRds, $abund, $fasta, $stats) = dada2_combine($pacbio, \@runs);
+    ($abundRds, $abund, $fasta, $stats) = dada2_combine($pacbio, \@runs, $map_file);
 
     ($abundRds, $abund, $fasta, $stats) = map {move_to_project($project, $$_)}
       (\$abundRds, \$abund, \$fasta, \$stats);
@@ -501,17 +499,14 @@ my @full_classif_csvs;
 my @two_col_classifs;
 
 my @dada2_taxonomy_list;
-foreach ("SILVA138forPB", "SILVA", "SILVA-PECAN", "UNITE", "HOMD")
+foreach ( keys %taxonomy_flags )
 {
-    if ($taxonomy_flags{$_})
+    if ($taxonomy_flags{$_} > 0)
     {
-        if ($_ eq "SILVA_PECAN")
-        {
-            push @dada2_taxonomy_list, "SILVA";
-        } elsif ($_ eq "SILVA")
+        if ($_ eq "SILVA")
         {
             push @dada2_taxonomy_list, $config_hashref->{"SILVA_default"};
-        } else
+        } elsif ( $_ ~~ [ keys %{$config_hashref->{"taxonomy_dbs"}} ] )
         {
             push @dada2_taxonomy_list, $_;
         }
@@ -543,19 +538,18 @@ if (scalar @dada2_taxonomy_list > 0)
 
 }
 
-my $pecanFile = "MC_order7_results.txt";
+my $pecanFile = "MC_order7_results.clean.txt";
 if ($taxonomy_flags{PECAN})
 {
     if (!-e $pecanFile)
     {
-
         my $cmd =
-          "/local/projects/pgajer/devel/MCclassifier/bin/classify -d $models -i $fasta -o .";
+          $config_hashref->{"python3.9"} . " -s $scriptsDir/pecan_wrapper.py -d " . $config_hashref->{"pecan_models"} . " -i $fasta -o . $vopt";
         execute_and_log(
             $cmd,
             $logTee,
             0,
-            "---Classifying ASVs with $region PECAN models (located in $models)"
+            "---Classifying ASVs with $region PECAN models (located in " . $config_hashref->{"pecan_models"} . ")"
         );
 
     } else
@@ -572,11 +566,6 @@ if ($taxonomy_flags{PECAN})
 #########APPLY CLASSIFICATIONS TO COUNT TABLES ###################
 #################################################################
 
-my $vopt = "";
-if ($vaginal)
-{
-    $vopt = "--vaginal";
-}
 foreach (@full_classif_csvs)
 {
 
@@ -678,8 +667,8 @@ rename_temps("");
 
 if ($csts && $taxonomy_flags{PECAN})
 {
-    $ENV{'LD_LIBRARY_PATH'} =
-      $ENV{'LD_LIBRARY_PATH'} . ':/usr/local/packages/python-3.5/lib';
+    # $ENV{'LD_LIBRARY_PATH'} =
+    #   $ENV{'LD_LIBRARY_PATH'} . ':/usr/local/packages/python-3.5/lib'; #  This path doesn't exist; guess we don't need it
 
     my $pecanCountTbl = basename($abund, (".csv")) . ".PECAN.taxa-merged.csv";
 
@@ -687,11 +676,10 @@ if ($csts && $taxonomy_flags{PECAN})
     {
         print $logTee "---Assigning CSTs with Valencia\n";
         my $cmd =
-          "python3 -s $scriptsDir/valencia_wrapper.py "
-          . catdir($pipelineDir, "ext", "valencia",
-                   "CST_profiles_jan28_mean.csv")
+          $config_hashref->{"valencia_python"} . " -s $scriptsDir/valencia_wrapper.py "
+          . catdir($pipelineDir, $config_hashref->{"valencia_coefficients"})
           . " $pecanCountTbl";
-        print $logTee "\tcmd=$cmd\n" if $dryRun || $debug;
+        print $logTee "\tcmd=$cmd\n" if $dryRun || $verbose;
 
         system($cmd) == 0
           or die "system($cmd) failed with exit code: $?"
@@ -869,12 +857,13 @@ sub R
     {
         $cmd .= " --verbose";
     }
-    my $stdout_file = basename($script) . ".stdout";
-    $cmd .= " 2>&1 1>$stdout_file";    
+    my $stdout_file = basename($script) . ".stdout"; # I tell R to print the names of its output files into STDOUT
+    my $stderr_file = basename($script) . ".stderr"; # R's normal output, including error messages, comes out in STDERR
+    $cmd .= " 2>$stderr_file 1>$stdout_file";    
 
     system($cmd) == 0
     or die
-    "system($cmd) failed with exit code $?. See this script's STDOUT for error description.";
+    "system($cmd) failed with exit code $?. See this script's STDERR file for error description.";
     my $out = do {
         local $/ = undef;
         open my $fh, "<", $stdout_file
@@ -907,6 +896,7 @@ sub dada2_combine
 {
     my $pacbio  = shift;
     my $rundirs = shift;
+    my $map_file = shift;
     my @rundirs = @$rundirs;
 
     my $sequencer = $pacbio ? "PACBIO" : "ILLUMINA";

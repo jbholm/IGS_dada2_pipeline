@@ -47,9 +47,9 @@ Required inputs:
 
 =over
 
-=item Z<>* ./fwdSplit/seqs.fastq
+=item Z<>* ./libraries/fwd/seqs.fastq
 
-=item Z<>* ./revSplit/seqs.fastq
+=item Z<>* ./libraries/rev/seqs.fastq
 
 =back
 
@@ -57,9 +57,9 @@ Required inputs:
 
 =over
 
-=item Z<>* ./fwdSplit/split_by_sample_out/<sample_id>_*.fastq
+=item Z<>* ./demultiplexed/<sample_id>_*.fastq
 
-=item Z<>* ./revSplit/split_by_sample_out/<sample_id>_*.fastq
+=item Z<>* ./demultiplexed/<sample_id>_*.fastq
 
 =back
 
@@ -217,7 +217,7 @@ not described in the config file, use the following options to specify the
 processing parameters. These options will also override any parameters specified 
 by the config file.
 
-=item B<--var-reg>={V3V4, V4, ITS}, B<-v> {V3V4, V4, ITS}
+=item B<--var-reg>={V3V4, V4, ITS, OMPA}, B<-v> {V3V4, V4, ITS, OMPA}
 
 The targeted variable region.
 
@@ -313,6 +313,7 @@ use English qw( -no_match_vars );
 use Getopt::Long qw(:config no_ignore_case no_auto_abbrev pass_through);
 use Cwd qw(abs_path getcwd);
 use File::Temp qw/ tempfile /;
+use File::Temp qw/ :mktemp  /;
 use POSIX;
 require File::Copy;
 require List::Util;
@@ -529,7 +530,7 @@ $GLOBAL_PATHS->print("$time\n");
 my $map_log = catfile($GLOBAL_PATHS->part1_error_log(),
                       basename($GLOBAL_PATHS->{'map'}, ".txt") . ".log");
 
-my @split;
+my @dropouts;
 
 my @errors;
 
@@ -1424,25 +1425,25 @@ sub demux
              "---Duration of fwd and rev seqs.fastq production: $duration s\n");
 
         ##Check split_library log for 0's
-        my @split =
+        my @dropouts =
           readSplitLog(file => $split_log, verbose => 1, logger => $paths);
 
-        $newSamNo = $nSamples - scalar @split;
-        if (scalar @split > 0 && scalar @split ne $nSamples)
+        $newSamNo = $nSamples - scalar @dropouts;
+        if (scalar @dropouts > 0 && scalar @dropouts ne $nSamples)
         {
             $paths->print("---The following "
-                . scalar @split
+                . scalar @dropouts
                 . " samples returned 0 "
                 . "reads, due to either a lack of barcodes or a filtering of those "
                 . "reads in split_libraries_fastq.py:\n");
-            foreach my $x (@split)
+            foreach my $x (@dropouts)
             {
                 $paths->print("   $x\n");
             }
             $paths->print(
                          "---Number of samples after split_libraries_fastq.py: "
                            . "$newSamNo\n");
-        } elsif (scalar @split == $nSamples)
+        } elsif (scalar @dropouts == $nSamples)
         {
             if ($die_on_fail)
             {
@@ -1454,7 +1455,7 @@ sub demux
             {
                 return 0;
             }
-        } elsif (scalar @split == 0)
+        } elsif (scalar @dropouts == 0)
         {
             $paths->print("---Reads from all samples were demultiplexed.\n");
         }
@@ -1502,14 +1503,14 @@ sub demux
             "$config_hashref->{'executor'} -l mem_free=300M -P $qproj -e "
           . $paths->part1_error_log() . " -o "
           . $paths->part1_stdout_log()
-          . " $binary --limits $pipelineDir/ext/fastqc/limits.txt --outdir "
+          . " $binary --limits " . catdir($pipelineDir, $config_hashref->{'part1 params'}->{'fastqc_limits'}) . " --outdir "
           . $paths->fwd_demux_dir() . " "
           . $paths->fwd_library();
         push @cmds,
             "$config_hashref->{'executor'} -l mem_free=300M -P $qproj -e "
           . $paths->part1_error_log() . " -o "
           . $paths->part1_stdout_log()
-          . " $binary --limits $pipelineDir/ext/fastqc/limits.txt --outdir "
+          . " $binary --limits " . catdir($pipelineDir, $config_hashref->{'part1 params'}->{'fastqc_limits'}) . " --outdir "
           . $paths->rev_demux_dir() . " "
           . $paths->rev_library();
         execute_and_log(
@@ -1550,11 +1551,11 @@ sub demux
                       . basename($paths->fwd_library()) . " and "
                       . basename($paths->rev_library())
                       . ". Moving on.\n");
-        my @split =
+        my @dropouts =
           readSplitLog(file => $split_log, verbose => 0, logger => $paths);
 
 # Still need number of demuxed samples for later, even though we didn't actually demux this time
-        $newSamNo = $nSamples - scalar @split;
+        $newSamNo = $nSamples - scalar @dropouts;
     }
 
     if (@dbg && !grep(/^splitsamples$/, @dbg))
@@ -1569,35 +1570,34 @@ if (!@dbg || grep(/^splitsamples$/, @dbg))
 {
     ###### BEGIN SPLIT BY SAMPLE ##########
     #######################################
-    my $n_fq1 = 0;
 
     # need to look for both fastqs and fastq.gz's because after tagcleaning
     # all raw demuxed files are gzipped. Look for either
-    my @fwdOutput =
-      $GLOBAL_PATHS->splitsamples_output_fwd(exts => ["fastq", "fastq.gz"]);
-    my @revOutput =
-      $GLOBAL_PATHS->splitsamples_output_rev(exts => ["fastq", "fastq.gz"]);
-
-    if ($trySkip)
     {
-        $skipMe = skippable(
-                         inputs => [
-                                    File::Spec->abs2rel(
-                                                   $GLOBAL_PATHS->fwd_library(),
-                                                   $GLOBAL_PATHS->{'wd'}
-                                    ),
-                                    File::Spec->abs2rel(
-                                                   $GLOBAL_PATHS->rev_library(),
-                                                   $GLOBAL_PATHS->{'wd'}
-                                    )
-                                   ],
-                         outputs       => [@fwdOutput, @revOutput],
-                         checksums_in  => $metadata->{"checkpoints"}{"library"},
-                         checksums_out => $metadata->{"checkpoints"}{"samples"},
-                         step_name     => "sample splitting",
-                         previous_step_skipped => 1,
-                         pf                    => $GLOBAL_PATHS
-        );
+        my @fwdOutput = $GLOBAL_PATHS->splitsamples_output_fwd();
+        my @revOutput = $GLOBAL_PATHS->splitsamples_output_rev();
+
+        if ($trySkip)
+        {
+            $skipMe = skippable(
+                            inputs => [
+                                        File::Spec->abs2rel(
+                                                    $GLOBAL_PATHS->fwd_library(),
+                                                    $GLOBAL_PATHS->{'wd'}
+                                        ),
+                                        File::Spec->abs2rel(
+                                                    $GLOBAL_PATHS->rev_library(),
+                                                    $GLOBAL_PATHS->{'wd'}
+                                        )
+                                    ],
+                            outputs       => [@fwdOutput, @revOutput],
+                            checksums_in  => $metadata->{"checkpoints"}{"library"},
+                            checksums_out => $metadata->{"checkpoints"}{"samples"},
+                            step_name     => "sample splitting",
+                            previous_step_skipped => 1,
+                            pf                    => $GLOBAL_PATHS
+            );
+        }
     }
 
     if (!$skipMe)
@@ -1605,161 +1605,104 @@ if (!@dbg || grep(/^splitsamples$/, @dbg))
         my $step3  = "split_sequence_file_on_sample_ids.py";
         my $script = qiime_cmd($step3, $config_hashref);
         my @cmds   = ();
-        while (   !(-e $GLOBAL_PATHS->fwd_library())
-               || !(-e $GLOBAL_PATHS->rev_library()))
-        {
-            sleep 1;
-        }
 
+        my $fwd_dir = mkdtemp( "demultiplex_XXXXXX" );
+        my $rev_dir = mkdtemp( "demultiplex_XXXXXX" );
         push @cmds,
-          "$config_hashref->{'executor'} -N $step3 -l mem_free=5G -P $qproj -e "
-          . $GLOBAL_PATHS->part1_error_log() . " -o "
-          . $GLOBAL_PATHS->part1_stdout_log()
-          . " $script -i "
-          . $GLOBAL_PATHS->fwd_library()
-          . " --file_type fastq -o "
-          . $GLOBAL_PATHS->fwd_sample_dir();
+          "$script -i " . $GLOBAL_PATHS->fwd_library()
+          . " --file_type fastq -o $fwd_dir";
         push @cmds,
-          "$config_hashref->{'executor'} -N $step3 -l mem_free=5G -P $qproj -e "
-          . $GLOBAL_PATHS->part1_error_log() . " -o "
-          . $GLOBAL_PATHS->part1_stdout_log()
-          . " $script -i "
-          . $GLOBAL_PATHS->rev_library()
-          . " --file_type fastq -o "
-          . $GLOBAL_PATHS->rev_sample_dir();
+          " $script -i " . $GLOBAL_PATHS->rev_library()
+          . " --file_type fastq -o $rev_dir";
         execute_and_log(
                     cmds    => \@cmds,
                     logger  => $GLOBAL_PATHS,
                     dry_run => $dryRun,
-                    msg => "Splitting $run seqs.fastq " . "files by sample ID\n"
+                    msg => "Splitting $run seqs.fastq " . "files by sample ID\n",
+                    qsub => 1,
+                    mem => "5G",
+                    name => $step3,
+                    paths => $GLOBAL_PATHS,
+                    config => $config_hashref,
         );
 
-        ## the $nSamples needs to be altered if a sample has 0 reads, because the sample-specific fastq won't be produced
-        my $n_fq   = 0;
-        my $nLines = 0;
-        my @fwdOutput;
-        my @revOutput;
+        $GLOBAL_PATHS->print("Temp fwd dir: $fwd_dir\n") if $verbose;
+        $GLOBAL_PATHS->print("Temp rev dir: $rev_dir\n") if $verbose;
+        my $n_fq = 0;
+        my @fwdOutput = glob(catfile($fwd_dir, "*.fastq"));
+        my @revOutput = glob(catfile($rev_dir, "*.fastq"));
 
-        # Count the number of lines in fwdSplit/seqs.fastq
-        open my $FWD, "<" . $GLOBAL_PATHS->fwd_library();
-        while (<$FWD>) { }
-        my $fwdLines = $.;
-        close $FWD;
-
-# if we know how many new files there are supposed to be, wait for them all to appear
+        # if we know how many new files there are supposed to be, wait for them all to appear
+        # There seems to be a slight delay before the files appear here,....idk
+        # why. The pipeline won't work without these lines of code.
         if (defined $newSamNo)
         {
-
             # Count the number of files in the directory
             while ($n_fq != $newSamNo)
             {
                 $n_fq = 0;
-                @fwdOutput =
-                  $GLOBAL_PATHS->splitsamples_output_fwd(exts => ["fastq"]);
+                @fwdOutput = glob(catfile($fwd_dir, "*.fastq"));
                 $n_fq = scalar @fwdOutput;
-                $GLOBAL_PATHS->check_error_log(prefix => $step3);
+                $GLOBAL_PATHS->print("$n_fq files in fwd demultiplexed temp dir.\n") if $verbose;
+                sleep 1;
             }
-        }
-        print "---All samples ($n_fq) accounted for in "
-          . $GLOBAL_PATHS->fwd_sample_dir() . "\n";
-
-# Now check that all the reads are still contained in the sample-specific FASTQ's
-        while ($nLines != $fwdLines)
-        {
-            $nLines = 0;
-            @fwdOutput =
-              $GLOBAL_PATHS->splitsamples_output_fwd(exts => ["fastq"]);
-            if (@fwdOutput)
-            {
-                foreach my $file (@fwdOutput)
-                {
-
-                    # Also keep a running total of lines in the
-                    # split_by_sample_out files
-                    open SAMPLE, "<$file";
-                    while (<SAMPLE>) { }
-                    $nLines += $.;
-                    close SAMPLE;
-                }
-            }
-            $GLOBAL_PATHS->check_error_log(prefix => $step3);
-        }
-
-        print "---All reads (@{[$nLines / 4]}) accounted for in "
-          . $GLOBAL_PATHS->fwd_sample_dir() . "\n";
-
-        $n_fq   = 0;
-        $nLines = 0;
-
-        # Count the number of lines in R4split/seqs.fastq
-        open my $REV, "<" . $GLOBAL_PATHS->rev_library();
-        while (<$REV>) { }
-        my $revLines = $.;
-        close $REV;
-
-# if we know how many new files there are supposed to be, wait for them all to appear
-        if (defined $newSamNo)
-        {
-            $n_fq++;    # Count the number of files in the directory
             while ($n_fq != $newSamNo)
             {
                 $n_fq = 0;
-                @revOutput =
-                  $GLOBAL_PATHS->splitsamples_output_rev(exts => ["fastq"]);
+                @revOutput = glob(catfile($rev_dir, "*.fastq"));
                 $n_fq = scalar @revOutput;
-                $GLOBAL_PATHS->check_error_log(prefix => $step3);
+                $GLOBAL_PATHS->print("$n_fq files in rev demultiplexed temp dir.\n") if $verbose;
+                sleep 1;
             }
         }
-
-# Now check that all the reads are still contained in the sample-specific FASTQ's
-        while ($nLines != $revLines)
-        {
-            $nLines = 0;
-            @revOutput =
-              $GLOBAL_PATHS->splitsamples_output_rev(exts => ["fastq"]);
-            if (@revOutput)
-            {
-                foreach my $file (@revOutput)
-                {
-
-                    # Also keep a running total of lines in the
-                    # split_by_sample_out files
-                    open SAMPLE, "<$file";
-                    while (<SAMPLE>) { }
-                    $nLines += $.;
-                    close SAMPLE;
-                }
-            }
-            $GLOBAL_PATHS->check_error_log(prefix => $step3);
-        }
-        print "--All samples ($n_fq) and reads (@{[$nLines / 4]}) accounted for"
-          . " in "
-          . $GLOBAL_PATHS->rev_sample_dir() . "\n";
 
         # Append _R1 or _R2 to each filename
+        $GLOBAL_PATHS->print(
+                    "Appending _R1 or _R2 to each demuxed FASTQ filename.\n");
+        remove_tree($GLOBAL_PATHS->sample_dir()) if (-e $GLOBAL_PATHS->sample_dir());
+        mkdir $GLOBAL_PATHS->sample_dir() or die("Can't create directory \"" . $GLOBAL_PATHS->sample_dir() . "\": $!\n");
+        foreach my $oldname (@fwdOutput)
         {
-            $GLOBAL_PATHS->print(
-                      "Appending _R1 or _R2 to each demuxed FASTQ filename.\n");
-            foreach my $oldname (@fwdOutput)
-            {
-                my ($name, $path, $suffix) = fileparse($oldname, ".fastq");
-                my $newname = catfile($path, "${name}_R1.fastq");
-                File::Copy::move($oldname, $newname);
-                $oldname = $newname;
-            }
-            foreach my $oldname (@revOutput)
-            {
-                my ($name, $path, $suffix) = fileparse($oldname, ".fastq");
-                my $newname = catfile($path, "${name}_R2.fastq");
-                File::Copy::move($oldname, $newname);
-                $oldname = $newname;
-            }
+            my ($name, $path, $suffix) = fileparse($oldname, ".fastq");
+            my $newname = catfile($GLOBAL_PATHS->sample_dir(), "${name}_R1.fastq");
+            File::Copy::move($oldname, $newname) or die("Can't move $oldname to $newname: $!\n");
+            $oldname = $newname;
         }
+        foreach my $oldname (@revOutput)
+        {
+            my ($name, $path, $suffix) = fileparse($oldname, ".fastq");
+            my $newname = catfile($GLOBAL_PATHS->sample_dir(), "${name}_R2.fastq");
+            File::Copy::move($oldname, $newname) or die("Can't move $oldname to $newname: $!\n");
+            $oldname = $newname;
+        }
+        remove_tree($fwd_dir);
+        remove_tree($rev_dir);
+
+        my $to_gzip = catfile($GLOBAL_PATHS->sample_dir(), "*.fastq");
+        my $cmd = "gzip -f9 $to_gzip ";
+        execute_and_log(
+                        cmds    => [$cmd],
+                        logger  => $GLOBAL_PATHS,
+                        dry_run => $dryRun,
+                        msg     => "Compressing tagcleaned FASTQ's...\n",
+                        qsub => 1,
+                        mem => "1G",
+                        name => "gzip",
+                        paths => $GLOBAL_PATHS,
+                        config => $config_hashref,
+                       );
+        $GLOBAL_PATHS->print("---Demultiplexed FASTQ's compressed.\n");
+
+
+        $GLOBAL_PATHS->print("---$n_fq samples demultiplexed in "
+          . $GLOBAL_PATHS->sample_dir() . "\n");
+        my @finalFwdOutput = $GLOBAL_PATHS->splitsamples_output_fwd();
+        my @finalRevOutput = $GLOBAL_PATHS->splitsamples_output_rev();
 
         if (!@dbg)
         {
             cacheChecksums(
-                           files     => [@fwdOutput, @revOutput],
+                           files     => [@finalFwdOutput, @finalRevOutput],
                            step_name => "samples",
                            pf        => $GLOBAL_PATHS
                           );
@@ -1819,9 +1762,9 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
     my $do = 1;
 
     my @inputsF =
-      $GLOBAL_PATHS->splitsamples_output_fwd(exts => ["fastq", "fastq.gz"]);
+      $GLOBAL_PATHS->splitsamples_output_fwd();
     my @inputsR =
-      $GLOBAL_PATHS->splitsamples_output_rev(exts => ["fastq", "fastq.gz"]);
+      $GLOBAL_PATHS->splitsamples_output_rev();
 
     if (scalar @inputsF != scalar @inputsR)
     {
@@ -1854,7 +1797,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                 my ($name, $dir, $ext) = fileparse($in_F, qr{\.gz});
                 my @suffixes = ("_R1.fastq");
                 my $prefix   = basename($name, @suffixes);
-                my $in_R     = catfile($GLOBAL_PATHS->rev_sample_dir(),
+                my $in_R     = catfile($GLOBAL_PATHS->sample_dir(),
                                    "${prefix}_R2.fastq${ext}");
                 my $out_F =
                   catfile($GLOBAL_PATHS->{'wd'}, "${prefix}_R1_tc.fastq.gz");
@@ -1863,25 +1806,42 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
                 my $stats_F = catfile($GLOBAL_PATHS->part1_stdout_log(), "${prefix}_R1_tc.stats");
                 my $stats_R = catfile($GLOBAL_PATHS->part1_stdout_log(), "${prefix}_R2_tc.stats");
 
-                sub min_primer_length {
+                sub primer_length_range {
                     my $primers = shift;
                     my @primers = split ",", $primers;
                     my @primer_lengths = map length, @primers;
-                    return(List::Util::min(@primer_lengths));
+                    return (
+                        List::Util::min(@primer_lengths), 
+                        List::Util::max(@primer_lengths)
+                    );
                 }
-                my $k_F = min_primer_length($config_hashref->{'part1 params'}->{"fwd primer"});
-                my $k_R = min_primer_length($config_hashref->{'part1 params'}->{"rev primer"});
-                my $maxlen = $trimMaxLen ? $trimMaxLen : 283;
 
+                sub get_read_length {
+                    my $fastq_gz = shift;
+                    my $read = `gunzip < $fastq_gz | head -n 2 | tail -n 1`;
+                    chomp $read;
+                    return length($read);
+                }
+
+                my ($k_F, $max_fwd_primer) = primer_length_range($config_hashref->{'part1 params'}->{"fwd primer"});
+                my ($k_R, $max_rev_primer) = primer_length_range($config_hashref->{'part1 params'}->{"rev primer"});
+                # We use maxlen purely to filter out untrimmed reads, so just
+                # set this to readlength - 1 by default, since all reads are 
+                # same length
+                my $readlen = get_read_length($in_F);
+                my $maxlen = $trimMaxLen ? $trimMaxLen : ($readlen - 1);
+
+                my $hdist = $config_hashref->{'part1 params'}->{'primer_allowed_mm'};
+                my $mink_F = List::Util::min(($max_fwd_primer - $hdist, $k_F));
+                my $mink_R = List::Util::min(($max_rev_primer - $hdist, $k_R));
                 # trim fwd reads first (skipr2) then trim rev reads (skipr1)
-                # max length 301 - (20 - 2) = 283
                 my $cmd =
-                  "$bbduk -Xmx4915m -Xms4327m in=$in_F in2=$in_R literal=" . $config_hashref->{'part1 params'}->{"fwd primer"} . " copyundefined out=stdout.fastq stats=$stats_F overwrite=t ziplevel=9 ktrim=l k=$k_F rcomp=f hdist=2 mink=18 hdist2=0 skipr2=t restrictleft=30 minlen=60";
+                  "$bbduk -Xmx4915m -Xms4327m in=$in_F in2=$in_R literal=" . $config_hashref->{'part1 params'}->{"fwd primer"} . " copyundefined out=stdout.fastq stats=$stats_F overwrite=t ziplevel=9 ktrim=l k=$k_F rcomp=f hdist=$hdist mink=$mink_F hdist2=0 skipr2=t restrictleft=30 minlen=60";
                 $cmd .= " 2>>"
                   . catfile($GLOBAL_PATHS->part1_error_log(),
                             "bbduk.sh.stderr");
                 $cmd .=
-                  " | $bbduk -Xmx4915m -Xms4327m in=stdin.fastq interleaved=t literal=" . $config_hashref->{'part1 params'}->{"rev primer"} . " copyundefined out=$out_F out2=$out_R stats=$stats_R overwrite=t ziplevel=9 ktrim=l k=$k_R rcomp=f hdist=2 mink=18 hdist2=0 skipr1=t minlen=0 restrictleft=30 maxlen=$maxlen";
+                  " | $bbduk -Xmx4915m -Xms4327m in=stdin.fastq interleaved=t literal=" . $config_hashref->{'part1 params'}->{"rev primer"} . " copyundefined out=$out_F out2=$out_R stats=$stats_R overwrite=t ziplevel=9 ktrim=l k=$k_R rcomp=f hdist=$hdist mink=$mink_R hdist2=0 skipr1=t minlen=0 restrictleft=30 maxlen=$maxlen";
                 $cmd .= " 2>>"
                   . catfile($GLOBAL_PATHS->part1_error_log(),
                             "bbduk.sh.stderr");
@@ -1926,8 +1886,7 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
         {
             cacheChecksums(
                   files => [
-                            glob(catfile($GLOBAL_PATHS->fwd_sample_dir(), "*")),
-                            glob(catfile($GLOBAL_PATHS->rev_sample_dir(), "*"))
+                            glob(catfile($GLOBAL_PATHS->sample_dir(), "*"))
                            ],
                   step_name => "samples",
                   pf        => $GLOBAL_PATHS
@@ -1995,7 +1954,9 @@ if ((!@dbg) || grep(/^dada2$/, @dbg))
                       minLen => $config_hashref->{'part1 params'}->{"min length"}, 
                       minQ => $config_hashref->{'part1 params'}->{"filter quality"},      
                       amplicon_length => $amplicon_length,
-                      dada2mem => $dada2mem
+                      dada2mem => $dada2mem,
+                      config => $config_hashref,
+                      paths => $GLOBAL_PATHS
                      );
 
 ###### EVALUATING DADA2 OUTPUT ##########
@@ -2665,7 +2626,7 @@ sub readSplitLog
     ##Check split_library log for 0's
     open SPLIT, "<$split_log"
       or die "Cannot open $split_log for writing: " . "$OS_ERROR";
-    my @split;
+    my @dropouts;
     while (<SPLIT>)
     {
         if ($_ =~ /\t/)
@@ -2675,7 +2636,7 @@ sub readSplitLog
             chomp $nReads;
             if ($nReads eq "0")
             {
-                push @split, $sample;
+                push @dropouts, $sample;
             } else
             {
                 if ($verbose)
@@ -2686,21 +2647,23 @@ sub readSplitLog
         }
     }
     close SPLIT;
-    return @split;
+    return @dropouts;
 }
 
 sub dada2
 {
-    my %arg      = @_;
-    my $truncLenL = delete %arg{"truncLenL"};
-    my $truncLenR = delete %arg{"truncLenR"};
-    my $maxEE     = delete %arg{"maxEE"};
-    my $truncQ    = delete %arg{"truncQ"};
-    my $rm_phix      = delete %arg{"rm.phix"};
-    my $minLen    = delete %arg{"minLen"};
-    my $minQ      = delete %arg{"minQ"};
+    my %arg             = @_;
+    my $truncLenL       = delete %arg{"truncLenL"};
+    my $truncLenR       = delete %arg{"truncLenR"};
+    my $maxEE           = delete %arg{"maxEE"};
+    my $truncQ          = delete %arg{"truncQ"};
+    my $rm_phix         = delete %arg{"rm.phix"};
+    my $minLen          = delete %arg{"minLen"};
+    my $minQ            = delete %arg{"minQ"};
     my $amplicon_length = delete %arg{"amplicon_length"};
-    my $dada2mem  = delete %arg{"dada2mem"};
+    my $dada2mem        = delete %arg{"dada2mem"};
+    my $config          = delete %arg{"config"};
+    my $paths           = delete %arg{"paths"};
     
     my $Rscript =
       catfile($pipelineDir, "scripts", "filter_and_denoise_illumina.R");
@@ -2736,7 +2699,7 @@ sub dada2
         );
 
         $cmd =
-          "$config_hashref->{'executor'} -l mem_free=${dada2mem}G -P $qproj -e ${R_out} -o "
+          "-w w -b y -P jravel-lab -q threaded.q -pe thread 4 -cwd -P $qproj -e ${R_out} -o "
           . $GLOBAL_PATHS->part1_stdout_log()
           . " -N Rscript \"$config_hashref->{R}script $Rscript $args\"";
         execute_and_log(
@@ -2745,7 +2708,11 @@ sub dada2
             dry_run => $dryRun,
             msg =>
               "Running DADA2 with fastq files in $GLOBAL_PATHS->{'wd'} for $var region...\n",
-            qsub => 1
+            qsub => 1,
+            mem => "${dada2mem}G",
+           config => $config,
+           paths => $paths,
+           name => "R_dada2"
         );
 
         if (-e "dada2_part1_stats.txt")
@@ -2854,6 +2821,10 @@ sub execute_and_log
     my $dryRun   = delete %arg{"dry_run"} // 0;
     my $cuteMsg  = delete %arg{"msg"} // 0;
     my $qsub     = delete %arg{"qsub"} // 0;
+    my $mem      = delete %arg{"mem"} // "1G";
+    my $config   = delete %arg{"config"} // undef;
+    my $paths    = delete %arg{"paths"} // undef;
+    my $name     = delete %arg{"name"} // "";
 
     if (!@commands)
     {
@@ -2870,7 +2841,16 @@ sub execute_and_log
                 -executable => {
                     qsub  => '/usr/local/packages/sge-root/bin/lx24-amd64/qsub',
                     qstat => '/usr/local/packages/sge-root/bin/lx24-amd64/qstat'
-                }
+                },
+                -l => "mem_free=$mem",
+                -use_cwd => 1,
+                -project => $config->{"qsub_P"},
+                -name => $name,
+                -output_file => $paths->part1_stdout_log(),
+                -error_file => $paths->part1_error_log(),
+                -verbose => 1,
+                -w       => $config->{"qsub_w"},
+                -b       => $config->{"qsub_b"}
         );
     }
 
@@ -2900,14 +2880,17 @@ sub execute_and_log
 
     if ($qsub)
     {
-        my $done = 0;
+        my $done;
         while (!$done)
         {
-            $sge->status();
             $done = 1;
+            $fh->print("Checking PIDs for job status...\n") if $verbose;
+            $sge->status();
             foreach (@pids)
             {
+                $fh->print("PID: $_\n") if $verbose;
                 my @job_stats = @{$sge->brief_job_stats($_)};
+                $fh->print("Job stats:\n" . Dumper(@job_stats)) if $verbose;
                 if (@job_stats)
                 {
                     $done = 0;
