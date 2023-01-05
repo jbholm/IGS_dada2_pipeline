@@ -14,7 +14,7 @@
         "SILVA132": "silva_nr_v132_train_set.fa.gz",
         "SILVA138forPB": "silva_nr99_v138_wSpecies_train_set.fa.gz",
         "HOMD": "HOMD_v15.1_DADA2_taxonomy_final.txt",
-        "UNITE": "sh_general_release_dynamic_all_10.05.2021.fasta"
+        "UNITE": "sh_general_release_dynamic_all_29.11.2022.fasta"
     },
     "SILVA_default": "SILVA132",
     "species_inhouse_db": "species_assignments_inhouse.fasta",

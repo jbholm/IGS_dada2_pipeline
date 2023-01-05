@@ -838,7 +838,7 @@ def organize_taxonomies_intermediates(proj_path):
         organized_dir = str(pathfinder['intermediate_taxonomies'])
         any_files = False
 
-        filepaths = glob.glob(str(proj_path / Path("MC_order7_results.txt")))
+        filepaths = glob.glob(str(proj_path / Path("MC_order7_results.txt"))) + glob.glob(str(proj_path / Path("MC_order7_results.clean.txt")))
         if len(filepaths) > 0:
             any_files = True
             make_for_contents(organized_dir)
@@ -1109,7 +1109,14 @@ class Citations(dict):
 CITATION_GROUPS = {
     'ILLUMINA': Citations([
         Step_citations(
-            title='Barcode extraction, library demultiplexing', 
+            title='Two-step PCR amplicon sequencing', 
+            order=1,
+            citations=[
+                'Holm, J.B., et al., Ultrahigh-Throughput Multiplexing and Sequencing of >500-Base-Pair Amplicon Regions on the Illumina HiSeq 2500 Platform. mSystems, 2019. 4(1).'
+            ]
+        ),
+        Step_citations(
+            title='Dual barcode library demultiplex', 
             order=1,
             citations=[
                 'QIIME allows analysis of high-throughput community sequencing data. J Gregory Caporaso, Justin Kuczynski, Jesse Stombaugh, Kyle Bittinger, Frederic D Bushman, Elizabeth K Costello, Noah Fierer, Antonio Gonzalez Pena, Julia K Goodrich, Jeffrey I Gordon, Gavin A Huttley, Scott T Kelley, Dan Knights, Jeremy E Koenig, Ruth E Ley, Catherine A Lozupone, Daniel McDonald, Brian D Muegge, Meg Pirrung, Jens Reeder, Joel R Sevinsky, Peter J Turnbaugh, William A Walters, Jeremy Widmann, Tanya Yatsunenko, Jesse Zaneveld and Rob Knight; Nature Methods, 2010; doi:10.1038/nmeth.f.303'
@@ -1118,7 +1125,7 @@ CITATION_GROUPS = {
         Step_citations(
             'Primer removal',
             [
-                'Schmieder R, Lim YW, Rohwer F, Edwards R: TagCleaner: Identification and removal of tag sequences from genomic and metagenomic datasets. BMC Bioinformatics 2010, 11:341. [PMID: 20573248]'
+                'Bushnell, B. (2016). Bbmap short-read aligner, and other bioinformatics tools [Software]. http://sourceforge.net/projects/bbmap. v38.96.'
             ],
             2
         ),
@@ -1195,7 +1202,7 @@ CITATION_GROUPS = {
         Step_citations(
             'Taxonomic assignment',
             [
-                'UNITE Community (2017): UNITE general FASTA release. Version 01.12.2017. UNITE Community. https://doi.org/10.15156/BIO/587475'
+                'Abarenkov, Kessy; Zirk, Allan; Piirmann, Timo; Pöhönen, Raivo; Ivanov, Filipp; Nilsson, R. Henrik; Kõljalg, Urmas (2022): UNITE general FASTA release for eukaryotes. UNITE Community. 10.15156/BIO/2483913'
             ]
         )
     ]),

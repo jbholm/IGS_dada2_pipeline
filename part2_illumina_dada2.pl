@@ -203,12 +203,11 @@ my $t = Time::Piece->new();
 my $year = $t->year;
 my $yeardir = catdir($config_hashref->{"project_storage_path"}, $year);
 if ( ! -d $yeardir) {
-    mkdir( $yeardir ) or print "Didn't create $yeardir directory, $!\n";
+    system( "install -g igs -m 2770 -d $yeardir" ) or print "Didn't create $yeardir directory, $!\n";
 }
 $project = $t->strftime("\%y\%m\%d") . "_$project";
 my $projDir = catdir($yeardir, $project);
-mkdir( $projDir ) or print "Didn't create $projDir directory, $!";
-chdir $projDir;
+system( "install -g igs -m 2770 -d $projDir" ) or print "Didn't create $projDir directory, $!";
 
 $run_path = abs_path($run_path) or die "Can't find run storage path.\n$!";
 
@@ -254,6 +253,7 @@ foreach (@runs, $map_file)
         $_ = $copy;  # external variable referenced by path has now been edited.
     }
 }
+chdir $projDir;
 
 # PRINT TO LOG ASAP
 my $log = "$project" . "_part2_16S_pipeline_log.txt";
