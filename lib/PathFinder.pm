@@ -160,7 +160,7 @@ sub check_error_log
             if ($_ =~ /error/ || $_ =~ /Error/ || $_ =~ /ERROR/)
             {
                 print "Error in $step. See $error.\n";
-                self->log("Error in $step. See $error.\n");
+                $self->print("Error in $step. See $error.\n");
                 seek($error_fh, 0, 0);
                 my $errorMessage = do {local $/; <$error_fh>};
                 die $errorMessage;

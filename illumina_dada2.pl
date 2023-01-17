@@ -465,7 +465,6 @@ if ((File::Spec->splitpath("$wd"))[2] !~ /[^\/]/)
 my $GLOBAL_PATHS = PathFinder->new(wd => $wd);
 
 my ($readsForInput, $readsRevInput, $index1Input, $index2Input);
-my %localNames;
 if (!@dbg || grep(/^barcodes$/, @dbg) || grep(/^demux$/, @dbg))
 {
     # Find the input files, and find their putative locations if the index files
@@ -480,9 +479,6 @@ if (!@dbg || grep(/^barcodes$/, @dbg) || grep(/^demux$/, @dbg))
                       )
       : $oneStep ? ($r1, $r2, $r1, $r2)
       :            ($r1, $r2, $i1, $i2);
-    @localNames{("readsFor", "readsRev", "index1", "index2")} =
-      convert_to_local_if_gz($wd, $readsForInput, $readsRevInput, $index1Input,
-                             $index2Input);
 }
 
 ####################################################################
@@ -683,6 +679,7 @@ sub override_default_param {
     my $value = delete %arg{value};
     my $name = delete %arg{name};
     my $filehandle = delete %arg{filehandle};
+    my $optional = delete %arg{optional} // 0; 
 
     $filehandle->print(uc($name) . ": ");
     my $ans;
@@ -697,13 +694,25 @@ sub override_default_param {
             }
             $ans = $value;
         } else {
-            $filehandle->print(uc($name) . "UNKNOWN\n");
-            die "Variable region unrecognized and parameter was not provided on the command line.";
+            $filehandle->print("UNKNOWN");
+            if (! $optional) {
+                $filehandle->print(" (terminal)\n");
+                die "Variable region unrecognized and parameter was not provided on the command line.";
+            } else {
+                $filehandle->print(" (non-terminal)\n");
+            }
         }
     }
     $filehandle->print("\n");
     return($ans);
 }
+# One-step PCR requires barcode length; the config file has default value
+$config_hashref->{'part1 params'}->{"bc_len"} = override_default_param(
+    value => $bcLen,
+    name => "bc_len",
+    filehandle => $GLOBAL_PATHS,
+    optional => 1
+    );
 # Resolve primer trimming parameters
 $config_hashref->{'part1 params'}->{"fwd primer"} = override_default_param(
     value => $primer_L,
@@ -715,7 +724,6 @@ $config_hashref->{'part1 params'}->{"rev primer"} = override_default_param(
     name => "rev primer",
     filehandle => $GLOBAL_PATHS
     );
-
 $GLOBAL_PATHS->print("R VERSION: " . $config_hashref->{'R'} . "\n");
 # Resolve DADA2 quality-trim and denoise parameters
 $config_hashref->{'part1 params'}->{"fwd trim length"} = eval {
@@ -1044,11 +1052,27 @@ if ($tbshtBarcodes)
             $GLOBAL_PATHS->print("Please refer to " . $paths->part1_log());
 
             # Extract barcodes
-            barcodes(
-                     oriParams  => $barcode_ori,
-                     pathfinder => $paths,
-                     switch     => $switch_barcodes
-                    );
+            if (! $switch_barcodes) {
+                barcodes(
+                        oriParams  => $barcode_ori,
+                        pathfinder => $paths,
+                        index1 => $index1Input,
+                        index2 => $index2Input,
+                        reads1 => $readsForInput,
+                        reads2 => $readsRevInput,
+                        bc_len => $config_hashref->{'part1 params'}->{"bc_len"}
+                        );
+            } else {
+                barcodes(
+                        oriParams  => $barcode_ori,
+                        pathfinder => $paths,
+                        index1 => $index2Input,
+                        index2 => $index1Input,
+                        reads1 => $readsForInput,
+                        reads2 => $readsRevInput,
+                        bc_len => $config_hashref->{'part1 params'}->{"bc_len"}
+                        );
+            }
 
             # demux, and check for success
             $success = demux(pathfinder => $paths, die_on_fail => 0);
@@ -1092,7 +1116,15 @@ if ($tbshtBarcodes)
 {
     if ((!@dbg) || grep(/^barcodes$/, @dbg))
     {
-        barcodes(oriParams => "", pathfinder => $GLOBAL_PATHS);
+        barcodes(
+            oriParams => "", 
+            pathfinder => $GLOBAL_PATHS,
+            index1 => $index1Input,
+            index2 => $index2Input,
+            reads1 => $readsForInput,
+            reads2 => $readsRevInput,
+            bc_len => $config_hashref->{'part1 params'}->{"bc_len"}
+            );
     }
     if (!@dbg || grep(/^demux$/, @dbg))
     {
@@ -1106,39 +1138,28 @@ sub barcodes
 {
     my %arg       = @_;
     my $oriParams = delete $arg{oriParams} // '';
-    my $switch    = delete $arg{switch} // 0;
     my $paths     = delete $arg{pathfinder} // $GLOBAL_PATHS;
-    my $barcodes  = "$paths->{'wd'}/barcodes.fastq";
-
-    if ($switch)
-    {    # Consider the i1's and i2's switched
-        my $oldi1 = $index1Input;
-        $index1Input = $index2Input;
-        $index2Input = $oldi1;
-    }
+    my $index1    = delete $arg{index1};
+    my $index2    = delete $arg{index2};
+    my $reads1    = delete $arg{reads1};
+    my $reads2    = delete $arg{reads2};
+    my $bcLen     = delete $arg{bc_len} // '';
+    my $oneStep   = delete $arg{onestep} // 0; # try to handle this outside
+    
+    my $outputDir = $paths->{'wd'};
+    my $barcodes  = catfile($outputDir, "barcodes.fastq");
 
     my $nSamples = count_samples($paths->part1_local_map());
 
     ## change to full path to full barcodes (flag)
     my $count = 0;
 
-    my @files;
-    my @names;
-    if ($oneStep)
-    {
-        $paths->print(  "Forward and reverse reads will be obtained from:\n"
-                      . "\t$readsForInput\n\t$readsRevInput\n");
-        @files = ($readsForInput, $readsRevInput);
-        @names = ("RF", "RR");
-    } else
-    {
-        $paths->print(  "Forward and reverse reads will be obtained from:\n"
-                      . "\t$readsForInput\n\t$readsRevInput\n");
-        $paths->print(  "Index 1 and Index 2 will be obtained from:\n"
-                      . "\t$index1Input\n\t$index2Input\n");
-        @files = ($readsForInput, $readsRevInput, $index1Input, $index2Input);
-        @names = ("RF", "RR", "I1", "I2");
-    }
+    $paths->print(  "Forward and reverse reads will be obtained from:\n"
+                    . "\t$reads1\n\t$reads2\n");
+    $paths->print(  "Index 1 and Index 2 will be obtained from:\n"
+                    . "\t$index1\n\t$index2\n");
+    my @files = ($reads1, $reads2, $index1, $index2);
+    my @names = ("RF", "RR", "I1", "I2");
 
     my $input  = \@files;
     my $output = [$barcodes];
@@ -1166,30 +1187,34 @@ sub barcodes
 
         # Get index files as .fastq
         my @cmds = ();
-        if ($index1Input !~ /.gz$/)
+        if ($index1 !~ /.gz$/) # please change this to for-loop...
         {
 
             # if the index files aren't .gz, just read in place.
         } else
         {    # Otherwise...
-                # decompress to our run directory
+                # decompress to our run directory    
+            my $index1_decompressed = catfile($outputDir, "I1.fastq");
             push(@cmds,
-                 "gzip --decompress --force < $index1Input > $localNames{\"index1\"}"
+                 "gzip --decompress --force < $index1 > $index1_decompressed"
                 );
             $paths->print(
-                "---Decompressing $run barcode and index file from $index1Input to $localNames{\"index1\"}\n"
+                "---Decompressing $run barcode and index file from $index1 to $index1_decompressed\n"
             );
+            $index1 = $index1_decompressed;
         }
-        if ($index2Input !~ /.gz$/)
+        if ($index2 !~ /.gz$/)
         {       # same for reverse reads
         } else
         {
+            my $index2_decompressed = catfile($outputDir, "I2.fastq");
             push(@cmds,
-                 "gzip --decompress --force < $index2Input > $localNames{\"index2\"}"
+                 "gzip --decompress --force < $index2 > $index2_decompressed"
                 );
             $paths->print(
-                "---Decompressing $run barcode and index file from $index2Input to $localNames{\"index2\"}\n"
+                "---Decompressing $run barcode and index file from $index2 to $index2_decompressed\n"
             );
+            $index2 = $index2_decompressed;
         }
 
         # Execute the commands queued above
@@ -1208,8 +1233,8 @@ sub barcodes
         }
 
         # Sanity check
-        my $rawLnsFwd = count_lines($localNames{"index1"});
-        my $rawLnsRev = count_lines($localNames{"index2"});
+        my $rawLnsFwd = count_lines($index1);
+        my $rawLnsRev = count_lines($index2);
         if ($rawLnsFwd == $rawLnsRev)
         {
             $paths->print(($rawLnsFwd / 4 . " barcoded reads to process.\n"));
@@ -1219,26 +1244,14 @@ sub barcodes
                  "Warning: raw index files have differing numbers of lines.\n");
         }
 
-        # Was in original code, but maybe unnecessary?
-        my $mapOpt = $oneStep ? "-m " . $paths->part1_local_map() . "" : "";
-
         if (!$bcLen)
         {
-            if ($oneStep)
-            {
-                # Idk if auto-detecting the barcode length works under one-step
-                # PCR. We've never done any one-step PCR runs while I've been
-                # here
-                $bcLen = 12;
-            } else
-            {
-                $bcLen = find_index_length($localNames{"index1"});
-                $paths->print("Detected barcode length as $bcLen \n");
-            }
+            $bcLen = first_seq_length($index1);
+            $paths->print("Detected barcode length as $bcLen \n");
         }
 
         my $cmd = qiime_cmd('extract_barcodes.py', $config_hashref)
-          . " -f $localNames{\"index1\"} -r $localNames{\"index2\"} -c barcode_paired_end --bc1_len $bcLen --bc2_len $bcLen $mapOpt -o $paths->{'wd'} $oriParams";
+          . " -f $index1 -r $index2 -c barcode_paired_end --bc1_len $bcLen --bc2_len $bcLen -o $outputDir $oriParams";
 
         execute_and_log(
                        cmds    => [$cmd],
@@ -1282,19 +1295,19 @@ sub barcodes
         # each of the supplied FASTQ's with the barcodes removed, and names them
         # 'reads1.fastq' and 'reads2.fastq'
         @cmds = ();
-        push @cmds, "rm -rf $paths->{'wd'}/reads1.fastq";
-        push @cmds, "rm -rf $paths->{'wd'}/reads2.fastq";
+        push @cmds, "rm -rf $outputDir/reads1.fastq";
+        push @cmds, "rm -rf $outputDir/reads2.fastq";
 
         # If two-step, delete the temporarily decompressed index files now
         if (!$oneStep)
         {
-            if ($index1Input =~ /.gz$/)
+            if (-e catfile($outputDir, "I1.fastq"))
             {
-                push @cmds, "rm -rf $localNames{\"index1\"}";
+                push @cmds, "rm -rf " . catfile($outputDir, "I1.fastq");
             }
-            if ($index2Input =~ /.gz$/)
+            if (-e catfile($outputDir, "I2.fastq"))
             {
-                push @cmds, "rm -rf $localNames{\"index2\"}";
+                push @cmds, "rm -rf " . catfile($outputDir, "I2.fastq");
             }
         }
         execute_and_log(
@@ -1379,7 +1392,7 @@ sub demux
         my $script = qiime_cmd($step2, $config_hashref);
 
    # qiime's split_libraries_fastq accepts some keywords too, such as "golay_12"
-        my $barcodeType = 2 * $bcLen;
+        my $barcodeType = first_seq_length($barcodes);
 
         @cmds = ();
         push @cmds,
@@ -1553,7 +1566,6 @@ sub demux
                       . ". Moving on.\n");
         my @dropouts =
           readSplitLog(file => $split_log, verbose => 0, logger => $paths);
-
 # Still need number of demuxed samples for later, even though we didn't actually demux this time
         $newSamNo = $nSamples - scalar @dropouts;
     }
@@ -1637,6 +1649,7 @@ if (!@dbg || grep(/^splitsamples$/, @dbg))
         # why. The pipeline won't work without these lines of code.
         if (defined $newSamNo)
         {
+            $GLOBAL_PATHS->print("Looking for $newSamNo files...\n") if $verbose;
             # Count the number of files in the directory
             while ($n_fq != $newSamNo)
             {
@@ -2600,7 +2613,7 @@ sub convert_to_local_if_gz
     return @ans;
 }
 
-sub find_index_length
+sub first_seq_length
 {
     my $file = shift;
     open my $reads, $file or die "Could not open $file: $!";
