@@ -146,17 +146,24 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         try_assign MAP "$1" "$2"
         shift 2
         ;;
-    --bclen*)
-        if [[ $1 =~ "--bclen=" ]]; then 
-            BCLENGTH="${1#*=}"
-            if [[ ! -n "$BCLENGTH" || ! $1 =~ "=" ]]; then  
-                MSG="--bclen missing value."
-                MSG+=" --bclen=\"\" and --bclen= are not accepted."
-                stop "$MSG"
-            fi
+    --extract_barcodes_rev_comp_args*)
+        if [[ $1 =~ "--extract_barcodes_rev_comp_args=" ]]; then 
+            EXTRACT_BARCODES_REV_COMP_ARGS="${1#*=}"
             shift 1
-        elif [[ $1 == "--bclen" ]]; then
-            try_assign BCLENGTH "$1" "$2"
+        elif [[ $1 == "--extract_barcodes_rev_comp_args" ]]; then
+            try_assign EXTRACT_BARCODES_REV_COMP_ARGS "$1" "$2"
+            shift 2
+        else
+            PARAMS="$PARAMS $1"
+            shift 1
+        fi
+        ;;
+    --extract_barcodes_append_args*)
+        if [[ $1 =~ "--extract_barcodes_append_args=" ]]; then 
+            EXTRACT_BARCODES_APPEND_ARGS="${1#*=}"
+            shift 1
+        elif [[ $1 == "--extract_barcodes_append_args" ]]; then
+            try_assign EXTRACT_BARCODES_APPEND_ARGS "$1" "$2"
             shift 2
         else
             PARAMS="$PARAMS $1"
@@ -436,12 +443,11 @@ elif [[ ! -e "$MAP" ]]; then
 fi
 printf "MAPPING FILE: $MAP\n"
 
-if [[ ! -z ${BCLENGTH+x} ]]; then
-    if [[ "$BCLENGTH" =~ [0-9]+ ]]; then
-        BCLENGTH="--bclen=$BCLENGTH"
-    else
-        stop "--bclen must be a positive integer"
-    fi
+if [[ ! -z ${EXTRACT_BARCODES_REV_COMP_ARGS+x} ]]; then
+    EXTRACT_BARCODES_REV_COMP_ARGS="--extract_barcodes_rev_comp_args=\"$EXTRACT_BARCODES_REV_COMP_ARGS\""
+fi
+if [[ ! -z ${EXTRACT_BARCODES_APPEND_ARGS+x} ]]; then
+    EXTRACT_BARCODES_APPEND_ARGS="--extract_barcodes_append_args=\"$EXTRACT_BARCODES_APPEND_ARGS\""
 fi
 
 # -r is mandatory
@@ -709,7 +715,7 @@ module load r/4.0.2 2>/dev/null || true
 log="$SD/${RUN}_16S_pipeline_log.txt"
 
 # Remove extra spaces caused by joining empty arguments with a whitespace
-OPTSARR=("$PARAMS" "$DBG" "$NOSKIP" "$NODELETE" "$VERBOSE" "$BCLENGTH" "$TROUBLESHOOT_BARCODES" "$ONESTEP" "$FWD_PRIMER" "$REV_PRIMER" "$TRIM_MAXLENGTH" "$DADA2_TRUNCQ" "$TRIM_LENGTH_FWD" "$TRIM_LENGTH_REV" "$AMPLICON_LENGTH" "$DADA2_MINLEN" "$DADA2_MINQ" "$DADA2_MAXEE" "$DADA2_RMPHIX" "$DADA2MEM" "$DRY_RUN")
+OPTSARR=("$PARAMS" "$DBG" "$NOSKIP" "$NODELETE" "$VERBOSE" "$BCLENGTH" "$TROUBLESHOOT_BARCODES" "$ONESTEP" "$FWD_PRIMER" "$REV_PRIMER" "$TRIM_MAXLENGTH" "$DADA2_TRUNCQ" "$TRIM_LENGTH_FWD" "$TRIM_LENGTH_REV" "$AMPLICON_LENGTH" "$DADA2_MINLEN" "$DADA2_MINQ" "$DADA2_MAXEE" "$DADA2_RMPHIX" "$DADA2MEM" "$DRY_RUN" "$EXTRACT_BARCODES_REV_COMP_ARGS" "$EXTRACT_BARCODES_APPEND_ARGS")
 OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 
@@ -951,14 +957,21 @@ specified in config.json.
 
 =over
 
-=item B<--bclen> LENGTH
+=item B<--extract_barcodes_rev_comp_args> "ARGS"
 
-Manually specify the length of forward and reverse barcodes. This many bases is 
-removed from the index 1 and index 2 of each read, concatenated, and used to 
-demultiplex the reads according to the provided map.
+Specify the arguments --rev_comp_bc1 and/or --rev_comp_bc2 to QIIME 
+extract_barcodes.py. This will override the pipeline's configured operation 
+based on the instrument ID found in the FASTQ headers. (See config.json key
+"instrument_ID_to_config"). Giving an empty string will force the pipeline to
+reverse-complement neither index.
 
-In our current sequencing configuration, the indexes ARE exactly this length.
-When this option is not given, the pipeline sets the barcode length equal to the
+=item B<--extract_barcodes_append_args> "ARGS"
+
+These arguments will be appended to the command calling QIIME 
+extract_barcodes.py. This can be used to override some arguments, such as 
+--bc1_len and --bc2_len. See http://qiime.org/scripts/extract_barcodes.html.
+
+Without --onestep, the pipeline sets the length of both barcodes equal to the 
 length of the first index.
 
 =item B<--troubleshoot_barcodes>

@@ -186,15 +186,22 @@ parameters during adapter trimming, quality trimming/filtering, and denoising.
 
 =over
 
-=item B<--bclen> LENGTH
+=item B<--extract_barcodes_rev_comp_args> "ARGS"
 
-Manually specify the length of forward and reverse barcodes. This many bases is 
-removed from the index 1 and index 2 of each read, concatenated, and used to 
-demultiplex the reads according to the provided map.
+Specify the arguments --rev_comp_bc1 and/or --rev_comp_bc2 to QIIME 
+extract_barcodes.py. This will override the pipeline's configured operation 
+based on the instrument ID found in the FASTQ headers. (See config.json key
+"instrument_ID_to_config"). Giving an empty string will force the pipeline to
+reverse-complement neither index.
 
-In our current sequencing configuration, the indexes ARE exactly this length.
-By default, the pipeline sets the barcode length equal to the length of the
-first index.
+=item B<--extract_barcodes_append_args> "ARGS"
+
+These arguments will be appended to the command calling QIIME 
+extract_barcodes.py. This can be used to override some arguments, such as 
+--bc1_len and --bc2_len. See http://qiime.org/scripts/extract_barcodes.html.
+
+Without --onestep, the pipeline sets the length of both barcodes equal to the 
+length of the first index.
 
 =item B<--troubleshoot_barcodes>
 
@@ -353,10 +360,11 @@ GetOptions(
            "verbose!"               => \my $verbose,
            "dry-run!"               => \my $dryRun,
            "skip!"                  => \$trySkip,
-           "bclen=i"                => \my $bcLen,
+           "extract_barcodes_rev_comp_args=s" => \my $extract_barcodes_revcomp_args,
+           "extract_barcodes_append_args=s" => \my $extract_barcodes_append_args,
            "fwd_primer=s"           => \my $primer_L,
            "rev_primer=s"           => \my $primer_R,
-            "trim-maxlength=i"         => \my $trimMaxLen,
+           "trim-maxlength=i"         => \my $trimMaxLen,
            "amplicon_length=i"      => \my $amplicon_length,
            "dada2-truncLen-f|for=i" => \my $truncLenL,
            "dada2-truncLen-r|rev=i" => \my $truncLenR,
@@ -706,13 +714,6 @@ sub override_default_param {
     $filehandle->print("\n");
     return($ans);
 }
-# One-step PCR requires barcode length; the config file has default value
-$config_hashref->{'part1 params'}->{"bc_len"} = override_default_param(
-    value => $bcLen,
-    name => "bc_len",
-    filehandle => $GLOBAL_PATHS,
-    optional => 1
-    );
 # Resolve primer trimming parameters
 $config_hashref->{'part1 params'}->{"fwd primer"} = override_default_param(
     value => $primer_L,
@@ -890,69 +891,30 @@ if (   !@dbg
           or die "Cannot open "
           . $GLOBAL_PATHS->part1_local_map()
           . " for reading: $OS_ERROR";
-        my $extctrl     = 0;
-        my $pcrpos      = 0;
-        my $pcrneg      = 0;
-        my $projSamples = 0;
-        my $linecount   = 0;
-        my $null        = 0;
+        my $nSamples = 0;
         while (<MAP>)
         {
             chomp;
-            ## don't count header as sample; don't count any line if it doesn't
+            ## don't count header as sample
             if ($. > 1)
             {
-                ## start with four tab-separated fields; the first three must contain non-whitespace chars
+                #  don't count any line if it doesn't start with four 
+                # tab-separated fields; the first three must contain 
+                # non-whitespace chars
                 if ($_ =~ /^(\S+\t){3}/)
                 {
-                    if (   $_ =~ "EXTNTC"
-                        || $_ =~ "NTC.EXT"
-                        || $_ =~ "NTCEXT"
-                        || $_ =~ "EXT.NTC"
-                        || $_ =~ "NTC"
-                        || $_ =~ "EXTNEG")
-                    {
-                        $extctrl++;
-                    } elsif (   $_ =~ "PCRPOS"
-                             || $_ =~ "PCR.pos"
-                             || $_ =~ "pCR.pos"
-                             || $_ =~ "POSCTRL"
-                             || $_ =~ "POS.CTRL"
-                             || $_ =~ "POSCON"
-                             || $_ =~ "posctr")
-                    {
-                        $pcrpos++;
-                    } elsif (   $_ =~ "PCRNTC"
-                             || $_ =~ "PCR.NEG"
-                             || $_ =~ "PCR.NTC"
-                             || $_ =~ "PCRNEG"
-                             || $_ =~ "PCRNEGCTRL"
-                             || $_ =~ "ntcctr")
-                    {
-                        $pcrneg++;
-                    } elsif ($_ =~ /NULL/)
-                    {
-                        $null++;
-                    } else
-                    {
-                        $projSamples++;
-                    }
+                    $nSamples++;
                 } elsif ($_ =~ /\S/)
                 {
-
                     # QIIME's validate_mapping_file seems to already check this:
                     die
                       "In mapping file the line $. does not have four tab-separated fields.";
                 }
             }
         }
-        my $nSamples = $extctrl + $pcrpos + $pcrneg + $null + $projSamples;
         close MAP;
 
-        $GLOBAL_PATHS->print("NO. SAMPLES: $nSamples\nNO. NULLS: $null\n"
-            . "NO. EXTRACTION NEGATIVE CONTROLS: $extctrl\n"
-            . "NO. PCR POSITIVE CONTROLS: $pcrpos\nNO. PCR NEGATIVE CONTROLS: $pcrneg\n"
-        );
+        $GLOBAL_PATHS->print("NO. SAMPLES: $nSamples\n\n");
 
         if (!@dbg)
         {
@@ -1060,7 +1022,8 @@ if ($tbshtBarcodes)
                         index2 => $index2Input,
                         reads1 => $readsForInput,
                         reads2 => $readsRevInput,
-                        bc_len => $config_hashref->{'part1 params'}->{"bc_len"}
+                        bc_len => $config_hashref->{'part1 params'}->{"bc_len"},
+                        append_args => $extract_barcodes_append_args
                         );
             } else {
                 barcodes(
@@ -1070,7 +1033,8 @@ if ($tbshtBarcodes)
                         index2 => $index1Input,
                         reads1 => $readsForInput,
                         reads2 => $readsRevInput,
-                        bc_len => $config_hashref->{'part1 params'}->{"bc_len"}
+                        bc_len => $config_hashref->{'part1 params'}->{"bc_len"},
+                        append_args => $extract_barcodes_append_args
                         );
             }
 
@@ -1116,14 +1080,22 @@ if ($tbshtBarcodes)
 {
     if ((!@dbg) || grep(/^barcodes$/, @dbg))
     {
+        # get orientation args that go to extract_barcodes.py
+        my $orientation_args = get_orientation_args(
+            fastq_gz => $index1Input,
+            config => $config_hashref,
+            cli => $extract_barcodes_revcomp_args,
+            logger => $GLOBAL_PATHS
+        );
         barcodes(
-            oriParams => "", 
+            oriParams => $orientation_args, 
             pathfinder => $GLOBAL_PATHS,
             index1 => $index1Input,
             index2 => $index2Input,
             reads1 => $readsForInput,
             reads2 => $readsRevInput,
-            bc_len => $config_hashref->{'part1 params'}->{"bc_len"}
+            bc_len => $config_hashref->{'part1 params'}->{"bc_len"},
+            append_args => $extract_barcodes_append_args
             );
     }
     if (!@dbg || grep(/^demux$/, @dbg))
@@ -1145,6 +1117,7 @@ sub barcodes
     my $reads2    = delete $arg{reads2};
     my $bcLen     = delete $arg{bc_len} // '';
     my $oneStep   = delete $arg{onestep} // 0; # try to handle this outside
+    my $append_args = delete $arg{append_args} // "";
     
     my $outputDir = $paths->{'wd'};
     my $barcodes  = catfile($outputDir, "barcodes.fastq");
@@ -1187,7 +1160,7 @@ sub barcodes
 
         # Get index files as .fastq
         my @cmds = ();
-        if ($index1 !~ /.gz$/) # please change this to for-loop...
+        if ($index1 !~ /\.gz$/) # please change this to for-loop...
         {
 
             # if the index files aren't .gz, just read in place.
@@ -1251,7 +1224,8 @@ sub barcodes
         }
 
         my $cmd = qiime_cmd('extract_barcodes.py', $config_hashref)
-          . " -f $index1 -r $index2 -c barcode_paired_end --bc1_len $bcLen --bc2_len $bcLen -o $outputDir $oriParams";
+          . " -f $index1 -r $index2 -c barcode_paired_end --bc1_len $bcLen "
+          . "--bc2_len $bcLen -o $outputDir $oriParams $append_args";
 
         execute_and_log(
                        cmds    => [$cmd],
@@ -2451,7 +2425,58 @@ sub cacheChecksums
                       pf       => $pf,
                       replace  => 1
         );
+        $pf->print("\n");
     }
+}
+
+#' Priority:
+#' 1. Command line args
+#' 2. Lookup args from config based on instrument ID found in fastq
+sub get_orientation_args {
+    my %arg     = @_;
+    my $fastq      = delete %arg{"fastq_gz"};
+    my $config     = delete %arg{"config"};
+    my $cli        = delete %arg{"cli"} // "";
+    my $logger     = delete %arg{"logger"} // &STDOUT;
+
+    if ($cli) {
+        $logger->print("Index orientation args: \"$cli\" (from CLI --extract_barcodes_rev_comp_args)\n");
+        return $cli;
+    }
+
+    my $id;
+    if ($fastq =~ /\.gz$/) {
+        $id = `gunzip < $fastq | head -n 1`;
+    } else {
+        open my $seqs, $fastq or die "Could not open $fastq: $!";
+        while (<$seqs>)
+        {
+            $id = $_;
+            last;
+        }
+        close $seqs;
+    }
+    chomp $id;
+
+    $id =~ s/^@//;
+    $id =~ s/:.*$//;
+
+    # M* => miseq           => ""
+    # D* => hiseq 2000/2500 => ""
+    # K* => HiSeq 3000/4000 => "--rev_comp_bc2"
+    # V* => NextSeq 500/550 => "--rev_comp_bc2"
+    my $instrument_id_to_args = $config->{"instrument_ID_to_config"};
+    foreach my $id_pattern (keys %{$instrument_id_to_args}) {
+        if ($id =~ $id_pattern) {
+            my $args = $instrument_id_to_args->{$id_pattern};
+            $logger->print("Index orientation args: \"$args\" (from instrument ID $id matching pattern $id_pattern)\n");
+            return $args;
+        }
+    }
+
+    die "Unrecognized instrument ID: $id. Recognized patterns: " 
+        . (join ", ", keys %{$instrument_id_to_args})
+        . ". Please update config.json.\n";
 }
 
 sub setIdent
@@ -2595,7 +2620,7 @@ sub convert_to_local_if_gz
     my @ans;
     foreach my $file (@files)
     {
-        if ($file =~ /.gz$/)
+        if ($file =~ /\.gz$/)
         {
 
             # Rename *[R|I][1|2].fastq.gz to <WD>/<RUN>_[R|I][1|2].fastq

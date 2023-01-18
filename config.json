@@ -88,5 +88,9 @@
             }
 
         }
+    },
+    "instrument_ID_to_config": {
+        "^[DM]": "",
+        "^[KV]": "--rev_comp_bc2"
     }
 }
