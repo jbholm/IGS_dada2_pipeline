@@ -77,7 +77,7 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
             shift 2
         fi
         ;;
-    --no-delete|--nodelete)
+    --no-delete|--nodelete|--no_delete)
         NODELETE=$1
         shift 1
         ;;

@@ -37,8 +37,35 @@ parser$add_argument(
 parser$add_argument(
     "--nodelete",
     "--no-delete",
+    "--no_delete",
     action = "store_true",
     help = "Don't delete intermediate sequence files after denoising."
+)
+parser$add_argument(
+    "--forward_primer",
+	default = "AGRGTTYGATYMTGGCTCAG",
+	type = "character",
+	action = "store",
+    help = "Forward primer to remove. Sequences without both primers are discarded."
+)
+parser$add_argument(
+    "--reverse_primer",
+	default = "RGYTACCTTGTTACGACTT",
+	type = "character",
+	action = "store",
+    help = "Reverse primer to remove. Sequences without both primers are discarded."
+)
+parser$add_argument(
+    "--max_mismatch",
+	type = "integer",
+	action = "store",
+	default = 2,
+    help = "The number of mismatches to tolerate when matching reads to primer sequences."
+)
+parser$add_argument(
+    "--indels",
+	action = "store_true",
+    help = "Allow insertions or deletions of bases when matching adapters"
 )
 args <- parser$parse_args()
 if (any(is.null(args))) {
@@ -105,9 +132,6 @@ names(demuxed_filepaths) <- sample.names
 samples <- data.frame(CCS = demuxed_filepaths)
 
 trim_primers <- function(ins, outs) {
-    F27 <- "AGRGTTYGATYMTGGCTCAG" # Pacbio primers given in DADA2 tutorials
-    R1492 <- "RGYTACCTTGTTACGACTT"
-
     if (length(ins) == 0) {
         cat("No samples to trim primers from")
         return()
@@ -124,13 +148,17 @@ trim_primers <- function(ins, outs) {
     prim.stats <- t(mapply(function(ins, outs) {
         stats <- tryCatch(
             {
-                dada2::removePrimers(
-                    ins,
-                    outs,
-                    primer.fwd = F27,
-                    primer.rev = dada2:::rc(R1492),
-                    orient = TRUE
-                )
+				suppressWarnings(
+                	dada2::removePrimers(
+						ins,
+						outs,
+						primer.fwd = args$forward_primer,
+						primer.rev = args$reverse_primer,
+						max.mismatch = args$max_mismatch, 
+						allow.indels = args$indels,
+						orient = T, verbose = T
+					)
+				)
             },
             error = function(e) {
                 fq <- readFastq(ins)
@@ -143,7 +171,9 @@ trim_primers <- function(ins, outs) {
     }, ins = ins, outs = outs)) %>%
         set_rownames(names(ins)) %>%
         set_colnames(c("reads.in", "reads.out"))
-    print(prim.stats)
+    if(all(prim.stats$reads.out == 0)) {
+		warning("No reads passed the Removing Primers step  (Did you select the right primers?)")
+	}
     
     samples <- lapply(seq_along(ins), function(s) {
         fastq <- names(ins)[s]
@@ -369,7 +399,7 @@ filtereds <- (paste0(sample.names, "_filt.fastq.gz"))
 filtereds_files <- file.path(filtpath, filtereds)
 names(filtereds_files) <- names(tcs)
 samples <- cbind(samples, filtered = filtereds_files)
-targets <- !filtereds_files %in% list.files(filtpath, full.names = T) & file.exists(samples$primer_trimmed)
+targets <- !filtereds_files %in% list.files(filtpath, full.names = T) & file.exists(samples$primer_trimmed) # this doesn't work; trim_primers can create empty files that are 20b large
 
 trim_and_filter_output <- trim_and_filter(
     ins = samples$primer_trimmed[targets] %>% 
