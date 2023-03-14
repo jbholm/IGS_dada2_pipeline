@@ -310,10 +310,10 @@ sub _run
     my $line;
     while ($line = <IN>)
     {
-        last if $line =~ /Your job (\d+)/i;
+        last if $line =~ /^Your job/i;
     }
     close IN;
-    $line =~ /Your job (\d+)/i;
+    $line =~ /^Your job\D*(\d+)/i;
     my $jobnumber = $1;
 
     if ($jobnumber)

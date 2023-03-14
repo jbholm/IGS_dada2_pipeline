@@ -35,62 +35,69 @@
     "qsub_w": "w",
     "qsub_b": "y",
     "part1 params": {
-        "demux_map": "data/UDI_ALL_INDEX_MAP_corrected.txt",
-        "fastqc_limits": "data/fastqc/limits.txt",
+        "demux_map": "./data/UDI_ALL_INDEX_MAP_corrected.txt",
+        "fastqc_limits": "./data/fastqc/limits.txt",
+        "extract_barcodes_rev_comp_args": "",
+        "split_libraries_args": "",
         "primer_allowed_mm": 2,
+        "trim_poly_g": 0,
         "trim quality": 2,
         "remove phix": 1,
         "max length": "Inf",
         "filter quality": 0,
         "max EE": 2,
-        "min length": 12,
-        "onestep": {
-            "V3V4": {
-                "bc_len": 12,
-                "fwd primer": "GGACTACHVGGGTWTCTAAT",
-                "rev primer": "ACTCCTACGGGAGGCAGCAG",
-                "fwd trim length": 255,
-                "rev trim length": 255
-            },
-            "V4": {
-                "bc_len": 12,
-                "fwd primer": "GTGCCAGCMGCCGCGGTAA",
-                "rev primer": "ACTCCTACGGGAGGCAGCAG",
-                "fwd trim length": 200,
-                "rev trim length": 200
-            }
+        "min length": 12
+    },
+    "part1 param profiles": {
+        "nextseq": {
+            "demux_map": "./data/XT_IDT_UDI_master_designset_rci7_i5_1-1536.txt",
+            "extract_barcodes_rev_comp_args": "--rev_comp_bc2",
+            "trim_poly_g": 1,
+            "dada2_error_estimation_function": "loessErrfun_monotonic"
         },
-        "twostep": {
-            "V3V4": {
-                "fwd primer": "ACTCCTACGGGAGGCAGCAG",
-                "rev primer": "GGACTACHVGGGTWTCTAAT",
-                "fwd trim length": 255,
-                "rev trim length": 225
-            },
-            "V4": {
-                "fwd primer": "GTGCCAGCMGCCGCGGTAA",
-                "rev primer": "GGACTACHVGGGTWTCTAAT",
-                "fwd trim length": 200,
-                "rev trim length": 200            },
-            "ITS": {
-                "fwd primer": "CTGCCCTTTGTACACACCGC",
-                "rev primer": "TTTCGCTGCGTTCTTCATCG",
-                "fwd trim length": 0,
-                "rev trim length": 0,
-                "max EE": 1,
-                "min length": 50
-            },
-            "OMPA": {
-                "fwd primer": "TGGGATCGYTTTGATGTATT",
-                "rev primer": "TAAACTTGCTTGCCACTCATG,ACTTGCTTGCCATTCATGGTA",
-                "fwd trim length": 259,
-                "rev trim length": 150
-            }
-
+        "onestep_V3V4": {
+            "bc_len": 12,
+            "fwd primer": "GGACTACHVGGGTWTCTAAT",
+            "rev primer": "ACTCCTACGGGAGGCAGCAG",
+            "fwd trim length": 255,
+            "rev trim length": 255
+        },
+        "onestep_V4": {
+            "bc_len": 12,
+            "fwd primer": "GTGCCAGCMGCCGCGGTAA",
+            "rev primer": "ACTCCTACGGGAGGCAGCAG",
+            "fwd trim length": 200,
+            "rev trim length": 200
+        },
+        "twostep_V3V4": {
+            "fwd primer": "ACTCCTACGGGAGGCAGCAG",
+            "rev primer": "GGACTACHVGGGTWTCTAAT",
+            "fwd trim length": 255,
+            "rev trim length": 225
+        },
+        "twostep_V4": {
+            "fwd primer": "GTGCCAGCMGCCGCGGTAA",
+            "rev primer": "GGACTACHVGGGTWTCTAAT",
+            "fwd trim length": 200,
+            "rev trim length": 200            },
+        "twostep_ITS": {
+            "fwd primer": "CTGCCCTTTGTACACACCGC",
+            "rev primer": "TTTCGCTGCGTTCTTCATCG",
+            "fwd trim length": 0,
+            "rev trim length": 0,
+            "max EE": 1,
+            "min length": 50
+        },
+        "twostep_OMPA": {
+            "fwd primer": "TGGGATCGYTTTGATGTATT",
+            "rev primer": "TAAACTTGCTTGCCACTCATG,ACTTGCTTGCCATTCATGGTA",
+            "fwd trim length": 259,
+            "rev trim length": 150
         }
     },
-    "instrument_ID_to_config": {
+    "instrument_ID_to_profile": {
+        "^[^DKMV]": "",
         "^[DM]": "",
-        "^[KV]": "--rev_comp_bc2"
+        "^[KV]": "nextseq"
     }
 }

@@ -90,10 +90,10 @@ sub status
                   "Received procs of $procs from \n$line\n\tbut it should not contain anything other than \\d+/\\d+";
             }
             my ($load_avg, $arch, $states) = @pieces;
-            if ($self->verbose && $states)
-            {
-                print STDERR "Node $node has state $states\n";
-            }
+            # if ($self->verbose && $states)
+            # {
+            #     print STDERR "Node $node has state $states\n";
+            # }
             unless (defined $states) {$states = ''}
             $allstats->{$node} = [$type, $procs, $load_avg, $states];
         } elsif ($line =~

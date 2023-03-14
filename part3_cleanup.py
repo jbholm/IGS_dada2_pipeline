@@ -612,45 +612,54 @@ def organize_reads(proj_path, map, run_paths):
         filepaths = []
         any_files = False
 
-        executor = CONFIG['executor']
-        external_exec = False
-        print("\nThis pipeline's default executor is:\n\n" + executor)
-        if confirm("Use executor to transfer large files? (Choose yes if not using screen or tmux)", default=True):
-            external_exec = True
-
-        any_run_files = {}
+        run_paths_dict = {Path(path).name: path for path in run_paths}
         # for file in map, find where it should be, and copy in if present
         transfers = {}
         with open(map) as fd:
             dr = csv.DictReader(fd, delimiter="\t", quotechar='"')
-            list_of_samples = list(dr)
 
-        for row in list_of_samples:
-            platepos = row["RUN.PLATEPOSITION"]
-            sample = row["sampleID"]
-            for run_path in run_paths:
-                # R1 and R2 files for Illumina, just one file for PacBio
-                patt = str(proj_path / run_path / Path("demultiplexed") / Path(platepos + "*"))
-                reads = glob.glob(patt)
-                if(len(reads) > 0):
-                    transfers[sample] = reads
-                    any_run_files[run_path] = True
-                else:
-                    print("No read files for sample %s with plate position %s could be found.\n" % (sample, platepos))
-                    print("Expected path: %s \n" % patt)
-                    if not ask_continue():
-                        return False
+            warnings = 0
+            for row in dr:
+                run_platepos = row["RUN.PLATEPOSITION"]
+                sample = row["sampleID"]
+                possible_paths = []
+                for run, run_path in run_paths_dict.items():
+                    patt = str(run_path / Path("demultiplexed") / Path(row["RUN.PLATEPOSITION"] + "*"))
+                    possible_paths.append(str(run_path / Path("demultiplexed") / Path(row["RUN.PLATEPOSITION"] + "(_R[12])?.fastq.gz")))
+                    # first pattern matches paired-end files
+                    # second pattern matches unpaired files
+                    reads = (
+                        glob.glob(str(run_path / Path("demultiplexed") / Path(row["RUN.PLATEPOSITION"] + "_R[12].fastq.gz"))) + 
+                        glob.glob(str(run_path / Path("demultiplexed") / Path(row["RUN.PLATEPOSITION"] + ".fastq.gz")))
+                        )
+                    # R1 and R2 files for Illumina, just one file for PacBio
+                    if(len(reads) > 0):
+                        transfers[sample] = {"srcs": reads, "run": run}
+                if sample not in transfers.keys(): 
+                    format_msg = ("WARNING: No read files for sample %s with plate position \n" +
+                        "%s could be found. This is probably a sample that didn't\n" +
+                        "pass demux; if expected, please continue.\n")
+                    print(format_msg % (sample, run_platepos))
+                    print("Expected paths:\n%s \n" % "\n".join(possible_paths))
+                    warnings += 1
+        if warnings > 0:            
+            if not ask_continue():
+                return False
         
         if len(transfers) > 0:
             make_for_contents(organized_dir)
             nFiles = len(transfers.keys())
         else:
-            raise(f"Skipping creation of {organized_dir} (no demuxed reads found)")
-        
-        for run_path in any_run_files.keys():
-            subdir_destination = str(Path(organized_dir) / Path(run_path.name))
+            raise Exception(f"Skipping creation of {organized_dir} (no demuxed reads found)")
+        for run_path in run_paths_dict.values():
+            subdir_destination = str(proj_path / Path(organized_dir) / Path(run_path.name))
             make_for_contents(subdir_destination)
 
+        executor = CONFIG['executor']
+        external_exec = False
+        print("\nThis pipeline's default executor is:\n\n" + executor)
+        if confirm("Use executor to transfer large files? (Choose yes if not using screen or tmux)", default=True):
+            external_exec = True
         if external_exec:
             print(f"Using executor to copy raw read files for {nFiles} samples to {subdir_destination}.\n")
             print("\nRemember to delete any stray STDOUT and STDERR files from the working directory.\n")
@@ -658,16 +667,16 @@ def organize_reads(proj_path, map, run_paths):
         else:
             print(f"Copying raw read files for {nFiles} samples to {subdir_destination}.")
 
-
-        for sample, files in transfers.items():
-            for source in files:
+        for sample, data in transfers.items():
+            run = data["run"]
+            for source in data["srcs"]:
                 if source.endswith("_R1.fastq.gz"):
                     ext = "_R1.fastq.gz" 
                 elif source.endswith("_R2.fastq.gz"):
                     ext = "_R2.fastq.gz" 
                 elif source.endswith(".fastq.gz"):
                     ext = ".fastq.gz"
-                dest = Path(subdir_destination) / Path(sample + ext)
+                dest = str(Path(organized_dir) / run / Path(sample + ext))
 
                 if external_exec:
                     cmd = "module load sge && " + executor + " -N copy -V \'cp -f %s %s\'"
@@ -675,7 +684,7 @@ def organize_reads(proj_path, map, run_paths):
                     print(this_cmd)
                     run(this_cmd, shell=True)
                 else:
-                        shutil.copy2(source, dest)
+                    shutil.copy2(source, dest)
 
         # gzip all if needed
         for f in Path(subdir_destination).iterdir():
@@ -683,7 +692,7 @@ def organize_reads(proj_path, map, run_paths):
                 gz(str(f))
 
     except Exception as e:
-        print(str(e))
+        print(str(type(e)) + ": " + str(e))
         if not ask_continue():
             return False
 
@@ -777,10 +786,10 @@ def organize_counts_by_taxon(proj_path):
 def make_for_contents(dir, silent=False):
     try:
         os.makedirs(dir)
-        print(f"Creating ./{dir}/")
+        print(f"Creating {dir}/")
     except FileExistsError:
         if not silent:
-            print(f"Directory ./{dir}/ already exists")
+            print(f"Directory {dir}/ already exists")
     except Exception as e:
         raise e
 
@@ -791,6 +800,7 @@ def organize_logs(proj_path, run_paths):
         # Part 1 logs found in the run directories. Just copy.
 
         filepaths = glob.glob(str(proj_path / Path("*pipeline_log.txt")))
+        filepaths += glob.glob(str(proj_path / Path("*.R.stderr")))
         for run in run_paths:
             filepaths += glob.glob(str(proj_path / run / Path("*pipeline_log.txt")))
 

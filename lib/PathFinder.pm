@@ -7,12 +7,13 @@ use File::Basename;
 use File::Spec::Functions;
 use English qw( -no_match_vars );
 use Cwd qw(getcwd);
-
+use Hash::Merge qw( merge );
 
 sub new {
     my ($class, %args) = @_;
     my $self = bless { %args }, $class;
     $self->open();
+    mkdir $self->commands_dir();
     return $self;
 }
 
@@ -21,6 +22,16 @@ sub set_wd {
     #$self->close();
     $self->{'wd'} = $wd;
     $self->open();
+}
+
+sub set_config {
+    my ($self, $config) = @_;
+    $self->{'config'} = $config;
+}
+
+sub get_config {
+    my $self = shift;
+    return $self->{'config'};
 }
 
 sub open {
@@ -63,6 +74,11 @@ sub clone {
     return $copy;
 }
 
+sub pipeline_dir {
+    my $self = shift;
+    return $self->{'pipeline_dir'};
+}
+
 sub part1_log {
     my $self = shift;
     my $run = basename($self->{'wd'});
@@ -79,9 +95,89 @@ sub part1_stdout_log {
     return catdir($self->{'wd'}, "qsub_stdout_logs");
 }
 
+sub load_config_profile {
+    my $self = shift;
+    my $profile  = shift;
+
+    if(exists $self->{"config"}->{'part1 param profiles'}->{"$profile"}) {
+        # 'part1 params' contains universal params; 
+        # "part1 param profiles" contains instrument-, PCR-, and region-specific
+        # param profiles.
+        my $profile = $self->{"config"}->{'part1 param profiles'}->{"$profile"};
+        Hash::Merge::set_behavior('RIGHT_PRECEDENT');
+        $self->{"config"}->{'part1 params'} = merge($self->{"config"}->{'part1 params'}, $profile);
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+sub override_default_param {
+    my $self = shift;
+    my %arg      = @_;
+    my $value = delete %arg{value};
+    my $name = delete %arg{name};
+    my $optional = delete %arg{optional} // 0; 
+
+
+    my $ans;
+    if(exists $self->{'config'}->{'part1 params'}->{$name} && ! defined($value)) {
+        $ans = $self->{'config'}->{'part1 params'}->{$name};
+    } else {
+        if (defined($value)) {
+            if(exists $self->{'config'}->{'part1 params'}->{$name}) {
+                $self->print("(Overriding default configured value for \"$name\" with value \"$value\" from CLI)\n");
+            }
+            $ans = $value;
+        } else {
+            if (! $optional) {
+                $self->print("Config has no default value for \"$name\" and value was not provided on the command line.\n");
+                die "Config has no default value for \"$name\" and value was not provided on the command line.";
+            }
+        }
+    }
+
+    $self->{'config'}->{'part1 params'}->{"$name"} = $ans;
+    return($ans);
+}
+
+sub get_param {
+    my $self = shift;
+    my $param = shift;
+
+    return $self->{"config"}->{"part1 params"}->{"$param"};
+}
+
+sub set_param {
+    my $self = shift;
+    my %arg  = @_;
+    my $arg = \%arg;
+    
+    my $name = (keys %arg)[0];
+    $self->{"config"}->{"part1 params"}->{"$name"} = $arg->{"$name"};
+
+    return;
+}
+
+sub localize_file_params {
+    my $self = shift;
+    foreach(keys %{$self->{"config"}->{"part1 params"}}) {
+        my $val = $self->get_param($_);
+        my $patt = "^\\." . catfile("", "");
+        if($val =~ /$patt/) {
+            $self->set_param($_, catfile($self->pipeline_dir(), $val));
+        }
+    }
+}
+
+sub commands_dir {
+    my $self = shift;
+    return catdir($self->{'wd'}, "commands");
+}
+
 sub part1_local_map {
     my $self = shift;
-    return catdir($self->{'wd'}, basename($self->{'map'}));
+    return catdir($self->{'wd'}, basename($self->get_param('demux_map')));
 }
 
 sub fwd_demux_dir {
@@ -131,6 +227,21 @@ sub splitsamples_output_rev {
         catfile($self->sample_dir(), "*_R2.$_")
         } @extensions;
     my @result = glob(join " ", @globs);
+    return @result;
+}
+
+sub trimmed_files {
+    my $self = shift;
+    
+    my @exts = ( "fastq", "fastq.gz" );
+    my @globs_f = map {
+        catfile($self->{'wd'},  "R1_tc.$_")
+    } @exts;
+    my @globs_r = map {
+        catfile($self->{'wd'},  "R2_tc.$_")
+    } @exts;
+
+    my @result = glob(join " ", (@globs_f, @globs_r));
     return @result;
 }
 

@@ -177,7 +177,7 @@ GetOptions(
            "help|h!"             => \my $help,
            "verbose!"            => \my $verbose,
            "dry-run"             => \my $dryRun,
-           "notVaginal"          => \$notVaginal,
+           "notVaginal|notvaginal|novaginal|no-vaginal"          => \$notVaginal,
            "tax|t=s"             => \@schemes,
            "oral"                => \my $oral,
            "csts!"               => \$csts,

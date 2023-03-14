@@ -174,6 +174,18 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         TROUBLESHOOT_BARCODES=$1
         shift 1
         ;;
+    --split_libraries_args*)
+        if [[ $1 =~ "--split_libraries_args=" ]]; then 
+            SPLIT_LIBRARIES_ARGS="${1#*=}"
+            shift 1
+        elif [[ $1 == "--split_libraries_args" ]]; then
+            try_assign SPLIT_LIBRARIES_ARGS "$1" "$2"
+            shift 2
+        else
+            PARAMS="$PARAMS $1"
+            shift 1
+        fi
+    ;;
     -v|--var-reg)
         try_assign VAR "$1" "$2"
         shift 2
@@ -206,8 +218,8 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         if [[ $1 =~ "--trim-maxlength=" ]]; then 
             TRIM_MAXLENGTH="${1#*=}"
             if [[ ! -n "$TRIM_MAXLENGTH" || ! $1 =~ "=" ]]; then  
-                MSG="--bclen missing value."
-                MSG+=" --bclen=\"\" and --bclen= are not accepted."
+                MSG="--trim-maxlength missing value."
+                MSG+=" --trim-maxlength=\"\" and --trim-maxlength= are not accepted."
                 stop "$MSG"
             fi
             shift 1
@@ -219,6 +231,10 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
             shift 1
         fi
         ;;
+    --trim_poly_g|--notrim_poly_g)
+        TRIM_POLY_G=$1
+        shift 1
+        ;;    
     --dada2-truncQ*)
         if [[ $1 =~ "--dada2-truncQ=" ]]; then 
             DADA2_TRUNCQ="${1#*=}"
@@ -336,13 +352,26 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
             shift 1
         fi
         ;;
-    --dada2-rmPhix)
+    --dada2-rmPhix|--no-dada2-rmPhix)
         DADA2_RMPHIX=$1
         shift 1
         ;;
-    --no-dada2-rmPhix)
-        DADA2_RMPHIX=$1
-        shift 1
+    --dada2_error_estimation_function)
+        if [[ $1 =~ "--dada2_error_estimation_function=" ]]; then 
+            DADA2_ERROR_ESTIMATION_FUNCTION="${1#*=}"
+            if [[ ! -n "$DADA2_ERROR_ESTIMATION_FUNCTION" || ! $1 =~ "=" ]]; then  
+                MSG="--dada2_error_estimation_function missing value."
+                MSG+=" --dada2_error_estimation_function=\"\" and --dada2_error_estimation_function= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--dada2_error_estimation_function" ]]; then
+            try_assign DADA2_ERROR_ESTIMATION_FUNCTION "$1" "$2"
+            shift 2
+        else
+            PARAMS="$PARAMS $1"
+            shift 1
+        fi
         ;;
     --dada2-mem*)
         if [[ $1 =~ "--dada2-mem=" ]]; then 
@@ -432,16 +461,15 @@ else
     INPUT="-i $RAW_PATH"
 fi
 
-# Validate that mapping file was given and exists
-if [[ -z ${MAP+x} ]]; then
-    MAP=`cat "$MY_DIR/config.json" | \
-        python3 -sc "import sys, json; print(json.load(sys.stdin)['part1 params']['demux_map'])"`
-    MAP=$(realpath $MY_DIR/$MAP)
-    echo "Using default mapping file..."
-elif [[ ! -e "$MAP" ]]; then
-    stop "\tMapping file (-m) does not exist or is inaccessible."
+# Validate that mapping file, if given, exists
+if [[ ! -z ${MAP+x} ]]; then
+    if [[ ! -e "$MAP" ]]; then
+        stop "\tMapping file (-m) does not exist or is inaccessible."
+    else
+        printf "MAPPING FILE: $MAP\n"
+        MAP="-m $MAP"
+    fi
 fi
-printf "MAPPING FILE: $MAP\n"
 
 if [[ ! -z ${EXTRACT_BARCODES_REV_COMP_ARGS+x} ]]; then
     EXTRACT_BARCODES_REV_COMP_ARGS="--extract_barcodes_rev_comp_args=\"$EXTRACT_BARCODES_REV_COMP_ARGS\""
@@ -450,6 +478,9 @@ if [[ ! -z ${EXTRACT_BARCODES_APPEND_ARGS+x} ]]; then
     EXTRACT_BARCODES_APPEND_ARGS="--extract_barcodes_append_args=\"$EXTRACT_BARCODES_APPEND_ARGS\""
 fi
 
+if [[ ! -z ${SPLIT_LIBRARIES_ARGS+x} ]]; then
+    SPLIT_LIBRARIES_ARGS="--split_libraries_args=\"$SPLIT_LIBRARIES_ARGS\""
+fi
 # -r is mandatory
 if [[ -z ${RUN+x} ]]; then
     stop "Run ID (-r) required."
@@ -460,23 +491,23 @@ fi
 
 # Validate the variable region
 [[ $ONESTEP ]] && onestep_key="onestep" || onestep_key="twostep"
-supported_regions=( `cat "$MY_DIR/config.json" | \
+profiles=( `cat "$MY_DIR/config.json" | \
     python3 -sc "import sys, json; \
-    regions = json.load(sys.stdin)['part1 params']['$onestep_key'].keys(); \
+    regions = json.load(sys.stdin)['part1 param profiles'].keys(); \
     print(' '.join(regions))"` )
 if [[ -z ${VAR+x} ]]; then
     VAR="V3V4"
 else
-    for reg in "${supported_regions[@]}"; do
-        if [[ ${VAR^^} == $reg ]]; then
+    for profile in "${profiles[@]}"; do
+        if [[ "${onestep_key}_${VAR^^}" == $profile ]]; then
             supported="t"
         fi
     done
     if [[ ! -n $supported ]]; then
         if [[ ! -n $FWD_PRIMER || ! -n $REV_PRIMER || ! ( -n $TRIM_LENGTH_FWD && -n $TRIM_LENGTH_REV || -n $AMPLICON_LENGTH  ) ]]; then
-            MSG="Variable region was '$VAR' but only the following are supported (case-insensitive):\n"
-            MSG+="${supported_regions[*]}\n"
-            MSG+="For unsupported regions, the pipeline requires:\n--fwd_primer\n--rev_primer\n"
+            MSG="$onestep_key PCR was used to target $VAR variable region, but only the following protocols have stored configurations (case-insensitive):\n"
+            MSG+="${profiles[*]}\n"
+            MSG+="For any other protocol, the pipeline requires:\n--fwd_primer\n--rev_primer\n"
             MSG+="either --fwd_trim_length and --rev_trim_length, or --amplicon_length.\n"
             stop "$MSG"
         fi
@@ -553,6 +584,20 @@ if [[ ! -z ${DADA2_MAXEE+x} ]]; then
         DADA2_MAXEE="--dada2-maxEE=$DADA2_MAXEE"
     else
         stop "--dada2-maxEE must be a number"
+    fi
+fi
+if [[ ! -z ${DADA2_ERROR_ESTIMATION_FUNCTION+x} ]]; then
+    supported=""
+    for fun in "LOESSERRFUN" "LOESSERRFUN_MONOTONIC"; do
+        if [[ ${DADA2_ERROR_ESTIMATION_FUNCTION^^} == $fun ]]; then
+            supported="t"
+            DADA2_ERROR_ESTIMATION_FUNCTION="--dada2_error_estimation_function=\"${DADA2_ERROR_ESTIMATION_FUNCTION}\""
+        fi
+    done
+    if [[ ! -n $supported ]]; then
+        MSG="Value of --dada2_error_estimation_function "$DADA2_ERROR_ESTIMATION_FUNCTION" not supported.\n"
+        MSG+="Please choose \"loessErrfun\" or \"loessErrfun_monotonic\".\n"
+        stop "${MSG}"
     fi
 fi
 
@@ -715,11 +760,11 @@ module load r/4.0.2 2>/dev/null || true
 log="$SD/${RUN}_16S_pipeline_log.txt"
 
 # Remove extra spaces caused by joining empty arguments with a whitespace
-OPTSARR=("$PARAMS" "$DBG" "$NOSKIP" "$NODELETE" "$VERBOSE" "$BCLENGTH" "$TROUBLESHOOT_BARCODES" "$ONESTEP" "$FWD_PRIMER" "$REV_PRIMER" "$TRIM_MAXLENGTH" "$DADA2_TRUNCQ" "$TRIM_LENGTH_FWD" "$TRIM_LENGTH_REV" "$AMPLICON_LENGTH" "$DADA2_MINLEN" "$DADA2_MINQ" "$DADA2_MAXEE" "$DADA2_RMPHIX" "$DADA2MEM" "$DRY_RUN" "$EXTRACT_BARCODES_REV_COMP_ARGS" "$EXTRACT_BARCODES_APPEND_ARGS")
+OPTSARR=("$PARAMS" "$DBG" "$NOSKIP" "$NODELETE" "$VERBOSE" "$MAP" "$TROUBLESHOOT_BARCODES" "$ONESTEP" "$FWD_PRIMER" "$REV_PRIMER" "$TRIM_MAXLENGTH" "$DADA2_TRUNCQ" "$TRIM_LENGTH_FWD" "$TRIM_LENGTH_REV" "$TRIM_POLY_G" "$AMPLICON_LENGTH" "$DADA2_MINLEN" "$DADA2_MINQ" "$DADA2_MAXEE" "$DADA2_RMPHIX" "${DADA2_ERROR_ESTIMATION_FUNCTION}" "$DADA2MEM" "$DRY_RUN" "$EXTRACT_BARCODES_REV_COMP_ARGS" "$EXTRACT_BARCODES_APPEND_ARGS" "$SPLIT_LIBRARIES_ARGS")
 OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 
-ARGS=("-l mem_free=8G" "-V" "$QP" "-N" "MSL_$RUN" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "$QSUB_ARGS" "${MY_DIR}/illumina_dada2.pl" "$INPUT" "-wd" "$SD" "-v" "$VAR" "-m" "$MAP" "$OPTS")
+ARGS=("-l mem_free=8G" "-V" "$QP" "-N" "MSL_$RUN" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "$QSUB_ARGS" "${MY_DIR}/illumina_dada2.pl" "$INPUT" "-wd" "$SD" "-v" "$VAR" "$OPTS")
 CMD=()
 for ARG in "${ARGS[@]}"; do
     if [[ -n "$ARG" ]]; then
@@ -822,6 +867,16 @@ terminates.
 
 =head1 OPTIONS
 
+This pipeline stores default configurations for experimental protocols in its 
+config file, located at <pipeline_path>/config.json. These specify parameters
+appropriate for various PCR protocols, hypervariable regions, and sequencing
+machines. Giving any of the following command-line options will override the
+pre-configured value:
+
+B<--map, --extract_barcodes_rev_comp_args, --split_libraries_args, --fwd_primer,>
+B<--rev_primer, --trim_poly_g, --dada2-truncQ, --dada2-rmPhix, --dada2-minQ,>
+B<--dada2-maxEE, --dada2-minLen, --dada2-truncLen-f, --dada2-truncLen-r, --dada2_error_estimation_function>
+
 =head2 GENERAL
 
 =over
@@ -897,7 +952,7 @@ following options:
     -e <from auto-generated path -sd, -p, and -r>
 
 Most options will override the defaults shown above. The qsub options must be 
-specified as a single string surrounded by double quotes ("), as shown below.
+specified as a single string surrounded by double quotes (\"), as shown below.
 
     part1.sh --qsub="-m ea -l excl=true" ...
 
@@ -948,8 +1003,7 @@ with B<--1step>. Gzip compression optional.
 
 =item B<--map>, B<-m> file
 
-The full path to a Qiime-formatted mapping file. The default generic UDI map is 
-specified in config.json.
+The full path to a Qiime-formatted mapping file.
 
 =back
 
@@ -960,9 +1014,7 @@ specified in config.json.
 =item B<--extract_barcodes_rev_comp_args> "ARGS"
 
 Specify the arguments --rev_comp_bc1 and/or --rev_comp_bc2 to QIIME 
-extract_barcodes.py. This will override the pipeline's configured operation 
-based on the instrument ID found in the FASTQ headers. (See config.json key
-"instrument_ID_to_config"). Giving an empty string will force the pipeline to
+extract_barcodes.py. Giving an empty string will force the pipeline to
 reverse-complement neither index.
 
 =item B<--extract_barcodes_append_args> "ARGS"
@@ -982,17 +1034,16 @@ successful demux is used. Note: Performing these transformations on the indexes
 may coincidentally yield a barcode that seems to be correct, even though the 
 overall demux is incorrect. 
 
+=item B<--split_libraries_args> "ARGS"
+
+Command line options to append to every call to QIIME split_libraries_fastq.py.
+See http://qiime.org/scripts/split_libraries_fastq.html.
+
 =back
 
 =head2 TRIMMING, FILTERING, AND DENOISING
 
 =over
-
-This pipeline stores default configurations for various hypervariable regions in
-its config file, located at <pipeline_path>/config.json. Some configurations are 
-specific to one-step PCR library prep too. When the targeted variable region is 
-not described in the config file, use the following options to specify the 
-processing parameters. These options will also override the config file.
 
 =item B<--var-reg>, B<-v> {V3V4, V4, ITS}
 
@@ -1013,6 +1064,12 @@ The primer(s) to trim from the reverse reads. See the note about B<--fwd_primer>
 After trimming primers, filter out reads longer than LENGTH. This value is
 passed on to bbduk.sh's maxlen option. If not set, minlen is set to 
 (readlength - 1) to filter out untrimmed reads.
+
+=item B<--trim_poly_g|--notrim_poly_g>
+
+Trim poly-G tails from reads. Any G's on the 3' end will be removed; any 20-bp
+run of G's in the middle of a read will be removed, along with all following 
+sequence.
 
 =item B<--dada2-truncQ>=SCORE
 
@@ -1053,6 +1110,11 @@ discarded.
 
 Remove reads aligning to the Phi.X genome. (Give --no-dada2-rmPhix to override
 a default value in the config file.)
+
+=item B<--dada2_error_estimation_function>={loessErrfun, loessErrfun_monotonic}
+
+Specify the pre-denoising error estimation function. "loessErrfun_monotonic" is
+for quality scores binned by the Illumina rta3 basecaller.
 
 =item B<--dada2-mem> memory
 

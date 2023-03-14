@@ -166,16 +166,19 @@ if (!is.null(args$map)) {
         }
     }
 
-    message("Writing final project map")
+	map <- map %>% mutate(
+		sampleID.unique = make.names(sampleID, unique = T)
+	)
+	message("Writing final project map")
     write_tsv(map, args$map)
 
-    merge_with_map <- function(df) {
+    rename_by_map <- function(df, map) {
         return(
             df %>%
                 mutate(RUN.PLATEPOSITION = rownames(df)) %>%
                 merge(map) %>%
-                mutate(sampleID = make.names(sampleID, unique = T)) %>%
-                set_rownames(.$sampleID)
+                set_rownames(.$sampleID.unique) %>%
+				select(-any_of(colnames(map)))
         )
     }
     # write this here for the time-being
@@ -185,15 +188,14 @@ if (!is.null(args$map)) {
     message("Using map to subset sample data from abundance table")
     seqtab.df <- as.data.frame(seqtab)
     seqtab <- seqtab.df %>%
-        merge_with_map() %>%
-        select(-c(RUN.PLATEPOSITION, sampleID)) %>%
+        rename_by_map(map) %>%
         as.matrix() %>%
         extract(, apply(., MAR = 2, function(col) sum(col) > 0))
 
     message("Using map to subset sample data from stats table")
     stats <- counts_and_stats$stats %>%
-        merge_with_map() %>%
-        select(-c(RUN.PLATEPOSITION, sampleID))
+        rename_by_map(map)
+
     if (nrow(stats) == 0) {
         stop("Provided map did not match any samples in runs")
     }

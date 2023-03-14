@@ -65,7 +65,22 @@ parser$add_argument(
 parser$add_argument(
     "--indels",
 	action = "store_true",
+	default = T,
     help = "Allow insertions or deletions of bases when matching adapters"
+)
+parser$add_argument(
+    "--min_length",
+	action="store", default=1000,
+    type = "integer",
+	help = "Remove reads with length shorter than min_length. min_length is enforced after quality trimming and truncation."
+)
+# the DADA2 tutorial default for max_length is 1600, but 4000 is the max
+# seq length in our SILVA db
+parser$add_argument(
+    "--max_length",
+	action="store", default=4000,
+    type = "integer",
+	help = "Remove reads with length longer than max_length. max_length is enforced before quality trimming and truncation."
 )
 args <- parser$parse_args()
 if (any(is.null(args))) {
@@ -144,19 +159,24 @@ trim_primers <- function(ins, outs) {
         cat(paste(ins, "\n"))
     }
 
+	arg_list <- list(
+		primer.fwd = args$forward_primer,
+		primer.rev = args$reverse_primer,
+		max.mismatch = args$max_mismatch, 
+		allow.indels = args$indels,
+		orient = T, verbose = T
+	)
+	print("Executing dada2::removePrimers() with args:")
+	print(arg_list)
+
     # Remove primers. Discard reads without primers. Write these counts somewhere?
     prim.stats <- t(mapply(function(ins, outs) {
         stats <- tryCatch(
             {
 				suppressWarnings(
-                	dada2::removePrimers(
-						ins,
-						outs,
-						primer.fwd = args$forward_primer,
-						primer.rev = args$reverse_primer,
-						max.mismatch = args$max_mismatch, 
-						allow.indels = args$indels,
-						orient = T, verbose = T
+                	do.call(
+						dada2::removePrimers,
+						c(ins, outs, arg_list)
 					)
 				)
             },
@@ -175,8 +195,12 @@ trim_primers <- function(ins, outs) {
 		warning("No reads passed the Removing Primers step  (Did you select the right primers?)")
 	}
     
+	# get stats AND delete the output file if removePrimers reports no reads passing
     samples <- lapply(seq_along(ins), function(s) {
         fastq <- names(ins)[s]
+		if (prim.stats[fastq, "reads.out"] == 0 && file.exists(outs[[s]])) {
+			file.remove(outs[s])
+		}
         # filterAndTrim() returns a matrix with rows named by its fwd argument
         trimmed_file <- if (prim.stats[fastq, "reads.out"] == 0) NULL else outs[[s]]
         ans <- list(
@@ -274,16 +298,15 @@ trim_and_filter <- function(ins, outs) {
     #     warning(paste0("Maximum read length increased from 1600 to ", auto_thresh))
     # }
 
-    min_length <- 1000
-    max_length <- 4000 # the DADA2 tutorial default is 1600, but 4000 is the max
-    # seq length in our SILVA db
+	cat(paste("Trimming with min length:", args$min_length))
+	cat(paste("Trimming with max length:", args$max_length))
     png("03_quality_trimmed_sample_lens.png",
         width = 4743,
         height = 400
     )
     hist(lens, lwd = 1, breaks = 100)
-    abline(v = min_length, col = "#E69F00")
-    abline(v = max_length, col = "#E69F00")
+    abline(v = args$min_length, col = "#E69F00")
+    abline(v = args$max_length, col = "#E69F00")
     abline(h = 0)
     dev.off()
 
@@ -293,10 +316,10 @@ trim_and_filter <- function(ins, outs) {
         filt = outs,
         minQ = 3,
         maxN = 0,
-        maxEE = 1,
-        truncQ = 0,
-        minLen = min_length,
-        maxLen = max_length,
+        maxEE = 2,
+        truncQ = 2,
+        minLen = args$min_length,
+        maxLen = args$max_length,
         rm.phix = FALSE,
         compress = TRUE,
         multithread = T,
@@ -388,6 +411,7 @@ names(tcs) <- sample.names
 samples <- cbind(samples, primer_trimmed = tcs)
 targets <- !tcs %in% list.files(tagcleanedpath, full.names = T)
 # don't process repeats
+
 primer_trim_output <- trim_primers(
     ins = samples$CCS[targets] %>% setNames(rownames(samples)[targets]),
     outs = samples$primer_trimmed[targets]
@@ -399,7 +423,7 @@ filtereds <- (paste0(sample.names, "_filt.fastq.gz"))
 filtereds_files <- file.path(filtpath, filtereds)
 names(filtereds_files) <- names(tcs)
 samples <- cbind(samples, filtered = filtereds_files)
-targets <- !filtereds_files %in% list.files(filtpath, full.names = T) & file.exists(samples$primer_trimmed) # this doesn't work; trim_primers can create empty files that are 20b large
+targets <- !filtereds_files %in% list.files(filtpath, full.names = T) & file.exists(samples$primer_trimmed)
 
 trim_and_filter_output <- trim_and_filter(
     ins = samples$primer_trimmed[targets] %>% 

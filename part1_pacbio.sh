@@ -77,6 +77,67 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
             shift 2
         fi
         ;;
+    --dada2_forward_primer*)
+        if [[ $1 =~ "--dada2_forward_primer=" ]]; then 
+            DADA2_FORWARD_PRIMER="${1#*=}"
+            if [[ ! -n "$DADA2_FORWARD_PRIMER" || ! $1 =~ "=" ]]; then  
+                MSG="--dada2_forward_primer missing value."
+                MSG+=" --dada2_forward_primer=\"\" and --dada2_forward_primer= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--dada2_forward_primer" ]]; then
+            try_assign DADA2_FORWARD_PRIMER "$1" "$2"
+            shift 2
+        fi
+        ;;
+    --dada2_reverse_primer*)
+        if [[ $1 =~ "--dada2_reverse_primer=" ]]; then 
+            DADA2_REVERSE_PRIMER="${1#*=}"
+            if [[ ! -n "$DADA2_REVERSE_PRIMER" || ! $1 =~ "=" ]]; then  
+                MSG="--dada2_reverse_primer missing value."
+                MSG+=" --dada2_reverse_primer=\"\" and --dada2_reverse_primer= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--dada2_reverse_primer" ]]; then
+            try_assign DADA2_REVERSE_PRIMER "$1" "$2"
+            shift 2
+        fi
+        ;;
+    --dada2_min_length*)
+        if [[ $1 =~ "--dada2_min_length=" ]]; then 
+            DADA2_MIN_LENGTH="${1#*=}"
+            if [[ ! -n "$DADA2_MIN_LENGTH" || ! $1 =~ "=" ]]; then  
+                MSG="--dada2_min_length missing value."
+                MSG+=" --dada2_min_length=\"\" and --dada2_min_length= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--dada2_min_length" ]]; then
+            try_assign DADA2_MIN_LENGTH "$1" "$2"
+            shift 2
+        fi
+        ;;
+    --dada2_max_length*)
+        if [[ $1 =~ "--dada2_max_length=" ]]; then 
+            DADA2_MAX_LENGTH="${1#*=}"
+            if [[ ! -n "$DADA2_MAX_LENGTH" || ! $1 =~ "=" ]]; then  
+                MSG="--dada2_max_length missing value."
+                MSG+=" --dada2_max_length=\"\" and --dada2_max_length= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--dada2_max_length" ]]; then
+            try_assign DADA2_MAX_LENGTH "$1" "$2"
+            DADA2_MAX_LENGTH="--max_length=${DADA2_MAX_LENGTH}"
+            shift 2
+        fi
+        ;;
+    --its|--ITS)
+        DADA2_MIN_LENGTH="--min_length=50"
+        shift 1
+        ;;
     --no-delete|--nodelete|--no_delete)
         NODELETE=$1
         shift 1
@@ -189,6 +250,35 @@ if [[ ! -n "$PATTERN" ]]; then
     PATTERN=".*-([^-]*?)(-bc[0-9]{4}){2}\.ccs\.fastq(\.gz)?$"
 fi
 
+if [[ ! -z ${DADA2_FORWARD_PRIMER+x} ]]; then
+    if [[ ${DADA2_FORWARD_PRIMER^^} =~ [^ACTGURYSWKMBVDHN] ]]; then
+        stop "Unrecognized characters in --dada2_forward_primer"
+    else
+        DADA2_FORWARD_PRIMER="--forward_primer=$DADA2_FORWARD_PRIMER"
+    fi
+fi
+if [[ ! -z ${DADA2_REVERSE_PRIMER+x} ]]; then
+    if [[ ${DADA2_REVERSE_PRIMER^^} =~ [^ACTGURYSWKMBVDHN] ]]; then
+        stop "Unrecognized characters in --dada2_reverse_primer"
+    else
+        DADA2_REVERSE_PRIMER="--reverse_primer=$DADA2_REVERSE_PRIMER"
+    fi
+fi
+if [[ ! -z ${DADA2_MIN_LENGTH+x} ]]; then
+    if [[ ${DADA2_MIN_LENGTH} =~ [0-9]+ ]]; then
+        stop "--dada2_min_length must be integer"
+    else
+        DADA2_MIN_LENGTH="--min_length=${DADA2_MIN_LENGTH}"
+    fi
+fi
+if [[ ! -z ${DADA2_MAX_LENGTH+x} ]]; then
+    if [[ ${DADA2_MAX_LENGTH} =~ [0-9]+ ]]; then
+        stop "--dada2_max_length must be integer"
+    else
+        DADA2_MAX_LENGTH="--max_length=${DADA2_MAX_LENGTH}"
+    fi
+fi
+
 use () 
 { 
     eval `/usr/local/packages/usepackage/bin/usepackage -b $*` || true
@@ -211,7 +301,7 @@ OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 R=`cat "$MY_DIR/config.json" | \
     python3 -sc "import sys, json; print(json.load(sys.stdin)['R'])"`
-ARGS=("-l mem_free=64G" "-P" "$QP" "-V" "-N" "MSL_PACBIO" "-o ${SD}/qsub_stdout_logs/pacbio_dada2.R.stdout" "-e ${SD}/qsub_error_logs/pacbio_dada2.R.stderr" "$QSUB_ARGS" "${R}script" "$MY_DIR/pacbio_dada2.R" "$OPTS" "--wd" "$SD" "--pattern" "\"$PATTERN\"")
+ARGS=("-l mem_free=128G" "-P" "$QP" "-V" "-N" "MSL_PACBIO" "-o ${SD}/qsub_stdout_logs/pacbio_dada2.R.stdout" "-e ${SD}/qsub_error_logs/pacbio_dada2.R.stderr" "$QSUB_ARGS" "${R}script" "$MY_DIR/pacbio_dada2.R" "$OPTS" "--wd" "$SD" "--pattern" "\"$PATTERN\"" "${DADA2_FORWARD_PRIMER}" "${DADA2_REVERSE_PRIMER}" "${DADA2_MIN_LENGTH}" "${DADA2_MAX_LENGTH}")
 CMD=()
 for ARG in "${ARGS[@]}"; do
     if [[ -n "$ARG" ]]; then
@@ -304,6 +394,36 @@ job finishes.
 =item B<--qsub-project> ID
 
 Set the qsub project ID. Default: jravel-lab.
+
+=head2 DADA2 PARAMETERS
+
+=item B<--dada2_forward_primer>, <--dada2_reverse_primer>
+
+Primer sequences to remove. Sequences without both primers are discarded. 
+Reverse primer must be given as if read in the same direction as the forward 
+primer.
+
+=item B<--max_mismatch>=INTEGER
+
+The number of mismatches to tolerate when matching reads to primer sequences.
+
+=item B<--indels>
+
+Allow insertions or deletions of bases when matching adapters
+
+=item B<--dada2_max_length>=MAX_LENGTH
+
+Remove reads with length longer than MAX_LENGTH. MAX_LENGTH is enforced before 
+quality trimming and truncation.
+
+=item B<--dada2_min_length>=MIN_LENGTH
+
+Remove reads with length shorter than MIN_LENGTH. MIN_LENGTH is enforced after 
+quality trimming and truncation.
+
+=item B<--ITS|--its>
+
+A synonym for B<--dada2_min_length=50>.
 
 =back 
 
