@@ -92,12 +92,29 @@ count_reads <- function(file_name) {
 filtpath <- "filtered"
 
 fastqFs <- sort(list.files(pattern="R1_tc\\.fastq(?:\\.gz)?"))
-fastqRs <- sort(list.files(pattern="R2_tc\\.fastq(?:\\.gz)?"))
+fastqRs <- sub(pattern="R1_tc\\.fastq", replacement = "R2_tc\\.fastq", fastqFs, perl = T) # PLEASE JUST PUT THESE IN A DIFFERENT DIRECTORY SO YOU DON'T NEED THE R1 R2 FIELDS IN THE FILENAME
+fastqRs.exist <- sort(list.files(pattern="R2_tc\\.fastq(?:\\.gz)?"))
+okay <- T
+msg <- ""
+if(length(setdiff(fastqRs.exist, fastqRs)) > 0) {
+	msg <- paste(msg, "The following forward reads do not exist!\n", sep = "")
+	msg <- paste(msg, paste(fastqFs[which(fastqRs %in% setdiff(fastqRs, fastqRs.exist))], sep = "\\n"), sep = "")
+	okay <- F
+}
+if(length(setdiff(fastqRs, fastqRs.exist)) > 0) {
+	msg <- paste(msg, "The following reverse reads do not exist!\n", sep = "")
+	msg <- paste(msg, paste(setdiff(fastqRs, fastqRs.exist), sep = "\\n"), sep = "")
+	okay <- F
+}
+#if(length(fastqFs) != length(fastqRs)) 
+if(! okay) {
+	stop(paste(msg, "Forward and reverse files do not match.", sep = "\\n"))
+}
+
 sample.names <- sapply(
 	strsplit(basename(fastqFs), "_R1_tc\\.fastq(?:\\.gz)?", perl = T), `[`, 1
 	)
-if(length(fastqFs) != length(fastqRs)) stop("Forward and reverse files do not match.")
-
+	
 filt<-file.path(filtpath, basename(fastqFs))
 filt.rev<-file.path(filtpath, basename(fastqRs))
 names(filt) <- names(filt.rev) <- sample.names
