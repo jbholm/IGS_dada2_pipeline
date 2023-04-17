@@ -54,34 +54,46 @@ runs <- args$runs %>% setNames(lapply(args$runs, basename))
 ## INPUT
 ## list all of the files matching the pattern
 counts_and_stats <- (function(runs) {
-    message("Reading in count tables")
-    tables <- lapply(names(runs), function(run_name) {
-        count_table <- readRDS(
-            list.files(
+    message("Reading in counts and stats from runs")
+    run_lists <- lapply(names(runs), function(run_name) {
+		infile <- tryCatch({
+			list.files(
                 runs[run_name],
                 pattern = "dada2_abundance_table.rds", full.names = TRUE
             )[[1]]
-        )
+		}, error = function(e) {
+			print(e)
+			stop("Unable to read in input file.")
+		})
+        count_table <- readRDS(infile)
 
-        return(count_table)
-    })
-
-    message("Reading in stats tables")
-    stats <- lapply(names(runs), function(run_name) {
-        stat_table <- read.csv(
+		stat_table <- read.delim(
             list.files(
                 runs[run_name],
                 pattern = "dada2_part1_stats.txt",
                 full.names = TRUE
             )[[1]],
-            sep = "", stringsAsFactors = FALSE
-        )
+            stringsAsFactors = FALSE
+        ) %>% mutate_all(funs(type.convert(as.integer(.))))
 
-        return(stat_table)
+		# verify data validity
+		# It's possible the stats table has a sample that dropped out and wasn't
+		# in the count table. So verify every sample in the count table is in
+		# the stats table, but not vice versa.
+		isConflict <- sapply(rownames(count_table), function(x, y) {
+            ! x %in% y
+        }, rownames(stat_table))
+		if(all(!isConflict)) {
+			return(list(counts = count_table, stats = stat_table))
+		}
+		err <- function(conflicts)
+			stop("Run count table has sample names that are not in the stats table: ",
+				paste(names(conflicts), collapse=", "))
+		err(isConflict[isConflict])
     })
 
     message("Combining stats")
-    stats <- bind_rows(stats)
+    stats <- bind_rows(lapply(run_lists, function(run_list) run_list$stats))
 
     message("Recording metadata from runs")
     samples <- do.call(c, lapply(names(runs), function(run_name) {
@@ -92,6 +104,7 @@ counts_and_stats <- (function(runs) {
 
     # Combine count tables
     message("Combining count tables")
+	tables <- lapply(run_lists, function(run_list) run_list$counts)
     unqs <- unique(c(sapply(tables, colnames), recursive = TRUE))
     n <- sum(unlist(lapply(X = tables, FUN = nrow)))
     st <- matrix(0L, nrow = n, ncol = length(unqs)) %>%

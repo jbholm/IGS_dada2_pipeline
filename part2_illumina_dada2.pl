@@ -198,13 +198,14 @@ if (!$project)
     die "Please provide a project name\n\n";
 }
 
-# No, make the year directory if needed, and add yymmdd to project name
+# make the year directory if needed, and add yymmdd to project name
 my $t = Time::Piece->new();
 my $year = $t->year;
 my $yeardir = catdir($config_hashref->{"project_storage_path"}, $year);
 if ( ! -d $yeardir) {
     system( "install -g igs -m 2770 -d $yeardir" ) or print "Didn't create $yeardir directory, $!\n";
 }
+$project =~ s/_/-/g;
 $project = $t->strftime("\%y\%m\%d") . "_$project";
 my $projDir = catdir($yeardir, $project);
 system( "install -g igs -m 2770 -d $projDir" ) or print "Didn't create $projDir directory, $!";

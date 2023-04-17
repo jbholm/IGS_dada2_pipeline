@@ -133,7 +133,7 @@ sub executable
     print STDERR "Trying to find $exec\n" if ($exec && $self->{'verbose'} >= 2);
 
     # these are the executables that we care about:
-    my @want = (qw[qsub qstat qdel]);
+    my @want = (qw[qsub qstat qacct qdel]);
 
     # first, if it is a reference add it
     if (ref($exec) eq "HASH")

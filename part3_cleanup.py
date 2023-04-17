@@ -801,16 +801,24 @@ def organize_logs(proj_path, run_paths):
 
         filepaths = glob.glob(str(proj_path / Path("*pipeline_log.txt")))
         filepaths += glob.glob(str(proj_path / Path("*.R.stderr")))
-        for run in run_paths:
-            filepaths += glob.glob(str(proj_path / run / Path("*pipeline_log.txt")))
-
         if len(filepaths) > 0:
             make_for_contents(organized_dir)
             print(f"Moving {len(filepaths)} log files to LOGS/.")
 
             for filepath in filepaths:
-                Path(filepath).rename(Path(organized_dir) / Path(filepath).name)
-        else:
+                shutil.copy2(filepath, Path(organized_dir) / Path(filepath).name)
+        
+        filepaths = []
+        for run in run_paths:
+            filepaths += glob.glob(str(proj_path / run / Path("*pipeline_log.txt")))
+        if len(filepaths) > 0:
+            make_for_contents(organized_dir)
+            print(f"Copying {len(filepaths)} log files to LOGS/.")
+
+            for filepath in filepaths:
+                (Path(organized_dir) / Path(filepath).name).rename(filepath)
+
+        if Path(organized_dir).exists():
             print(f"Skipping creation of {organized_dir} (no logs found)")
 
     except Exception as e:

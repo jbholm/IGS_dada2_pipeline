@@ -177,4 +177,18 @@ sub all_jobs
     return keys %{$self->{'job'}};
 }
 
+sub exit_status
+{
+    my ($self, $job) = @_;
+    my $qacct  = $self->executable('qacct');
+    return `$qacct -j $job | grep "exit_status" | grep -o "[0-9]*"`;
+}
+
+sub failed
+{
+    my ($self, $job) = @_;
+    my $qacct  = $self->executable('qacct');
+    return `$qacct -j $job | grep "failed" | grep -o "[0-9]*"`;
+}
+
 1;

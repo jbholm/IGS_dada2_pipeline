@@ -1,6 +1,6 @@
 {
     "part1":{
-        "qiime1/bin": "/autofs/projects-t3/MSL/pipelines/packages/envs/qiime1/bin",
+        "qiime1/bin": "/autofs/projects-t3/MSL/pipelines/packages/envs/qiime1-2023.04/bin",
         "fastqc": "/local/projects-t3/MSL/pipelines/bin/fastqc",
         "tagcleaner": "/local/projects-t3/MSL/pipelines/bin/tagcleaner.pl",
         "bbduk.sh": "/local/projects-t3/MSL/pipelines/packages/bbmap/bbduk.sh"

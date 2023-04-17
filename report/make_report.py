@@ -628,7 +628,7 @@ def getFastqcLocal(directory):
     dirSpecificDir = os.path.join(
         imgDir, run, os.path.basename(os.path.dirname(directory))[0:2] + "_fastqc"
     )
-    os.makedirs(dirSpecificDir)
+    overwriteDir(dirSpecificDir)
     if len(imgs) == len(opts["tests"]):
         for i in range(len(imgs)):
             file = imgs[i]

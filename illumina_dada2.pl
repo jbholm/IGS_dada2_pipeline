@@ -328,21 +328,21 @@ require Version;
 
 use File::Find;
 use Pod::Usage;
-use English qw( -no_match_vars );
+use English      qw( -no_match_vars );
 use Getopt::Long qw(:config no_ignore_case no_auto_abbrev pass_through);
-use Cwd qw(abs_path getcwd);
-use File::Temp qw/ tempfile /;
-use File::Temp qw/ :mktemp  /;
+use Cwd          qw(abs_path getcwd);
+use File::Temp   qw/ tempfile /;
+use File::Temp   qw/ :mktemp  /;
 use POSIX;
 require File::Copy;
 require List::Util;
 use JSON;
 require IO::Tee;
-use File::Path qw( remove_tree );
+use File::Path            qw( remove_tree );
 use File::Copy::Recursive qw(dircopy );
 use Data::Dumper;
 use Hash::Merge qw( merge );
-use Path::Tiny qw(path);
+use Path::Tiny  qw(path);
 use Schedule::SGE;
 use Capture::Tiny qw(capture_stderr);
 use PathFinder;
@@ -362,41 +362,41 @@ my $delete        = 1;
 my $trySkip       = 1;
 
 GetOptions(
-           "raw-path|i=s"           => \my $raw_dir,
-           "r1=s"                   => \my $r1,
-           "r2=s"                   => \my $r2,
-           "i1=s"                   => \my $i1,
-           "i2=s"                   => \my $i2,
-           "map|m=s"                => \my $map,
-           "var-reg|v=s"            => \my $var,
-           "help|h!"                => \my $help,
-           "d|debug=s"              => \@dbg,
-           "verbose!"               => \my $verbose,
-           "dry-run!"               => \my $dryRun,
-           "skip!"                  => \$trySkip,
-           "extract_barcodes_rev_comp_args=s" => \my $extract_barcodes_revcomp_args,
-           "extract_barcodes_append_args=s" => \my $extract_barcodes_append_args,
-           "split_libraries_args=s" => \my $split_libraries_args,
-           "fwd_primer=s"           => \my $primer_L,
-           "rev_primer=s"           => \my $primer_R,
-           "trim-maxlength=i"         => \my $trimMaxLen,
-           "trim_poly_g!"           => \my $trim_poly_g,
-           "amplicon_length=i"      => \my $amplicon_length,
-           "dada2-truncLen-f|for=i" => \my $truncLenL,
-           "dada2-truncLen-r|rev=i" => \my $truncLenR,
-           "dada2-truncQ=s"         => \my $truncQ,
-           "dada2-minLen=s"         => \my $minLen,
-           "dada2-minQ=s"           => \my $minQ,
-           "dada2-maxEE=s"          => \my $maxEE,
-           "dada2-rmPhix!"          => \my $phix,
-           "dada2_error_estimation_function=s" => \my $error_estimation_function,
-           "dada2-mem:s"            => \$dada2mem,
-           "1Step!"                 => \$oneStep,
-           "working-dir|wd=s"       => \my $wd,
-           "qsub-project|qp=s"      => \my $qproj,
-           "troubleshoot_barcodes!" => \$tbshtBarcodes,
-           "delete!"                => \$delete,
-          )
+       "raw-path|i=s"                     => \my $raw_dir,
+       "r1=s"                             => \my $r1,
+       "r2=s"                             => \my $r2,
+       "i1=s"                             => \my $i1,
+       "i2=s"                             => \my $i2,
+       "map|m=s"                          => \my $map,
+       "var-reg|v=s"                      => \my $var,
+       "help|h!"                          => \my $help,
+       "d|debug=s"                        => \@dbg,
+       "verbose!"                         => \my $verbose,
+       "dry-run!"                         => \my $dryRun,
+       "skip!"                            => \$trySkip,
+       "extract_barcodes_rev_comp_args=s" => \my $extract_barcodes_revcomp_args,
+       "extract_barcodes_append_args=s"   => \my $extract_barcodes_append_args,
+       "split_libraries_args=s"           => \my $split_libraries_args,
+       "fwd_primer=s"                     => \my $primer_L,
+       "rev_primer=s"                     => \my $primer_R,
+       "trim-maxlength=i"                 => \my $trimMaxLen,
+       "trim_poly_g!"                     => \my $trim_poly_g,
+       "amplicon_length=i"                => \my $amplicon_length,
+       "dada2-truncLen-f|for=i"           => \my $truncLenL,
+       "dada2-truncLen-r|rev=i"           => \my $truncLenR,
+       "dada2-truncQ=s"                   => \my $truncQ,
+       "dada2-minLen=s"                   => \my $minLen,
+       "dada2-minQ=s"                     => \my $minQ,
+       "dada2-maxEE=s"                    => \my $maxEE,
+       "dada2-rmPhix!"                    => \my $phix,
+       "dada2_error_estimation_function=s" => \my $error_estimation_function,
+       "dada2-mem:s"                       => \$dada2mem,
+       "1Step!"                            => \$oneStep,
+       "working-dir|wd=s"                  => \my $wd,
+       "qsub-project|qp=s"                 => \my $qproj,
+       "troubleshoot_barcodes!"            => \$tbshtBarcodes,
+       "delete!"                           => \$delete,
+  )
 ##add option for final resting place of important data
 
   or pod2usage(verbose => 0, exitstatus => 1);
@@ -456,7 +456,7 @@ foreach (@paths)
     if (${$$_{path}})
     {    # If the variable is a non-empty string...
         my $copy = ${$$_{path}};
-        $copy =~ s/\/$//;    # remove any trailing slash
+        $copy =~ s/\/$//;              # remove any trailing slash
         my $relPath = $copy;
         $copy = abs_path($relPath);    # get abs path
             # At the same time, abs_path returns undef if the path doesn't exist
@@ -510,12 +510,14 @@ $GLOBAL_PATHS->{'r1'}      = $r1;
 $GLOBAL_PATHS->{'r2'}      = $r2;
 $GLOBAL_PATHS->{'i1'}      = $i1;
 $GLOBAL_PATHS->{'i2'}      = $i2;
-$GLOBAL_PATHS->set_config(config()); # could even put sub config() in GLOBAL_PATHS???
+$GLOBAL_PATHS->set_config(config())
+  ;    # could even put sub config() in GLOBAL_PATHS???
 
 chdir $GLOBAL_PATHS->{'wd'};
 
 # if we're in the global run directory, share all files with group
-my $global_run_storage = abs_path($GLOBAL_PATHS->get_config()->{"run_storage_path"});
+my $global_run_storage =
+  abs_path($GLOBAL_PATHS->get_config()->{"run_storage_path"});
 if ($GLOBAL_PATHS->{'wd'} =~ /^${global_run_storage}/)
 {
     umask(0002);
@@ -533,7 +535,7 @@ local $SIG{__WARN__} = sub {
 # messages to be printed to the log file.
 $SIG{__DIE__} = sub {
     die @_ if $^S; # If die was called inside an eval, just allow that to happen
-    # otherwise print to the log file and then allow die to happen
+        # otherwise print to the log file and then allow die to happen
     $GLOBAL_PATHS->print(@_ . "\n");
     return 1;
 };
@@ -541,7 +543,6 @@ $SIG{__DIE__} = sub {
 print "Logging to: " . $GLOBAL_PATHS->part1_log() . "\n";
 $GLOBAL_PATHS->print("PIPELINE VERSION: " . Version::version() . "\n");
 $GLOBAL_PATHS->print("$time\n");
-
 
 my @dropouts;
 
@@ -568,7 +569,6 @@ my %step2number = (
                    "dada2part1out" => 7
                   );
 
-
 if (!$qproj)
 {
     print
@@ -590,9 +590,8 @@ if (!-e $GLOBAL_PATHS->part1_error_log())
     my @cmds;
     foreach my $log (@oldLogs)
     {
-        my @dontDelete = (
-                 $GLOBAL_PATHS->part1_error_log() . "/illumina_dada2.pl.stderr",
-        );
+        my @dontDelete =
+          ($GLOBAL_PATHS->part1_error_log() . "/illumina_dada2.pl.stderr",);
         if (
             List::Util::none {$_ eq $log}
             @dontDelete
@@ -655,7 +654,7 @@ if (@dbg)
     {
         $trySkip = 0;
         $GLOBAL_PATHS->print(
-                "\nDisabling skipping because --debug sections were selected.\n");
+              "\nDisabling skipping because --debug sections were selected.\n");
     }
 
     $GLOBAL_PATHS->print("\n");
@@ -671,131 +670,143 @@ if ($oneStep)
 
 # Resolve all parameters based on instrument model
 my $first_fastq;
-if( !@dbg || grep(/^barcodes$/, @dbg) || grep(/^demux$/, @dbg) ) {
+if (!@dbg || grep(/^barcodes$/, @dbg) || grep(/^demux$/, @dbg))
+{
     $first_fastq = $index1Input;
-} elsif ( grep(/^splitsamples$/, @dbg) ) {
+} elsif (grep(/^splitsamples$/, @dbg))
+{
     $first_fastq = $GLOBAL_PATHS->fwd_library();
-} elsif ( grep(/^tagclean$/, @dbg) ) {
+} elsif (grep(/^tagclean$/, @dbg))
+{
     $first_fastq = ($GLOBAL_PATHS->splitsamples_output_fwd())[0];
-} elsif ( grep(/^dada2$/, @dbg) ) {
+} elsif (grep(/^dada2$/, @dbg))
+{
     $first_fastq = ($GLOBAL_PATHS->trimmed_files())[0];
 }
 
 my $instrument_id = get_instrument_id(fastq => $first_fastq);
 $GLOBAL_PATHS->print("INSTRUMENT ID: ${instrument_id}");
-my $instrument_profile = instrument_id_to_profile(
-    config => $GLOBAL_PATHS->get_config(),
-    id => $instrument_id
-);
-if($GLOBAL_PATHS->load_config_profile("$instrument_profile")) {
+my $instrument_profile =
+  instrument_id_to_profile(config => $GLOBAL_PATHS->get_config(),
+                           id     => $instrument_id);
+if ($GLOBAL_PATHS->load_config_profile("$instrument_profile"))
+{
     $GLOBAL_PATHS->print(" (loading config profile \"$instrument_profile\")\n");
-} else {
+} else
+{
     $GLOBAL_PATHS->print(" (no stored config profile)\n");
 }
 
-$GLOBAL_PATHS->override_default_param(
-    value => $extract_barcodes_revcomp_args,
-    name => "extract_barcodes_rev_comp_args",
-);
-$GLOBAL_PATHS->override_default_param(
-    value => $map,
-    name => "demux_map",
-);
-$GLOBAL_PATHS->override_default_param(
-    value => $split_libraries_args,
-    name => "split_libraries_args",
-);
+$GLOBAL_PATHS->override_default_param(value => $extract_barcodes_revcomp_args,
+                                      name  => "extract_barcodes_rev_comp_args",
+                                     );
+$GLOBAL_PATHS->override_default_param(value => $map, name => "demux_map",);
+$GLOBAL_PATHS->override_default_param(value => $split_libraries_args,
+                                      name  => "split_libraries_args",);
 
 # Resolve all parameters for the variable region
 $var = defined $var ? uc $var : "";
 $GLOBAL_PATHS->print("VARIABLE REGION: $var");
 my $pcrstep = $oneStep ? "onestep" : "twostep";
-if($GLOBAL_PATHS->load_config_profile("${pcrstep}_${var}")) {
+if ($GLOBAL_PATHS->load_config_profile("${pcrstep}_${var}"))
+{
     $GLOBAL_PATHS->print(" (loading config profile \"${pcrstep}_${var}\")\n");
-} else {
+} else
+{
     $GLOBAL_PATHS->print(" (requires parameters given on command line)\n");
 }
 
 # Resolve primer trimming parameters
-$GLOBAL_PATHS->override_default_param(
-    value => $primer_L, name => "fwd primer"
-    );
-$GLOBAL_PATHS->override_default_param(
-    value => $primer_R, name => "rev primer"
-    );
+$GLOBAL_PATHS->override_default_param(value => $primer_L, name => "fwd primer");
+$GLOBAL_PATHS->override_default_param(value => $primer_R, name => "rev primer");
 
 $GLOBAL_PATHS->print("R VERSION: " . $GLOBAL_PATHS->get_config()->{'R'} . "\n");
+
 # Resolve DADA2 quality-trim and denoise parameters
 # might need to put these next two in eval{ } blocks
 $GLOBAL_PATHS->override_default_param(
-    value => $truncLenL,
-    name => "fwd trim length",
-    optional => 1
-);
+                                      value    => $truncLenL,
+                                      name     => "fwd trim length",
+                                      optional => 1
+                                     );
 $GLOBAL_PATHS->override_default_param(
-    value => $truncLenR,
-    name => "rev trim length",
-    optional => 1
-    );
-if(! $GLOBAL_PATHS->get_param("fwd trim length") || ! $GLOBAL_PATHS->get_param("rev trim length")) {
+                                      value    => $truncLenR,
+                                      name     => "rev trim length",
+                                      optional => 1
+                                     );
+if (   !$GLOBAL_PATHS->get_param("fwd trim length")
+    || !$GLOBAL_PATHS->get_param("rev trim length"))
+{
     # if either of the trim lengths missing...
-    if(defined($amplicon_length)) {
+    if (defined($amplicon_length))
+    {
         $GLOBAL_PATHS->print("AMPLICON LENGTH: $amplicon_length\n");
         $GLOBAL_PATHS->print("TRIMMING PARAMETERS WILL BE OPTIMIZED");
-        if($GLOBAL_PATHS->get_param("fwd trim length") || $GLOBAL_PATHS->get_param("rev trim length")) {
-            $GLOBAL_PATHS->print(" (Any trim length parameters given will be ignored)\n");
-        } else {
+        if (   $GLOBAL_PATHS->get_param("fwd trim length")
+            || $GLOBAL_PATHS->get_param("rev trim length"))
+        {
+            $GLOBAL_PATHS->print(
+                       " (Any trim length parameters given will be ignored)\n");
+        } else
+        {
             $GLOBAL_PATHS->print("\n");
         }
-    } else {
-        die "TRIMMING PARAMETERS NOT PROVIDED. CANNOT OPTIMIZE TRIM LENGTH BECAUSE AMPLICON LENGTH NOT KNOWN\n";
+    } else
+    {
+        die
+          "TRIMMING PARAMETERS NOT PROVIDED. CANNOT OPTIMIZE TRIM LENGTH BECAUSE AMPLICON LENGTH NOT KNOWN\n";
     }
-} elsif (defined($amplicon_length)) {
-    $GLOBAL_PATHS->print("Amplicon length not needed because both trim lengths are known. Ignoring.\n");
+} elsif (defined($amplicon_length))
+{
+    $GLOBAL_PATHS->print(
+        "Amplicon length not needed because both trim lengths are known. Ignoring.\n"
+    );
 }
 
 # process the rest of configurable params
 my $key_values = {
-    "trim quality" => $truncQ,
-    "min length" => $minLen,
-    "filter quality" => $minQ,
-    "max EE" => $maxEE,
-    "remove phix" => $phix
-};
-foreach(keys %{ $key_values }) {
-    $GLOBAL_PATHS->override_default_param(
-        value => $key_values->{$_},
-        name => "$_",
-        );
+                  "trim quality"   => $truncQ,
+                  "min length"     => $minLen,
+                  "filter quality" => $minQ,
+                  "max EE"         => $maxEE,
+                  "remove phix"    => $phix
+                 };
+foreach (keys %{$key_values})
+{
+    $GLOBAL_PATHS->override_default_param(value => $key_values->{$_},
+                                          name  => "$_",);
 }
 
 $GLOBAL_PATHS->localize_file_params();
 my @params = (
-    "bc_len",
-    "extract_barcodes_rev_comp_args",
-    "demux_map",
-    "split_libraries_args",
-    "fastqc_limits",
-    "fwd primer",
-    "rev primer",
-    "primer_allowed_mm",
-    "trim_poly_g",
-    "max length",
-    "fwd trim length",
-    "rev trim length",
-    "remove phix",
-    "trim quality",
-    "filter quality",
-    "max EE",
-    "min length",
-    "dada2_error_estimation_function"
-);
+              "bc_len",
+              "extract_barcodes_rev_comp_args",
+              "demux_map",
+              "split_libraries_args",
+              "fastqc_limits",
+              "fwd primer",
+              "rev primer",
+              "primer_allowed_mm",
+              "trim_poly_g",
+              "max length",
+              "fwd trim length",
+              "rev trim length",
+              "remove phix",
+              "trim quality",
+              "filter quality",
+              "max EE",
+              "min length",
+              "dada2_error_estimation_function"
+             );
 $GLOBAL_PATHS->print("\nFINAL PARAMS:\n");
-foreach(@params) {
+foreach (@params)
+{
     $GLOBAL_PATHS->print(uc($_) . ": ");
-    if(defined $GLOBAL_PATHS->get_param($_)) {
+    if (defined $GLOBAL_PATHS->get_param($_))
+    {
         $GLOBAL_PATHS->print($GLOBAL_PATHS->get_param($_) . "\n");
-    } else {
+    } else
+    {
         $GLOBAL_PATHS->print("UNKNOWN (non-terminal)\n");
     }
 }
@@ -810,7 +821,8 @@ if (   !@dbg
     ###### BEGIN CHECK OF QIIME CONFIGURATION ###########
     #####################################################
     $GLOBAL_PATHS->print("\n");
-    my $cmd = qiime_cmd('print_qiime_config.py', $GLOBAL_PATHS->get_config()) . " > $qiime";
+    my $cmd = qiime_cmd('print_qiime_config.py', $GLOBAL_PATHS->get_config())
+      . " > $qiime";
     execute_and_log(
                     cmds    => [$cmd],
                     logger  => $GLOBAL_PATHS,
@@ -820,9 +832,11 @@ if (   !@dbg
     $GLOBAL_PATHS->print("See: $qiime\n");
 
     my $map_log = catfile(
-        $GLOBAL_PATHS->part1_error_log(), 
-        basename($GLOBAL_PATHS->get_param("demux_map"), ".txt") . ".log"
-        );
+                          $GLOBAL_PATHS->part1_error_log(),
+                          basename($GLOBAL_PATHS->get_param("demux_map"),
+                                   ".txt")
+                            . ".log"
+                         );
 
     if ($trySkip)
     {
@@ -839,9 +853,13 @@ if (   !@dbg
 
     if (!$skipMe)
     {
-        $GLOBAL_PATHS->print("Copying " . $GLOBAL_PATHS->get_param("demux_map") . " to " . $GLOBAL_PATHS->part1_local_map() . "\n");
+        $GLOBAL_PATHS->print(  "Copying "
+                             . $GLOBAL_PATHS->get_param("demux_map") . " to "
+                             . $GLOBAL_PATHS->part1_local_map()
+                             . "\n");
         File::Copy::copy($GLOBAL_PATHS->get_param("demux_map"),
-                         $GLOBAL_PATHS->part1_local_map()) or die "Copy failed: $!";
+                         $GLOBAL_PATHS->part1_local_map())
+          or die "Copy failed: $!";
         preprocess_map($GLOBAL_PATHS->part1_local_map(), $run);
 
         ###### BEGIN VALIDATION OF MAPPING FILE ###########
@@ -850,7 +868,8 @@ if (   !@dbg
                     "MAPPING FILE: " . $GLOBAL_PATHS->part1_local_map() . "\n");
 
         my $cmd =
-            qiime_cmd('validate_mapping_file.py', $GLOBAL_PATHS->get_config()) . " -m "
+            qiime_cmd('validate_mapping_file.py', $GLOBAL_PATHS->get_config())
+          . " -m "
           . $GLOBAL_PATHS->part1_local_map()
           . " -s -o "
           . $GLOBAL_PATHS->part1_error_log();
@@ -858,7 +877,8 @@ if (   !@dbg
                         cmds    => [$cmd],
                         logger  => $GLOBAL_PATHS,
                         dry_run => $dryRun,
-                        msg => "Validating map from " . $GLOBAL_PATHS->get_param("demux_map") . "\n"
+                        msg     => "Validating map from "
+                          . $GLOBAL_PATHS->get_param("demux_map") . "\n"
                        );
         my $mappingError = glob($GLOBAL_PATHS->part1_error_log() . "/*.log");
         if ($mappingError)
@@ -921,8 +941,8 @@ if (   !@dbg
             ## don't count header as sample
             if ($. > 1)
             {
-                #  don't count any line if it doesn't start with four 
-                # tab-separated fields; the first three must contain 
+                #  don't count any line if it doesn't start with four
+                # tab-separated fields; the first three must contain
                 # non-whitespace chars
                 if ($_ =~ /^(\S+\t){3}/)
                 {
@@ -1037,36 +1057,38 @@ if ($tbshtBarcodes)
             $GLOBAL_PATHS->print("Please refer to " . $paths->part1_log());
 
             # Extract barcodes
-            if (! $switch_barcodes) {
+            if (!$switch_barcodes)
+            {
                 barcodes(
-                        oriParams  => $barcode_ori,
-                        pathfinder => $paths,
-                        index1 => $index1Input,
-                        index2 => $index2Input,
-                        reads1 => $readsForInput,
-                        reads2 => $readsRevInput,
-                        bc_len => $GLOBAL_PATHS->get_param("bc_len"),
-                        append_args => $extract_barcodes_append_args
+                         oriParams   => $barcode_ori,
+                         pathfinder  => $paths,
+                         index1      => $index1Input,
+                         index2      => $index2Input,
+                         reads1      => $readsForInput,
+                         reads2      => $readsRevInput,
+                         bc_len      => $GLOBAL_PATHS->get_param("bc_len"),
+                         append_args => $extract_barcodes_append_args
                         );
-            } else {
+            } else
+            {
                 barcodes(
-                        oriParams  => $barcode_ori,
-                        pathfinder => $paths,
-                        index1 => $index2Input,
-                        index2 => $index1Input,
-                        reads1 => $readsForInput,
-                        reads2 => $readsRevInput,
-                        bc_len => $GLOBAL_PATHS->get_param("bc_len"),
-                        append_args => $extract_barcodes_append_args
+                         oriParams   => $barcode_ori,
+                         pathfinder  => $paths,
+                         index1      => $index2Input,
+                         index2      => $index1Input,
+                         reads1      => $readsForInput,
+                         reads2      => $readsRevInput,
+                         bc_len      => $GLOBAL_PATHS->get_param("bc_len"),
+                         append_args => $extract_barcodes_append_args
                         );
             }
 
             # demux, and check for success
             $success = demux(
-                pathfinder => $paths, 
-                die_on_fail => 0, 
-                append_args => $GLOBAL_PATHS->get_param("split_libraries_args")
-                );
+                 pathfinder  => $paths,
+                 die_on_fail => 0,
+                 append_args => $GLOBAL_PATHS->get_param("split_libraries_args")
+            );
             if ($success)
             {
                 my $msg =
@@ -1080,8 +1102,8 @@ if ($tbshtBarcodes)
             {
                 my $msg = "Demux failed when extract_barcodes.py called with "
                   . "command-line options \"${barcode_ori}\"";
-                $msg .= " and switched indexes" if $switch_barcodes;
-                $msg .= "\n";
+                $msg     .= " and switched indexes" if $switch_barcodes;
+                $msg     .= "\n";
                 $summary .= $msg;
             }
             $paths->close();
@@ -1108,23 +1130,24 @@ if ($tbshtBarcodes)
     if ((!@dbg) || grep(/^barcodes$/, @dbg))
     {
         barcodes(
-            oriParams => $GLOBAL_PATHS->get_param("extract_barcodes_rev_comp_args"), 
-            pathfinder => $GLOBAL_PATHS,
-            index1 => $index1Input,
-            index2 => $index2Input,
-            reads1 => $readsForInput,
-            reads2 => $readsRevInput,
-            bc_len => $GLOBAL_PATHS->get_param("bc_len"),
-            append_args => $extract_barcodes_append_args
-            );
+                 oriParams =>
+                   $GLOBAL_PATHS->get_param("extract_barcodes_rev_comp_args"),
+                 pathfinder  => $GLOBAL_PATHS,
+                 index1      => $index1Input,
+                 index2      => $index2Input,
+                 reads1      => $readsForInput,
+                 reads2      => $readsRevInput,
+                 bc_len      => $GLOBAL_PATHS->get_param("bc_len"),
+                 append_args => $extract_barcodes_append_args
+                );
     }
     if (!@dbg || grep(/^demux$/, @dbg))
     {
         demux(
-            pathfinder => $GLOBAL_PATHS, 
-            die_on_file => 1, 
-            append_args => $GLOBAL_PATHS->get_param("split_libraries_args")
-            );
+              pathfinder  => $GLOBAL_PATHS,
+              die_on_file => 1,
+              append_args => $GLOBAL_PATHS->get_param("split_libraries_args")
+             );
     }
 
     # Then continue with code below the two subroutines
@@ -1132,17 +1155,17 @@ if ($tbshtBarcodes)
 
 sub barcodes
 {
-    my %arg       = @_;
-    my $oriParams = delete $arg{oriParams} // '';
-    my $paths     = delete $arg{pathfinder} // $GLOBAL_PATHS;
-    my $index1    = delete $arg{index1};
-    my $index2    = delete $arg{index2};
-    my $reads1    = delete $arg{reads1};
-    my $reads2    = delete $arg{reads2};
-    my $bcLen     = delete $arg{bc_len} // '';
-    my $oneStep   = delete $arg{onestep} // 0; # try to handle this outside
+    my %arg         = @_;
+    my $oriParams   = delete $arg{oriParams}  // '';
+    my $paths       = delete $arg{pathfinder} // $GLOBAL_PATHS;
+    my $index1      = delete $arg{index1};
+    my $index2      = delete $arg{index2};
+    my $reads1      = delete $arg{reads1};
+    my $reads2      = delete $arg{reads2};
+    my $bcLen       = delete $arg{bc_len}  // '';
+    my $oneStep     = delete $arg{onestep} // 0;    # try to handle this outside
     my $append_args = delete $arg{append_args} // "";
-    
+
     my $outputDir = $paths->{'wd'};
     my $barcodes  = catfile($outputDir, "barcodes.fastq");
 
@@ -1152,9 +1175,9 @@ sub barcodes
     my $count = 0;
 
     $paths->print(  "Forward and reverse reads will be obtained from:\n"
-                    . "\t$reads1\n\t$reads2\n");
+                  . "\t$reads1\n\t$reads2\n");
     $paths->print(  "Index 1 and Index 2 will be obtained from:\n"
-                    . "\t$index1\n\t$index2\n");
+                  . "\t$index1\n\t$index2\n");
     my @files = ($reads1, $reads2, $index1, $index2);
     my @names = ("RF", "RR", "I1", "I2");
 
@@ -1184,30 +1207,28 @@ sub barcodes
 
         # Get index files as .fastq
         my @cmds = ();
-        if ($index1 !~ /\.gz$/) # please change this to for-loop...
+        if ($index1 !~ /\.gz$/)    # please change this to for-loop...
         {
 
             # if the index files aren't .gz, just read in place.
         } else
-        {    # Otherwise...
-                # decompress to our run directory    
+        {                          # Otherwise...
+                                   # decompress to our run directory
             my $index1_decompressed = catfile($outputDir, "I1.fastq");
             push(@cmds,
-                 "gzip --decompress --force < $index1 > $index1_decompressed"
-                );
+                 "gzip --decompress --force < $index1 > $index1_decompressed");
             $paths->print(
                 "---Decompressing $run barcode and index file from $index1 to $index1_decompressed\n"
             );
             $index1 = $index1_decompressed;
         }
         if ($index2 !~ /.gz$/)
-        {       # same for reverse reads
+        {    # same for reverse reads
         } else
         {
             my $index2_decompressed = catfile($outputDir, "I2.fastq");
             push(@cmds,
-                 "gzip --decompress --force < $index2 > $index2_decompressed"
-                );
+                 "gzip --decompress --force < $index2 > $index2_decompressed");
             $paths->print(
                 "---Decompressing $run barcode and index file from $index2 to $index2_decompressed\n"
             );
@@ -1221,7 +1242,7 @@ sub barcodes
                 cmds    => \@cmds,
                 dry_run => $dryRun,
                 logger  => $paths,
-                msg =>
+                msg     =>
                   "Decompressing raw files containing indexes to run directory...\n",
                 verbose => 1
             );
@@ -1247,7 +1268,8 @@ sub barcodes
             $paths->print("Detected barcode length as $bcLen \n");
         }
 
-        my $cmd = qiime_cmd('extract_barcodes.py', $GLOBAL_PATHS->get_config())
+        my $cmd =
+            qiime_cmd('extract_barcodes.py', $GLOBAL_PATHS->get_config())
           . " -f $index1 -r $index2 -c barcode_paired_end --bc1_len $bcLen "
           . "--bc2_len $bcLen -o $outputDir $oriParams $append_args";
 
@@ -1334,13 +1356,12 @@ sub barcodes
 
 sub demux
 {
-    my %arg   = @_;
-    my $paths = delete $arg{pathfinder} // $GLOBAL_PATHS;
+    my %arg         = @_;
+    my $paths       = delete $arg{pathfinder}  // $GLOBAL_PATHS;
     my $append_args = delete $arg{append_args} // "";
     my $die_on_fail = delete $arg{die_on_fail} // 0;
-    
-    $paths->print("Demuxing in: $paths->{'wd'}\n");
 
+    $paths->print("Demuxing in: $paths->{'wd'}\n");
 
     my $barcodes = "$paths->{'wd'}/barcodes.fastq";
     my $nSamples = count_samples($paths->part1_local_map());
@@ -1369,7 +1390,7 @@ sub demux
 
                 # FIXME need to copy local map to other directory?
                 $paths->part1_local_map(), $barcodes
-                      ],
+            ],
             outputs      => [$paths->fwd_library(), $paths->rev_library()],
             checksums_in => {
                             "RF"  => $metadata->{"checkpoints"}{"raw"}->{"RF"},
@@ -1382,7 +1403,7 @@ sub demux
             in_names              => ["RF", "RR", "map", "barcodes"],
             previous_step_skipped => 1,
             pf                    => $paths
-                           );
+        );
     }
 
     if (!$skipMe)
@@ -1395,7 +1416,9 @@ sub demux
         my $barcodeType = first_seq_length($barcodes);
 
         @cmds = ();
-        my $cmd = $GLOBAL_PATHS->get_config()->{'executor'} . " -N $step2 -P $qproj -e "
+        my $cmd =
+            $GLOBAL_PATHS->get_config()->{'executor'}
+          . " -N $step2 -P $qproj -e "
           . $paths->part1_error_log() . " -o "
           . $paths->part1_stdout_log()
           . " $script -i $readsForInput -o "
@@ -1405,7 +1428,9 @@ sub demux
           . " --max_barcode_errors 1 --store_demultiplexed_fastq --barcode_type $barcodeType -r 999 -n 999 -q 0 -p 0.0001";
         $cmd = join(" ", $cmd, $append_args);
         push @cmds, $cmd;
-        $cmd = $GLOBAL_PATHS->get_config()->{'executor'} . " -N $step2 -P $qproj -e "
+        $cmd =
+            $GLOBAL_PATHS->get_config()->{'executor'}
+          . " -N $step2 -P $qproj -e "
           . $paths->part1_error_log() . " -o "
           . $paths->part1_stdout_log()
           . " $script -i $readsRevInput -o "
@@ -1515,17 +1540,23 @@ sub demux
         my $binary = "/local/projects-t3/MSL/pipelines/bin/fastqc";
         @cmds = ();
         push @cmds,
-            $GLOBAL_PATHS->get_config()->{'executor'} . " -l mem_free=300M -P $qproj -e "
+            $GLOBAL_PATHS->get_config()->{'executor'}
+          . " -l mem_free=300M -P $qproj -e "
           . $paths->part1_error_log() . " -o "
           . $paths->part1_stdout_log()
-          . " $binary --limits " . catdir($pipelineDir, $GLOBAL_PATHS->get_param("fastqc_limits")) . " --outdir "
+          . " $binary --limits "
+          . $GLOBAL_PATHS->get_param("fastqc_limits")
+          . " --outdir "
           . $paths->fwd_demux_dir() . " "
           . $paths->fwd_library();
         push @cmds,
-            $GLOBAL_PATHS->get_config()->{'executor'} . " -l mem_free=300M -P $qproj -e "
+            $GLOBAL_PATHS->get_config()->{'executor'}
+          . " -l mem_free=300M -P $qproj -e "
           . $paths->part1_error_log() . " -o "
           . $paths->part1_stdout_log()
-          . " $binary --limits " . catdir($pipelineDir, $GLOBAL_PATHS->get_param("fastqc_limits")) . " --outdir "
+          . " $binary --limits "
+          . $GLOBAL_PATHS->get_param("fastqc_limits")
+          . " --outdir "
           . $paths->rev_demux_dir() . " "
           . $paths->rev_library();
         execute_and_log(
@@ -1568,6 +1599,7 @@ sub demux
                       . ". Moving on.\n");
         my @dropouts =
           readSplitLog(file => $split_log, verbose => 0, logger => $paths);
+
 # Still need number of demuxed samples for later, even though we didn't actually demux this time
         $newSamNo = $nSamples - scalar @dropouts;
     }
@@ -1594,22 +1626,22 @@ if (!@dbg || grep(/^splitsamples$/, @dbg))
         if ($trySkip)
         {
             $skipMe = skippable(
-                            inputs => [
-                                        File::Spec->abs2rel(
-                                                    $GLOBAL_PATHS->fwd_library(),
-                                                    $GLOBAL_PATHS->{'wd'}
-                                        ),
-                                        File::Spec->abs2rel(
-                                                    $GLOBAL_PATHS->rev_library(),
-                                                    $GLOBAL_PATHS->{'wd'}
-                                        )
-                                    ],
-                            outputs       => [@fwdOutput, @revOutput],
-                            checksums_in  => $metadata->{"checkpoints"}{"library"},
-                            checksums_out => $metadata->{"checkpoints"}{"samples"},
-                            step_name     => "sample splitting",
-                            previous_step_skipped => 1,
-                            pf                    => $GLOBAL_PATHS
+                         inputs => [
+                                    File::Spec->abs2rel(
+                                                   $GLOBAL_PATHS->fwd_library(),
+                                                   $GLOBAL_PATHS->{'wd'}
+                                    ),
+                                    File::Spec->abs2rel(
+                                                   $GLOBAL_PATHS->rev_library(),
+                                                   $GLOBAL_PATHS->{'wd'}
+                                    )
+                                   ],
+                         outputs       => [@fwdOutput, @revOutput],
+                         checksums_in  => $metadata->{"checkpoints"}{"library"},
+                         checksums_out => $metadata->{"checkpoints"}{"samples"},
+                         step_name     => "sample splitting",
+                         previous_step_skipped => 1,
+                         pf                    => $GLOBAL_PATHS
             );
         }
     }
@@ -1620,91 +1652,109 @@ if (!@dbg || grep(/^splitsamples$/, @dbg))
         my $script = qiime_cmd($step3, $GLOBAL_PATHS->get_config());
         my @cmds   = ();
 
-        my $fwd_dir = mkdtemp( "demultiplex_XXXXXX" );
-        my $rev_dir = mkdtemp( "demultiplex_XXXXXX" );
+        my $fwd_dir = mkdtemp("demultiplex_XXXXXX");
+        my $rev_dir = mkdtemp("demultiplex_XXXXXX");
         push @cmds,
-          "$script -i " . $GLOBAL_PATHS->fwd_library()
+            "$script -i "
+          . $GLOBAL_PATHS->fwd_library()
           . " --file_type fastq -o $fwd_dir";
         push @cmds,
-          " $script -i " . $GLOBAL_PATHS->rev_library()
+            " $script -i "
+          . $GLOBAL_PATHS->rev_library()
           . " --file_type fastq -o $rev_dir";
         execute_and_log(
-                    cmds    => \@cmds,
-                    logger  => $GLOBAL_PATHS,
-                    dry_run => $dryRun,
-                    msg => "Splitting $run seqs.fastq " . "files by sample ID\n",
-                    qsub => 1,
-                    mem => "5G",
-                    name => $step3,
-                    paths => $GLOBAL_PATHS,
-                    config => $GLOBAL_PATHS->get_config(),
+                   cmds    => \@cmds,
+                   logger  => $GLOBAL_PATHS,
+                   dry_run => $dryRun,
+                   msg => "Splitting $run seqs.fastq " . "files by sample ID\n",
+                   qsub   => 1,
+                   mem    => "5G",
+                   name   => $step3,
+                   paths  => $GLOBAL_PATHS,
+                   config => $GLOBAL_PATHS->get_config(),
         );
 
         $GLOBAL_PATHS->print("Temp fwd dir: $fwd_dir\n") if $verbose;
         $GLOBAL_PATHS->print("Temp rev dir: $rev_dir\n") if $verbose;
-        my $n_fq = 0;
+        my $n_fq      = 0;
         my @fwdOutput = glob(catfile($fwd_dir, "*.fastq"));
         my @revOutput = glob(catfile($rev_dir, "*.fastq"));
 
-        # if we know how many new files there are supposed to be, wait for them all to appear
-        # There seems to be a slight delay before the files appear here,....idk
-        # why. The pipeline won't work without these lines of code.
-        if (defined $newSamNo) # this is really dangerous, $newSamNo might not exist
+# if we know how many new files there are supposed to be, wait for them all to appear
+# There seems to be a slight delay before the files appear here,....idk
+# why. The pipeline won't work without these lines of code.
+        if (
+            defined $newSamNo
+           )    # this is really dangerous, $newSamNo might not exist
         {
-            $GLOBAL_PATHS->print("Looking for $newSamNo files...\n") if $verbose;
+            $GLOBAL_PATHS->print("Looking for $newSamNo files...\n")
+              if $verbose;
+
             # Count the number of files in the directory
             while ($n_fq != $newSamNo)
             {
-                $n_fq = 0;
+                $n_fq      = 0;
                 @fwdOutput = glob(catfile($fwd_dir, "*.fastq"));
-                $n_fq = scalar @fwdOutput;
-                $GLOBAL_PATHS->print("$n_fq files in fwd demultiplexed temp dir.\n") if $verbose;
+                $n_fq      = scalar @fwdOutput;
+                $GLOBAL_PATHS->print(
+                                 "$n_fq files in fwd demultiplexed temp dir.\n")
+                  if $verbose;
                 sleep 1;
             }
             $n_fq = 0;
             while ($n_fq != $newSamNo)
             {
-                $n_fq = 0;
+                $n_fq      = 0;
                 @revOutput = glob(catfile($rev_dir, "*.fastq"));
-                $n_fq = scalar @revOutput;
-                $GLOBAL_PATHS->print("$n_fq files in rev demultiplexed temp dir.\n") if $verbose;
+                $n_fq      = scalar @revOutput;
+                $GLOBAL_PATHS->print(
+                                 "$n_fq files in rev demultiplexed temp dir.\n")
+                  if $verbose;
                 sleep 1;
             }
         }
 
         # Append _R1 or _R2 to each filename
         $GLOBAL_PATHS->print(
-                    "Appending _R1 or _R2 to each demuxed FASTQ filename.\n");
-        remove_tree($GLOBAL_PATHS->sample_dir()) if (-e $GLOBAL_PATHS->sample_dir());
-        mkdir $GLOBAL_PATHS->sample_dir() or die("Can't create directory \"" . $GLOBAL_PATHS->sample_dir() . "\": $!\n");
+                      "Appending _R1 or _R2 to each demuxed FASTQ filename.\n");
+        remove_tree($GLOBAL_PATHS->sample_dir())
+          if (-e $GLOBAL_PATHS->sample_dir());
+        mkdir $GLOBAL_PATHS->sample_dir()
+          or die(  "Can't create directory \""
+                 . $GLOBAL_PATHS->sample_dir()
+                 . "\": $!\n");
         foreach my $oldname (@fwdOutput)
         {
             my ($name, $path, $suffix) = fileparse($oldname, ".fastq");
-            my $newname = catfile($GLOBAL_PATHS->sample_dir(), "${name}_R1.fastq");
-            File::Copy::move($oldname, $newname) or die("Can't move $oldname to $newname: $!\n");
+            my $newname =
+              catfile($GLOBAL_PATHS->sample_dir(), "${name}_R1.fastq");
+            File::Copy::move($oldname, $newname)
+              or die("Can't move $oldname to $newname: $!\n");
             $oldname = $newname;
         }
         foreach my $oldname (@revOutput)
         {
             my ($name, $path, $suffix) = fileparse($oldname, ".fastq");
-            my $newname = catfile($GLOBAL_PATHS->sample_dir(), "${name}_R2.fastq");
-            File::Copy::move($oldname, $newname) or die("Can't move $oldname to $newname: $!\n");
+            my $newname =
+              catfile($GLOBAL_PATHS->sample_dir(), "${name}_R2.fastq");
+            File::Copy::move($oldname, $newname)
+              or die("Can't move $oldname to $newname: $!\n");
             $oldname = $newname;
         }
         remove_tree($fwd_dir);
         remove_tree($rev_dir);
 
         gzip_sge(
-            pattern => catfile($GLOBAL_PATHS->sample_dir(), "*.fastq"),
-            paths => $GLOBAL_PATHS,
-            config => $GLOBAL_PATHS->get_config()
-            );
-        
+                 pattern => catfile($GLOBAL_PATHS->sample_dir(), "*.fastq"),
+                 paths   => $GLOBAL_PATHS,
+                 config  => $GLOBAL_PATHS->get_config()
+                );
+
         $GLOBAL_PATHS->print("---Demultiplexed FASTQ's compressed.\n");
 
-
-        $GLOBAL_PATHS->print("---$n_fq samples demultiplexed in "
-          . $GLOBAL_PATHS->sample_dir() . "\n");
+        $GLOBAL_PATHS->print(  "---$n_fq samples demultiplexed in "
+                             . $GLOBAL_PATHS->sample_dir()
+                             . "\n");
         my @finalFwdOutput = $GLOBAL_PATHS->splitsamples_output_fwd();
         my @finalRevOutput = $GLOBAL_PATHS->splitsamples_output_rev();
 
@@ -1748,7 +1798,7 @@ if (!@dbg || grep(/^splitsamples$/, @dbg))
         execute_and_log(
              cmds    => \@cmds,
              dry_run => $dryRun,
-             msg =>
+             msg     =>
                "---Removing decompressed raw files from $GLOBAL_PATHS->{'wd'}\n"
         );
     }
@@ -1770,10 +1820,8 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
 {
     my $do = 1;
 
-    my @inputsF =
-      $GLOBAL_PATHS->splitsamples_output_fwd();
-    my @inputsR =
-      $GLOBAL_PATHS->splitsamples_output_rev();
+    my @inputsF = $GLOBAL_PATHS->splitsamples_output_fwd();
+    my @inputsR = $GLOBAL_PATHS->splitsamples_output_rev();
 
     if (scalar @inputsF != scalar @inputsR)
     {
@@ -1800,70 +1848,82 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
     if (!$skipMe)
     {
         my @cmds;
-            my $bbduk = $GLOBAL_PATHS->get_config()->{"part1"}->{"bbduk.sh"};
-            foreach my $in_F (@inputsF)
+        my $bbduk = $GLOBAL_PATHS->get_config()->{"part1"}->{"bbduk.sh"};
+        foreach my $in_F (@inputsF)
+        {
+            my ($name, $dir, $ext) = fileparse($in_F, qr{\.gz});
+            my @suffixes = ("_R1.fastq");
+            my $prefix   = basename($name, @suffixes);
+            my $in_R =
+              catfile($GLOBAL_PATHS->sample_dir(), "${prefix}_R2.fastq${ext}");
+            my $out_F =
+              catfile($GLOBAL_PATHS->{'wd'}, "${prefix}_R1_tc.fastq.gz");
+            my $out_R =
+              catfile($GLOBAL_PATHS->{'wd'}, "${prefix}_R2_tc.fastq.gz");
+            my $stats_F = catfile($GLOBAL_PATHS->part1_stdout_log(),
+                                  "${prefix}_R1_tc.stats");
+            my $stats_R = catfile($GLOBAL_PATHS->part1_stdout_log(),
+                                  "${prefix}_R2_tc.stats");
+            my $stats_poly_g = catfile($GLOBAL_PATHS->part1_stdout_log(),
+                                       "${prefix}_poly_g_tc.stats");
+
+            sub primer_length_range
             {
-                my ($name, $dir, $ext) = fileparse($in_F, qr{\.gz});
-                my @suffixes = ("_R1.fastq");
-                my $prefix   = basename($name, @suffixes);
-                my $in_R     = catfile($GLOBAL_PATHS->sample_dir(),
-                                   "${prefix}_R2.fastq${ext}");
-                my $out_F =
-                  catfile($GLOBAL_PATHS->{'wd'}, "${prefix}_R1_tc.fastq.gz");
-                my $out_R =
-                  catfile($GLOBAL_PATHS->{'wd'}, "${prefix}_R2_tc.fastq.gz");
-                my $stats_F = catfile($GLOBAL_PATHS->part1_stdout_log(), "${prefix}_R1_tc.stats");
-                my $stats_R = catfile($GLOBAL_PATHS->part1_stdout_log(), "${prefix}_R2_tc.stats");
-                my $stats_poly_g = catfile($GLOBAL_PATHS->part1_stdout_log(), "${prefix}_poly_g_tc.stats");
-
-                sub primer_length_range {
-                    my $primers = shift;
-                    my @primers = split ",", $primers;
-                    my @primer_lengths = map length, @primers;
-                    return (
-                        List::Util::min(@primer_lengths), 
-                        List::Util::max(@primer_lengths)
-                    );
-                }
-
-                sub get_read_length {
-                    my $fastq_gz = shift;
-                    my $read = `gunzip < $fastq_gz | head -n 2 | tail -n 1`;
-                    chomp $read;
-                    return length($read);
-                }
-
-                my ($k_F, $max_fwd_primer) = primer_length_range($GLOBAL_PATHS->get_param("fwd primer"));
-                my ($k_R, $max_rev_primer) = primer_length_range($GLOBAL_PATHS->get_param("rev primer"));
-                # We use maxlen purely to filter out untrimmed reads, so just
-                # set this to readlength - 1 by default, since all reads are 
-                # same length
-                my $readlen = get_read_length($in_F);
-                my $maxlen = $trimMaxLen ? $trimMaxLen : ($readlen - 1);
-
-                my $hdist = $GLOBAL_PATHS->get_param("primer_allowed_mm");
-                my $mink_F = List::Util::min(($max_fwd_primer - $hdist, $k_F));
-                my $mink_R = List::Util::min(($max_rev_primer - $hdist, $k_R));
-                # trim fwd reads first (skipr2) then trim rev reads (skipr1)
-                my $cmd =
-                  "$bbduk -Xmx4915m -Xms4327m in=$in_F in2=$in_R literal=" . $GLOBAL_PATHS->get_param("fwd primer") . " copyundefined out=stdout.fastq stats=$stats_F overwrite=t ziplevel=9 ktrim=l k=$k_F rcomp=f hdist=$hdist mink=$mink_F hdist2=0 skipr2=t restrictleft=30 minlen=60";
-                $cmd .= " 2>>"
-                  . catfile($GLOBAL_PATHS->part1_error_log(),
-                            "bbduk.sh.stderr");
-                $cmd .=
-                  " | $bbduk -Xmx4915m -Xms4327m in=stdin.fastq interleaved=t literal=" . $GLOBAL_PATHS->get_param("rev primer") . " copyundefined out=$out_F out2=$out_R stats=$stats_R overwrite=t ziplevel=9 ktrim=l k=$k_R rcomp=f hdist=$hdist mink=$mink_R hdist2=0 skipr1=t minlen=60 restrictleft=30 maxlen=$maxlen";
-                $cmd .= " 2>>"
-                  . catfile($GLOBAL_PATHS->part1_error_log(),
-                            "bbduk.sh.stderr");
-                if($GLOBAL_PATHS->get_param("trim_poly_g")) {
-                    $cmd =~ s/out=${out_F} out2=${out_R}/out=stdout\.fastq/g;
-                    $cmd .= " | $bbduk -Xmx4915m -Xms4327m in=stdin.fastq interleaved=t literal=GGGGGGGGGGGGGGGGGGGG copyundefined out=$out_F out2=$out_R stats=$stats_poly_g overwrite=t ziplevel=9 ktrim=r k=20 rcomp=f hdist=0 mink=1 hdist2=0 minlen=60";
-                    $cmd .= " 2>>"
-                        . catfile($GLOBAL_PATHS->part1_error_log(),
-                            "bbduk.sh.stderr");
-                }
-                push @cmds, $cmd;
+                my $primers        = shift;
+                my @primers        = split ",", $primers;
+                my @primer_lengths = map length, @primers;
+                return (List::Util::min(@primer_lengths),
+                        List::Util::max(@primer_lengths));
             }
+
+            sub get_read_length
+            {
+                my $fastq_gz = shift;
+                my $read     = `gunzip < $fastq_gz | head -n 2 | tail -n 1`;
+                chomp $read;
+                return length($read);
+            }
+
+            my ($k_F, $max_fwd_primer) =
+              primer_length_range($GLOBAL_PATHS->get_param("fwd primer"));
+            my ($k_R, $max_rev_primer) =
+              primer_length_range($GLOBAL_PATHS->get_param("rev primer"));
+
+            # We use maxlen purely to filter out untrimmed reads, so just
+            # set this to readlength - 1 by default, since all reads are
+            # same length
+            my $readlen = get_read_length($in_F);
+            my $maxlen  = $trimMaxLen ? $trimMaxLen : ($readlen - 1);
+
+            my $hdist  = $GLOBAL_PATHS->get_param("primer_allowed_mm");
+            my $mink_F = List::Util::min(($max_fwd_primer - $hdist, $k_F));
+            my $mink_R = List::Util::min(($max_rev_primer - $hdist, $k_R));
+
+            # trim fwd reads first (skipr2) then trim rev reads (skipr1)
+            my $cmd =
+                "$bbduk -Xmx4915m -Xms4327m in=$in_F in2=$in_R literal="
+              . $GLOBAL_PATHS->get_param("fwd primer")
+              . " copyundefined out=stdout.fastq stats=$stats_F overwrite=t ziplevel=9 ktrim=l k=$k_F rcomp=f hdist=$hdist mink=$mink_F hdist2=0 skipr2=t restrictleft=30 minlen=60";
+            $cmd .= " 2>>"
+              . catfile($GLOBAL_PATHS->part1_error_log(), "bbduk.sh.stderr");
+            $cmd .=
+              " | $bbduk -Xmx4915m -Xms4327m in=stdin.fastq interleaved=t literal="
+              . $GLOBAL_PATHS->get_param("rev primer")
+              . " copyundefined out=$out_F out2=$out_R stats=$stats_R overwrite=t ziplevel=9 ktrim=l k=$k_R rcomp=f hdist=$hdist mink=$mink_R hdist2=0 skipr1=t minlen=60 restrictleft=30 maxlen=$maxlen";
+            $cmd .= " 2>>"
+              . catfile($GLOBAL_PATHS->part1_error_log(), "bbduk.sh.stderr");
+            if ($GLOBAL_PATHS->get_param("trim_poly_g"))
+            {
+                $cmd =~ s/out=${out_F} out2=${out_R}/out=stdout\.fastq/g;
+                $cmd .=
+                  " | $bbduk -Xmx4915m -Xms4327m in=stdin.fastq interleaved=t literal=GGGGGGGGGGGGGGGGGGGG copyundefined out=$out_F out2=$out_R stats=$stats_poly_g overwrite=t ziplevel=9 ktrim=r k=20 rcomp=f hdist=0 mink=1 hdist2=0 minlen=60";
+                $cmd .= " 2>>"
+                  . catfile($GLOBAL_PATHS->part1_error_log(),
+                            "bbduk.sh.stderr");
+            }
+            push @cmds, $cmd;
+        }
+
         # }
 
         # Do not submit bbduk.sh to grid. Not sure why. One thing that needs to
@@ -1902,12 +1962,10 @@ if (!@dbg || grep(/^tagclean$/, @dbg))
         if (!@dbg)
         {
             cacheChecksums(
-                  files => [
-                            glob(catfile($GLOBAL_PATHS->sample_dir(), "*"))
-                           ],
-                  step_name => "samples",
-                  pf        => $GLOBAL_PATHS
-            );
+                 files     => [glob(catfile($GLOBAL_PATHS->sample_dir(), "*"))],
+                 step_name => "samples",
+                 pf        => $GLOBAL_PATHS
+                          );
 
             my @gzipped = tagcleaned_files();
             cacheChecksums(
@@ -1963,19 +2021,20 @@ if ((!@dbg) || grep(/^dada2$/, @dbg))
     if (!$skipMe)
     {
         my $r_out = dada2(
-                      truncLenL => $GLOBAL_PATHS->get_param("fwd trim length"), 
-                      truncLenR => $GLOBAL_PATHS->get_param("rev trim length"), 
-                      maxEE => $GLOBAL_PATHS->get_param("max EE"), 
-                      truncQ => $GLOBAL_PATHS->get_param("trim quality"),    
-                      "rm.phix" => $GLOBAL_PATHS->get_param("remove phix"),      
-                      minLen => $GLOBAL_PATHS->get_param("min length"), 
-                      minQ => $GLOBAL_PATHS->get_param("filter quality"),      
-                      error_estimation_function => $GLOBAL_PATHS->get_param("dada2_error_estimation_function"),
-                      amplicon_length => $amplicon_length,
-                      dada2mem => $dada2mem,
-                      config => $GLOBAL_PATHS->get_config(),
-                      paths => $GLOBAL_PATHS
-                     );
+                  truncLenL => $GLOBAL_PATHS->get_param("fwd trim length"),
+                  truncLenR => $GLOBAL_PATHS->get_param("rev trim length"),
+                  maxEE     => $GLOBAL_PATHS->get_param("max EE"),
+                  truncQ    => $GLOBAL_PATHS->get_param("trim quality"),
+                  "rm.phix" => $GLOBAL_PATHS->get_param("remove phix"),
+                  minLen    => $GLOBAL_PATHS->get_param("min length"),
+                  minQ      => $GLOBAL_PATHS->get_param("filter quality"),
+                  error_estimation_function =>
+                    $GLOBAL_PATHS->get_param("dada2_error_estimation_function"),
+                  amplicon_length => $amplicon_length,
+                  dada2mem        => $dada2mem,
+                  config          => $GLOBAL_PATHS->get_config(),
+                  paths           => $GLOBAL_PATHS
+        );
 
 ###### EVALUATING DADA2 OUTPUT ##########
 #########################################
@@ -2081,7 +2140,7 @@ END
                     chmod(0775, $File::Find::name) if -d;
                 },
                 $GLOBAL_PATHS->{'wd'}
-                );
+            );
             chmod(0775, $GLOBAL_PATHS->{'wd'});
         }
     }
@@ -2138,8 +2197,8 @@ sub project_metadata
     my %arg          = @_;
     my $any_args     = scalar %arg;
     my $new_metadata = delete %arg{"metadata"} // {};
-    my $replace      = delete $arg{"replace"} // 0;
-    my $pf           = delete %arg{"pf"} // $GLOBAL_PATHS;
+    my $replace      = delete $arg{"replace"}  // 0;
+    my $pf           = delete %arg{"pf"}       // $GLOBAL_PATHS;
 
     my $metadataFile = "$pf->{'wd'}/.meta.json";
     my $old_metadata = read_json($metadataFile, "+<");
@@ -2460,14 +2519,17 @@ sub cacheChecksums
     }
 }
 
-sub get_instrument_id {
-    my %arg     = @_;
-    my $fastq      = delete %arg{"fastq"};
+sub get_instrument_id
+{
+    my %arg   = @_;
+    my $fastq = delete %arg{"fastq"};
 
     my $id;
-    if ($fastq =~ /\.gz$/) {
+    if ($fastq =~ /\.gz$/)
+    {
         $id = `gunzip < $fastq | head -n 1`;
-    } else {
+    } else
+    {
         open my $seqs, $fastq or die "Could not open $fastq: $!";
         while (<$seqs>)
         {
@@ -2478,28 +2540,32 @@ sub get_instrument_id {
     }
     chomp $id;
 
-    $id =~ s/^@//; # Remove the first @
-    $id =~ s/:.*$//; # Remove everything after the first colon separator
-    # QIIME split_libraries_fastq.py inserts a sample_seq field before the instrument ID
-    $id =~ s/^.* //; # if there are any spaces, remove everything up to and including the last one
-    return($id);
+    $id =~ s/^@//;      # Remove the first @
+    $id =~ s/:.*$//;    # Remove everything after the first colon separator
+     # QIIME split_libraries_fastq.py inserts a sample_seq field before the instrument ID
+    $id =~ s/^.* //
+      ; # if there are any spaces, remove everything up to and including the last one
+    return ($id);
 }
 
-sub instrument_id_to_profile {
-    my %arg     = @_;
-    my $config     = delete %arg{"config"};
+sub instrument_id_to_profile
+{
+    my %arg    = @_;
+    my $config = delete %arg{"config"};
     my $id     = delete %arg{"id"};
 
     my $instrument_id_to_profile = $config->{"instrument_ID_to_profile"};
-    foreach my $id_pattern (keys %{$instrument_id_to_profile}) {
-        if ($id =~ $id_pattern) {
-            return($instrument_id_to_profile->{$id_pattern});
+    foreach my $id_pattern (keys %{$instrument_id_to_profile})
+    {
+        if ($id =~ $id_pattern)
+        {
+            return ($instrument_id_to_profile->{$id_pattern});
         }
     }
 
-    die "Unrecognized instrument ID: $id. Recognized patterns: " 
-        . (join ", ", keys %{$instrument_id_to_profile})
-        . ". Please update config.json.\n";
+    die "Unrecognized instrument ID: $id. Recognized patterns: "
+      . (join ", ", keys %{$instrument_id_to_profile})
+      . ". Please update config.json.\n";
 }
 
 sub setIdent
@@ -2670,7 +2736,7 @@ sub first_seq_length
     {
         chomp;
         $first_index = $_ if $. == 2;
-        last if $. == 2;
+        last              if $. == 2;
     }
     close $reads;
 
@@ -2711,11 +2777,12 @@ sub readSplitLog
     return @dropouts;
 }
 
-sub gzip_sge {
-    my %arg     = @_;
-    my $patt      = delete %arg{"pattern"};
-    my $paths   = delete %arg{"paths"};
-    my $config  = delete %arg{"config"};
+sub gzip_sge
+{
+    my %arg    = @_;
+    my $patt   = delete %arg{"pattern"};
+    my $paths  = delete %arg{"paths"};
+    my $config = delete %arg{"config"};
 
     # Make file list and script for SGE array job
     # NB demuxed_seqs.lst is the name required by gzip_array_template.sh
@@ -2725,60 +2792,69 @@ sub gzip_sge {
     $FH->print(`$cmd`);
     $FH->close();
 
-    my $array_script = catfile($paths->commands_dir(), "gzip_array_template.sh");
+    my $array_script =
+      catfile($paths->commands_dir(), "gzip_array_template.sh");
     File::Copy::copy(
-        catfile($paths->pipeline_dir(), "data", "gzip_array_template.sh"), 
-        $array_script
-        ) or die "Copy failed: $!"; 
+                     catfile(
+                             $paths->pipeline_dir(), "data",
+                             "gzip_array_template.sh"
+                            ),
+                     $array_script
+                    )
+      or die "Copy failed: $!";
     my $file = path($array_script);
-    
-    my $data = $file->slurp_utf8;
+
+    my $data   = $file->slurp_utf8;
     my $nFiles = count_lines($file_list);
     $data =~ s/^#\$ -t 1-.*$/#\$ -t 1-$nFiles/gm;
     $data =~ s/demuxed_seqs.lst/$file_list/g;
-    $file->spew_utf8( $data );
+    $file->spew_utf8($data);
 
     $config = clone($config);
     $config->{"qsub_b"} = "n";
 
     execute_and_log(
-        cmds    => [$array_script],
-        logger  => $GLOBAL_PATHS,
-        dry_run => $dryRun,
-        msg     => "Compressing demultiplexed FASTQ's...\n",
-        qsub => 1,
-        mem => "1G",
-        name => "gzip",
-        paths => $GLOBAL_PATHS,
-        config => $config,
-        );
+                    cmds    => [$array_script],
+                    logger  => $GLOBAL_PATHS,
+                    dry_run => $dryRun,
+                    msg     => "Compressing demultiplexed FASTQ's...\n",
+                    qsub    => 1,
+                    mem     => "1G",
+                    name    => "gzip",
+                    paths   => $GLOBAL_PATHS,
+                    config  => $config,
+                   );
 }
 
 sub dada2
 {
-    my %arg             = @_;
-    my $truncLenL       = delete %arg{"truncLenL"};
-    my $truncLenR       = delete %arg{"truncLenR"};
-    my $maxEE           = delete %arg{"maxEE"};
-    my $truncQ          = delete %arg{"truncQ"};
-    my $rm_phix         = delete %arg{"rm.phix"};
-    my $minLen          = delete %arg{"minLen"};
-    my $minQ            = delete %arg{"minQ"};
-    my $error_estimation_function = delete %arg {"error_estimation_function"};
-    my $amplicon_length = delete %arg{"amplicon_length"};
-    my $dada2mem        = delete %arg{"dada2mem"};
-    my $config          = delete %arg{"config"};
-    my $paths           = delete %arg{"paths"};
-    
+    my %arg                       = @_;
+    my $truncLenL                 = delete %arg{"truncLenL"};
+    my $truncLenR                 = delete %arg{"truncLenR"};
+    my $maxEE                     = delete %arg{"maxEE"};
+    my $truncQ                    = delete %arg{"truncQ"};
+    my $rm_phix                   = delete %arg{"rm.phix"};
+    my $minLen                    = delete %arg{"minLen"};
+    my $minQ                      = delete %arg{"minQ"};
+    my $error_estimation_function = delete %arg{"error_estimation_function"};
+    my $amplicon_length           = delete %arg{"amplicon_length"};
+    my $dada2mem                  = delete %arg{"dada2mem"};
+    my $config                    = delete %arg{"config"};
+    my $paths                     = delete %arg{"paths"};
+
     my $Rscript =
       catfile($pipelineDir, "scripts", "filter_and_denoise_illumina.R");
     my $args = "--maxN=0 --maxEE=$maxEE --truncQ=$truncQ";
-    $args .= " --rm.phix" if($rm_phix);
-    $args .= " --error_estimation_function=$error_estimation_function" if ($error_estimation_function);
-    if($truncLenL && $truncLenR) {
+    $args .= " --rm.phix" if ($rm_phix);
+    $args .= " --error_estimation_function=$error_estimation_function"
+      if ($error_estimation_function);
+    if ($truncLenL && $truncLenR)
+    {
         $args .= " --truncLenL=$truncLenL --truncLenR=$truncLenR";
-    } else {
-        $args .= " --optimize_trim --amplicon_length=$amplicon_length --verbose";
+    } else
+    {
+        $args .=
+          " --optimize_trim --amplicon_length=$amplicon_length --verbose";
     }
 
     chdir $GLOBAL_PATHS->{'wd'};
@@ -2800,25 +2876,27 @@ sub dada2
         execute_and_log(
             cmds    => [$cmd],
             dry_run => $dryRun,
-            msg =>
+            msg     =>
               "Removing old filtered fastq files, stats, and Rout files from previous runs\n"
         );
 
         $cmd =
           "-w w -b y -P jravel-lab -q threaded.q -pe thread 4 -cwd -P $qproj -e ${R_out} -o "
           . $GLOBAL_PATHS->part1_stdout_log()
-          . " -N Rscript \"" . $GLOBAL_PATHS->get_config()->{R} . "script $Rscript $args\"";
+          . " -N Rscript \""
+          . $GLOBAL_PATHS->get_config()->{R}
+          . "script $Rscript $args\"";
         execute_and_log(
             cmds    => [$cmd],
             logger  => $GLOBAL_PATHS,
             dry_run => $dryRun,
-            msg =>
+            msg     =>
               "Running DADA2 with fastq files in $GLOBAL_PATHS->{'wd'} for $var region...\n",
-            qsub => 1,
-            mem => "${dada2mem}G",
-           config => $config,
-           paths => $paths,
-           name => "R_dada2"
+            qsub   => 1,
+            mem    => "${dada2mem}G",
+            config => $config,
+            paths  => $paths,
+            name   => "R_dada2"
         );
 
         if (-e "dada2_part1_stats.txt")
@@ -2834,19 +2912,19 @@ sub dada2
             my $line = <IN>;
             while ($line)
             {
-                if (            # signs of bad termination that might be fixed
-                                # with more memory
-                    (
-                        $line =~ /Error in/
-                     || $line =~ /Execution halted/
-                     || $line =~ /encountered errors/
-                     || $line =~ /Error:/
-                     || $line =~ /Traceback:/
-                    )
-                    && $line !~ /learnErrors/    # False positives; don't match
-                    && $line !~ /error rates/
-                    && $line !~ /errors/
+                if (    # signs of bad termination that might be fixed
+                        # with more memory
+                   (
+                       $line =~ /Error in/
+                    || $line =~ /Execution halted/
+                    || $line =~ /encountered errors/
+                    || $line =~ /Error:/
+                    || $line =~ /Traceback:/
                    )
+                   && $line !~ /learnErrors/    # False positives; don't match
+                   && $line !~ /error rates/
+                   && $line !~ /errors/
+                  )
                 {
                     # Don't change $exitStatus, so DADA2 is restarted
 
@@ -2923,14 +3001,14 @@ sub execute_and_log
     my %arg      = @_;
     my $cmds     = delete %arg{"cmds"};
     my @commands = @$cmds;
-    my $fh       = delete %arg{"logger"} // $GLOBAL_PATHS;
+    my $fh       = delete %arg{"logger"}  // $GLOBAL_PATHS;
     my $dryRun   = delete %arg{"dry_run"} // 0;
-    my $cuteMsg  = delete %arg{"msg"} // 0;
-    my $qsub     = delete %arg{"qsub"} // 0;
-    my $mem      = delete %arg{"mem"} // "1G";
-    my $config   = delete %arg{"config"} // undef;
-    my $paths    = delete %arg{"paths"} // undef;
-    my $name     = delete %arg{"name"} // "";
+    my $cuteMsg  = delete %arg{"msg"}     // 0;
+    my $qsub     = delete %arg{"qsub"}    // 0;
+    my $mem      = delete %arg{"mem"}     // "1G";
+    my $config   = delete %arg{"config"}  // undef;
+    my $paths    = delete %arg{"paths"}   // undef;
+    my $name     = delete %arg{"name"}    // "";
 
     if (!@commands)
     {
@@ -2944,19 +3022,21 @@ sub execute_and_log
     if ($qsub)
     {
         $sge = Schedule::SGE->new(
-                -executable => {
-                    qsub  => '/usr/local/packages/sge-root/bin/lx24-amd64/qsub',
-                    qstat => '/usr/local/packages/sge-root/bin/lx24-amd64/qstat'
-                },
-                -l => "mem_free=$mem",
-                -use_cwd => 1,
-                -project => $config->{"qsub_P"},
-                -name => $name,
-                -output_file => $paths->part1_stdout_log(),
-                -error_file => $paths->part1_error_log(),
-                -verbose => $verbose,
-                -w       => $config->{"qsub_w"},
-                -b       => $config->{"qsub_b"}
+               -executable => {
+                   qsub  => '/usr/local/packages/sge-root/bin/lx24-amd64/qsub',
+                   qstat => '/usr/local/packages/sge-root/bin/lx24-amd64/qstat',
+                   qacct => '/usr/local/packages/sge-root/bin/lx24-amd64/qacct',
+                   qdel  => '/usr/local/packages/sge-root/bin/lx24-amd64/qdel'
+               },
+               -l           => "mem_free=$mem",
+               -use_cwd     => 1,
+               -project     => $config->{"qsub_P"},
+               -name        => $name,
+               -output_file => $paths->part1_stdout_log(),
+               -error_file  => $paths->part1_error_log(),
+               -verbose     => $verbose,
+               -w           => $config->{"qsub_w"},
+               -b           => $config->{"qsub_b"}
         );
     }
 
@@ -2976,10 +3056,11 @@ sub execute_and_log
             push @pids, $sge->execute();
         } else
         {
+            $fh->print(system($cmd));
 
-            system($cmd) == 0
-              or die "system($cmd) failed with exit code: $?"
-              if !$dryRun;
+            # system($cmd) == 0
+            #   or die "system($cmd) failed with exit code: $?"
+            #   if !$dryRun;
         }
 
     }
