@@ -20,8 +20,10 @@ def main(args):
 	blanks = pd.isna(sample_to_gdna["SAMPLE ID"])
 	print("Removing " + str(blanks.value_counts()[True]) + " wells with no sample. If this is too many, check that the 'SAMPLE ID' column is filled.")
 	sample_to_gdna = sample_to_gdna.loc[~blanks, ]
+	if args.debug:
+		print("gDNA-to-barcode plates:")
+		print(sample_to_gdna)
 	
-	#print(sample_to_gdna)
 	if(args.manifest):
 		sample_to_gdna = apply_manifest(sample_to_gdna, args.manifest)
 
@@ -29,7 +31,10 @@ def main(args):
 	project_map = gdna_to_barcode_plate.merge(sample_to_gdna, how="inner")
 	if sample_to_gdna.shape[0] > project_map.shape[0]:
 		quit("Lost rows when joining gDNA maps to pooling detail. gDNA plate IDs did not match.")
-
+	if args.debug: 
+		print("Joined map:")
+		print(project_map)
+	
 	project_map.loc[:, "RUN.PLATEPOSITION"] = project_map.apply(
 		lambda row: ".".join([row["RUN.PLATE"], row["WELL"]]), 
 		axis=1
@@ -129,6 +134,9 @@ def get_gdna(indir):
 
 	for gdna_file in indir.iterdir():
 		gdna_df = pd.read_excel(gdna_file, header=0)
+		if args.debug:
+			print(str(gdna_file) + ":")
+			print(gdna_df)
 		gdna_plate = str(gdna_file.name)
 		gdna_plate_parts = gdna_plate.split("_")
 		gdna_plate = gdna_plate_parts[len(gdna_plate_parts)-1].split(".")[0]
@@ -144,12 +152,14 @@ def get_manifest(filepath):
 	return manifest_df
 
 if __name__=="__main__":
-	ap = argparse.ArgumentParser()
+	ap = argparse.ArgumentParser(
+		epilog='''Defaults: --gdna gDNA_maps/ --pooling pooling/ --output ./project_map.txt'''
+	)
 	#-d $models -i $fasta -o 
 	ap.add_argument("--pooling", "-p", type=Path, required=False, default=Path("./pooling"))
-	ap.add_argument("--gdna", "-g", type=Path, required=False, default=Path("./gDNA_maps"))
+	ap.add_argument("--gdna", "-g", type=Path, required=False, default=Path("./gDNA_maps"), help="Directory containing gDNA plate maps named \"*_<id>.xlsx\"")
 	ap.add_argument("--manifest", "-m", type=Path, required=False)
-	# parser.add_argument('--strict', action=argparse.BooleanOptionalAction)
+	ap.add_argument("--debug", action="store_true")
 
 	ap.add_argument("--output", "-o", type=Path, required=False, default=Path("./project_map.txt"))
 

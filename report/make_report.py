@@ -39,8 +39,10 @@ opts = {
         "Per base sequence quality": ("", ""),
         "Per tile sequence quality": ("", ""),
         "Sequence Length Distribution": (
-            "Illumina MiSeq machines yield 301-bp reads",
-            "Illumina MiSeq machines yield 301-bp reads",
+            "", 
+            "",
+            # "Illumina MiSeq machines yield 301-bp reads", This can be inferred from the read headers....
+            # "Illumina MiSeq machines yield 301-bp reads",
         ),
     },
     "contaminants": [],

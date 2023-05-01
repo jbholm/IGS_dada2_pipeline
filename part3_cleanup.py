@@ -623,7 +623,7 @@ def organize_reads(proj_path, map, run_paths):
                 run_platepos = row["RUN.PLATEPOSITION"]
                 sample = row["sampleID"]
                 possible_paths = []
-                for run, run_path in run_paths_dict.items():
+                for run_name, run_path in run_paths_dict.items():
                     patt = str(run_path / Path("demultiplexed") / Path(row["RUN.PLATEPOSITION"] + "*"))
                     possible_paths.append(str(run_path / Path("demultiplexed") / Path(row["RUN.PLATEPOSITION"] + "(_R[12])?.fastq.gz")))
                     # first pattern matches paired-end files
@@ -634,7 +634,7 @@ def organize_reads(proj_path, map, run_paths):
                         )
                     # R1 and R2 files for Illumina, just one file for PacBio
                     if(len(reads) > 0):
-                        transfers[sample] = {"srcs": reads, "run": run}
+                        transfers[sample] = {"srcs": reads, "run": run_name}
                 if sample not in transfers.keys(): 
                     format_msg = ("WARNING: No read files for sample %s with plate position \n" +
                         "%s could be found. This is probably a sample that didn't\n" +
@@ -668,7 +668,7 @@ def organize_reads(proj_path, map, run_paths):
             print(f"Copying raw read files for {nFiles} samples to {subdir_destination}.")
 
         for sample, data in transfers.items():
-            run = data["run"]
+            run_dir_name = data["run"]
             for source in data["srcs"]:
                 if source.endswith("_R1.fastq.gz"):
                     ext = "_R1.fastq.gz" 
@@ -676,7 +676,7 @@ def organize_reads(proj_path, map, run_paths):
                     ext = "_R2.fastq.gz" 
                 elif source.endswith(".fastq.gz"):
                     ext = ".fastq.gz"
-                dest = str(Path(organized_dir) / run / Path(sample + ext))
+                dest = str(Path(organized_dir) / run_dir_name / Path(sample + ext))
 
                 if external_exec:
                     cmd = "module load sge && " + executor + " -N copy -V \'cp -f %s %s\'"
@@ -804,9 +804,8 @@ def organize_logs(proj_path, run_paths):
         if len(filepaths) > 0:
             make_for_contents(organized_dir)
             print(f"Moving {len(filepaths)} log files to LOGS/.")
-
             for filepath in filepaths:
-                shutil.copy2(filepath, Path(organized_dir) / Path(filepath).name)
+                Path(filepath).rename(Path(organized_dir) / Path(filepath).name)       
         
         filepaths = []
         for run in run_paths:
@@ -814,9 +813,8 @@ def organize_logs(proj_path, run_paths):
         if len(filepaths) > 0:
             make_for_contents(organized_dir)
             print(f"Copying {len(filepaths)} log files to LOGS/.")
-
             for filepath in filepaths:
-                (Path(organized_dir) / Path(filepath).name).rename(filepath)
+                shutil.copy2(filepath, Path(organized_dir) / Path(filepath).name)
 
         if Path(organized_dir).exists():
             print(f"Skipping creation of {organized_dir} (no logs found)")
