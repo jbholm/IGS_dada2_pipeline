@@ -18,7 +18,9 @@ def main(args):
 	# main columns: ["gDNA plate ID", "WELL", "SAMPLE ID"]
 	sample_to_gdna = get_gdna(args.gdna)
 	blanks = pd.isna(sample_to_gdna["SAMPLE ID"])
-	print("Removing " + str(blanks.value_counts()[True]) + " wells with no sample. If this is too many, check that the 'SAMPLE ID' column is filled.")
+
+	if True in blanks.value_counts().index:
+		print("Removing " + str(blanks.value_counts()[True]) + " wells with no sample. If this is too many, check that the 'SAMPLE ID' column is filled.")
 	sample_to_gdna = sample_to_gdna.loc[~blanks, ]
 	if args.debug:
 		print("gDNA-to-barcode plates:")
@@ -40,7 +42,9 @@ def main(args):
 		axis=1
 		)
 	project_map = project_map.rename(columns={"SAMPLE ID": "sampleID"})
-	project_map["sampleID"] = project_map["sampleID"].str.replace("\\s", "_", regex=True)
+	project_map["sampleID"] = project_map["sampleID"].str.replace("[^a-zA-Z0-9_\.]", "_", regex=True)
+	project_map["sampleID"] = make_unique(project_map["sampleID"])
+
 
 	print("Final counts:")
 	counts = (project_map["WELL"]
@@ -84,64 +88,97 @@ def get_pooling(indir):
 	pooling_dfs = []
 	# process files in indir
 	for pooling_file in indir.iterdir():
-		# get gDNA plate IDs, IDT plate numbers, and run name
-		
-		# "124 Ill_2step_XTR_16S PCR MSL_NS_124 Pooling detail 1-11-2023.xlsx"
-		# "/local/projects-t3/MSL/pipelines/test/pooling_detail/118 Ill_2step XT_16S PCR MSL_MS_118 Pooling detail 10-20-2022.xlsx"
-		pooling_df = pd.read_excel(pooling_file, skiprows=1, header=None, dtype=str)
-		# could also get run name from the "Illumina 16S PCR pool ID" column (column 11)
-		run = pooling_df.iloc[0, 4]
-		run = CONFIG["RUN_FORMATTER"](run)
-
-		# remove unneeded rows and one empty column
-		pooling_df = pooling_df.iloc[3:, 1:]
-		# get header
-		pooling_df.columns = pooling_df.iloc[0, :]
-		pooling_df = pooling_df.iloc[1:, :]
-		
-		pooling_df = (pooling_df.iloc[np.arange(int(pooling_df.shape[0] / 2)) * 2, :] # remove odd rows
-			.loc[-pd.isna(pooling_df["gDNA plate ID"]), :]) # remove rows with empty field
-
-		# get col immediately left of this column
-		maybe_idt_plates = pooling_df.iloc[:, pooling_df.columns.get_loc("Sample Description") - 1]
-		
-		# does every element start with "XTR_Plate"?
-		if all([str(x).startswith("XTR_Plate") for x in maybe_idt_plates]):		
-			# process as IDT UDI plates	
-			pooling_df["RUN.PLATE"] = pooling_df.apply(CONFIG["RUN_PLATE_FORMATTERS"]["IDT for Illumina"], axis=1, run=run) 
-			pooling_df = pooling_df[["RUN.PLATE", "gDNA plate ID"]]
+		if pooling_file.suffix == ".xlsx":
+			# get gDNA plate IDs, IDT plate numbers, and run name
 			
-		elif (pooling_df.columns[1] == "XT barcode plate" 
-			and all([re.search("^set [A-D]$", plate) for plate in pooling_df["XT barcode plate"]])):
-				# process as Nextera XT UDI plates
-				pooling_df["RUN.PLATE"] = pooling_df.apply(CONFIG["RUN_PLATE_FORMATTERS"]["Nextera XT"], axis=1, run=run) 
+			# "124 Ill_2step_XTR_16S PCR MSL_NS_124 Pooling detail 1-11-2023.xlsx"
+			# "/local/projects-t3/MSL/pipelines/test/pooling_detail/118 Ill_2step XT_16S PCR MSL_MS_118 Pooling detail 10-20-2022.xlsx"
+			pooling_df = pd.read_excel(pooling_file, skiprows=1, header=None, dtype=str)
+			# could also get run name from the "Illumina 16S PCR pool ID" column (column 11)
+			run = pooling_df.iloc[0, 4]
+			run = CONFIG["RUN_FORMATTER"](run)
+
+			# remove unneeded rows and one empty column
+			pooling_df = pooling_df.iloc[3:, 1:]
+			# get header
+			pooling_df.columns = pooling_df.iloc[0, :]
+			pooling_df = pooling_df.iloc[1:, :]
+			
+			pooling_df = (pooling_df.iloc[np.arange(int(pooling_df.shape[0] / 2)) * 2, :] # remove odd rows
+				.loc[-pd.isna(pooling_df["gDNA plate ID"]), :]) # remove rows with empty field
+
+			# get col immediately left of this column
+			maybe_idt_plates = pooling_df.iloc[:, pooling_df.columns.get_loc("Sample Description") - 1]
+			
+			# does every element start with "XTR_Plate"?
+			if all([str(x).startswith("XTR_Plate") for x in maybe_idt_plates]):		
+				# process as IDT UDI plates	
+				pooling_df["RUN.PLATE"] = pooling_df.apply(CONFIG["RUN_PLATE_FORMATTERS"]["IDT for Illumina"], axis=1, run=run) 
 				pooling_df = pooling_df[["RUN.PLATE", "gDNA plate ID"]]
-		else:
-			msg = "Unable to detect UDI plate configuration from pooling: " + pooling_file
-			msg = msg + """
-				Acceptable configurations:
-					IDT for Illumina: The column left of "Sample Description" has values that match the pattern "^XTR_Plate.*"
-					Nextera XT: The third column is called "XT barcode plate" and has values that match the pattern "^set [A-D]$"
-			"""
-			quit(msg)
+				
+			elif (pooling_df.columns[1] == "XT barcode plate" 
+				and all([re.search("^set [A-D]$", plate) for plate in pooling_df["XT barcode plate"]])):
+					# process as Nextera XT UDI plates
+					pooling_df["RUN.PLATE"] = pooling_df.apply(CONFIG["RUN_PLATE_FORMATTERS"]["Nextera XT"], axis=1, run=run) 
+					pooling_df = pooling_df[["RUN.PLATE", "gDNA plate ID"]]
+			else:
+				msg = "Unable to detect UDI plate configuration from pooling: " + pooling_file
+				msg = msg + """
+					Acceptable configurations:
+						IDT for Illumina: The column left of "Sample Description" has values that match the pattern "^XTR_Plate.*"
+						Nextera XT: The third column is called "XT barcode plate" and has values that match the pattern "^set [A-D]$"
+				"""
+				quit(msg)
 
 		pooling_dfs.append(pooling_df)
 
 	return pd.concat(pooling_dfs)
 
+def make_unique(x, sep=".", wrap_in_brackets=False):
+	if not all([type(val) is str for val in x]):
+		quit("Input to `make_unique` must be a string iterable.")
+	x = pd.Series(x, dtype=str)
+	
+	def fun(a):
+		if len(a) > 1:
+			suffixes = range(len(a))
+			if wrap_in_brackets:
+				suffixes = ["(" + str(s) + ")" for s in suffixes]
+			return [val + sep + str(suffix) for val, suffix in zip(a, suffixes)]
+		else:
+			return a
+	deduplicated = x.groupby(x).transform(fun)
+	
+	# probably terribly unoptimized
+	values_still_duplicated = deduplicated.loc[deduplicated.duplicated()]
+	if len(pd.Series(values_still_duplicated).dropna()) > 0:
+		quit("""
+make_unique failed to make iterable unique.\n
+This is because appending '<dup_number>' to duplicate values led to
+creation of term(s) that were in the original dataset: \n[
+""" + ", ".join(values_still_duplicated) + """
+]\n\nPlease try again with a different argument for either `wrap_in_brackets` or `sep`
+			"""
+			)
+		
+	return deduplicated.array
+
+
+
 def get_gdna(indir):
 	gdna_dfs = []
 
 	for gdna_file in indir.iterdir():
-		gdna_df = pd.read_excel(gdna_file, header=0)
-		if args.debug:
-			print(str(gdna_file) + ":")
-			print(gdna_df)
-		gdna_plate = str(gdna_file.name)
-		gdna_plate_parts = gdna_plate.split("_")
-		gdna_plate = gdna_plate_parts[len(gdna_plate_parts)-1].split(".")[0]
-		gdna_df["gDNA plate ID"] = gdna_plate
-		gdna_dfs.append(gdna_df)
+		if gdna_file.suffix == ".xlsx":
+			gdna_df = pd.read_excel(gdna_file, header=0)
+			if args.debug:
+				print(str(gdna_file) + ":")
+				print(gdna_df)
+			gdna_plate = str(gdna_file.name)
+			gdna_plate_parts = gdna_plate.split("_")
+			gdna_plate = gdna_plate_parts[len(gdna_plate_parts)-1].split(".")[0]
+			gdna_df["gDNA plate ID"] = gdna_plate
+			gdna_dfs.append(gdna_df)
 	gdna_df = pd.concat(gdna_dfs)
 
 	return gdna_df

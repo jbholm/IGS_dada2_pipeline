@@ -141,46 +141,9 @@ if (!is.null(args$map)) {
             )
         )
     })
-    plates <- c("A", "B", "C", "D")
-    control_positions <- suppress_if_not_verbose(
-        read_csv(file.path(pipelineDir, config[["controls_platepositions"]]), quote = "", na = "", trim_ws = T)
-    )
-
-    message("Looking for UDI plates")
-
-    for (plate in plates) {
-        matches <- regexpr(text = map$RUN.PLATEPOSITION, pattern = paste0("UDI", plate, "\\.[A-H]\\.[0-9]{1,2}$"), perl = T)
-        if (any(matches > -1)) {
-            message(paste("Found instances of UDI plate", plate))
-
-            runs_containing_plate <- map %>%
-                mutate(Matches = matches) %>%
-                filter(Matches > -1) %>%
-                mutate(Run = substr(RUN.PLATEPOSITION, start = 1, stop = Matches - 2)) %>%
-                pull(Run) %>%
-                unique()
-
-            for (run in runs_containing_plate) {
-                message(paste("Checking if controls need to be added for plate", plate, "in run", run))
-
-                controls <- control_positions %>%
-                    filter(Plate == plate) %>%
-                    mutate(RUN.PLATEPOSITION = paste(run, PLATEPOSITION, sep = ".")) %>%
-                    select(RUN.PLATEPOSITION, sampleID)
-                controls_to_add <- controls[!controls$RUN.PLATEPOSITION %in% map$RUN.PLATEPOSITION, ]
-                if (nrow(controls_to_add) > 0) {
-                    message("Adding controls")
-                    map <- map %>%
-                        rows_insert(controls_to_add, by = "RUN.PLATEPOSITION")
-                } else {
-                    message("Controls already in project map.")
-                }
-            }
-        }
-    }
 
 	map <- map %>% mutate(
-		sampleID.unique = make.names(sampleID, unique = T)
+		sampleID.unique = make.unique(sampleID)
 	)
 	message("Writing final project map")
     write_tsv(map, args$map)

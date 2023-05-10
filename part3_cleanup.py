@@ -615,10 +615,11 @@ def organize_reads(proj_path, map, run_paths):
         run_paths_dict = {Path(path).name: path for path in run_paths}
         # for file in map, find where it should be, and copy in if present
         transfers = {}
+        warnings = 0
+        to_transfer = 0
         with open(map) as fd:
             dr = csv.DictReader(fd, delimiter="\t", quotechar='"')
 
-            warnings = 0
             for row in dr:
                 run_platepos = row["RUN.PLATEPOSITION"]
                 sample = row["sampleID"]
@@ -635,6 +636,7 @@ def organize_reads(proj_path, map, run_paths):
                     # R1 and R2 files for Illumina, just one file for PacBio
                     if(len(reads) > 0):
                         transfers[sample] = {"srcs": reads, "run": run_name}
+                
                 if sample not in transfers.keys(): 
                     format_msg = ("WARNING: No read files for sample %s with plate position \n" +
                         "%s could be found. This is probably a sample that didn't\n" +
@@ -642,6 +644,9 @@ def organize_reads(proj_path, map, run_paths):
                     print(format_msg % (sample, run_platepos))
                     print("Expected paths:\n%s \n" % "\n".join(possible_paths))
                     warnings += 1
+        
+        print("%s samples will be moved to %s/.\n" % (len(transfers) - warnings, organized_dir))
+        print("%s samples were not found.\n" % warnings)
         if warnings > 0:            
             if not ask_continue():
                 return False
@@ -972,14 +977,6 @@ def remove_trash(proj_path, run_paths):
         trash_dirs = [] # if we need to use shutil.rmtree
         for run_path in run_paths:
             if run_path.is_symlink():
-                for fastq in run_path.glob('*Split/seqs.fastq'):
-                    trash_files.append(str(fastq))
-                for fastq in run_path.glob('barcodes.fastq'):
-                    trash_files.append(str(fastq))
-                for fastq in run_path.glob('*_tc.fastq.gz'):
-                    trash_files.append(str(fastq))
-                
-                # we must delete the symlink or directory last
                 trash_files.append(
                     {
                         'name': str(run_path) + " (L)", 
