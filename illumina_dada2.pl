@@ -356,7 +356,7 @@ $OUTPUT_AUTOFLUSH = 1;
 ####################################################################
 my @dbg;
 my $oneStep       = 0;
-my $dada2mem      = "1G";
+my $dada2mem      = "30G";
 my $tbshtBarcodes = 0;
 my $delete        = 1;
 my $trySkip       = 1;
@@ -1518,7 +1518,7 @@ sub demux
                         msg     => "Extracting demultiplex stats...\n"
                        );
 
-        if ($dada2mem eq "1G")
+        if ($dada2mem eq "30G")
         {    # if it's the default
             open(my $sll, "<",
                  ${paths}->fwd_demux_dir() . "/split_library_log.txt")
@@ -1528,7 +1528,8 @@ sub demux
                 if ($line =~ m/^Total number seqs written\s+(\d+)/)
                 {
                     $dada2mem =
-                      List::Util::max(POSIX::ceil(4.2 * log($1) - 4.2) / 10, 1);
+                      List::Util::max(POSIX::ceil(4.2 * log($1) - 4.2) / 10,
+                                      30);
                     $dada2mem = "${dada2mem}G";
                 }
             }
@@ -2842,9 +2843,11 @@ sub dada2
     my $config                    = delete %arg{"config"};
     my $paths                     = delete %arg{"paths"};
 
+    $dada2mem =~ s/[a-zA-Z]//g;
+
     my $Rscript =
       catfile($pipelineDir, "scripts", "filter_and_denoise_illumina.R");
-    my $args = "--maxN=0 --maxEE=$maxEE --truncQ=$truncQ";
+    my $args = "--maxN=0 --maxEE=$maxEE --truncQ=$truncQ --memory=$dada2mem";
     $args .= " --rm.phix" if ($rm_phix);
     $args .= " --error_estimation_function=$error_estimation_function"
       if ($error_estimation_function);
@@ -2859,8 +2862,7 @@ sub dada2
 
     chdir $GLOBAL_PATHS->{'wd'};
 
-    my $exitStatus = 1;
-    $dada2mem =~ s/[a-zA-Z]//g;
+    my $exitStatus   = 1;
     my $previous_mem = 0;
     my $try          = 1;
     my $R_out        = catfile($GLOBAL_PATHS->part1_error_log(), "R.stderr");
@@ -2937,7 +2939,8 @@ sub dada2
                     $GLOBAL_PATHS->print("---Attempting to restart R...\n");
 
                     $previous_mem = $dada2mem;
-                    $dada2mem     = List::Util::min($dada2mem * 2, 64);
+                    $dada2mem     = List::Util::min($dada2mem * 2, 160);
+                    $args         =~ s/--memory=[0-9]*/--memory=$dada2mem/g;
 
                     last;
                 } elsif ($line =~ /(E|e)rror/ || $line =~ /ERROR/)

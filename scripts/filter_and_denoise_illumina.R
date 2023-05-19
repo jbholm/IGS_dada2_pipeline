@@ -4,7 +4,7 @@ pipelineDir <-
   dirname(dirname(sub("--file=", "", initial.options[grep("--file=", initial.options)])))
 source(file.path(pipelineDir, "lib", "utils.R"))
 require("argparse")
-
+require("parallel")
 
 parser <- ArgumentParser(description = "Do DADA2 filtering and denoising on Illumina reads. Filenames must be parsable into unique sample names by removing '_R[12]_tc\\.fastq(?:\\.gz)?'.")
 parser$add_argument(
@@ -53,6 +53,11 @@ parser$add_argument(
 	choices = c("loessErrfun", "loessErrfun_monotonic")
 )
 parser$add_argument(
+	"--memory",
+	type = "integer",
+	help = "Limits the number of threads dada2 functions are allowed to start. Meaningless when given with --no-multithread."
+)
+parser$add_argument(
 	"--verbose",
 	action = "store_true"
 )
@@ -70,6 +75,12 @@ parser$add_argument(
 args <- parser$parse_args()
 args$maxEE <- as.numeric(args$maxEE)
 if(args$debug) { args$no_multithread <- T }
+args$multithread <- if(args$no_multithread) {
+	! args$no_multithread
+} else {
+	min(max(ceiling(max((args$memory - 27), 0) / 2), 1), parallel::detectCores()) # 27G base memory + 2 * number of dada2::filterAndTrim() threads
+}
+args$no_multithread <- NULL
 
 library(dplyr)
 library("dada2")
@@ -229,7 +240,7 @@ eval_trim_L <- function(truncLen_R, fwd, rev, filt, filt.rev, args) {
             truncQ = args$truncQ,
             rm.phix = args$rm.phix,
             compress = F,
-            multithread = !(args$no_multithread),
+            multithread = args$multithread,
             verbose = FALSE,
             matchIDs = TRUE
         )[, "reads.out", drop = T])
@@ -239,7 +250,7 @@ eval_trim_L <- function(truncLen_R, fwd, rev, filt, filt.rev, args) {
 
 		seqtab <- learn_errors_and_denoise(
 			filt = filt, filt.rev = filt.rev, fast = T, verbose = args$verbose,
-			debug = args$debug, multithread = !(args$no_multithread)
+			debug = args$debug, multithread = args$multithread
 		)
 		if(args$verbose) {
 			message(paste("Params:", truncLen_L, truncLen_R))
@@ -263,7 +274,7 @@ eval_trim_R <- function(truncLen_L, fwd, rev, filt, filt.rev, args) {
             truncQ = args$truncQ,
             rm.phix = args$rm.phix,
             compress = F,
-            multithread = !(args$no_multithread),
+            multithread = args$multithread,
             verbose = FALSE,
             matchIDs = TRUE
         )[, "reads.out", drop = T])
@@ -273,7 +284,7 @@ eval_trim_R <- function(truncLen_L, fwd, rev, filt, filt.rev, args) {
 
 		seqtab <- learn_errors_and_denoise(
 			filt = filt, filt.rev = filt.rev, fast = T, verbose = args$verbose,
-			debug = args$debug, multithread = (!(args$no_multithread))
+			debug = args$debug, multithread = args$multithread
 		)
 		if(args$verbose) {
 			message(paste("Params:", truncLen_L, truncLen_R))
@@ -398,7 +409,7 @@ nTrimmed <- filterAndTrim(
     truncQ = 0,
     rm.phix = F,
     compress = F,
-    multithread = !(args$no_multithread),
+    multithread = args$multithread,
     verbose = F,
     matchIDs = TRUE
 )[, "reads.out", drop = F] %>% set_rownames(sample.names)
@@ -410,7 +421,7 @@ arg_list <- list(
     truncQ = args$truncQ,
     rm.phix = args$rm.phix,
     compress = TRUE,
-    multithread = !(args$no_multithread),
+    multithread = args$multithread,
     verbose = TRUE,
     matchIDs = TRUE
 )
@@ -458,7 +469,7 @@ if(args$optimize_trim) {
 	dev.off()
 }
 
-seqtab <- learn_errors_and_denoise(filt = filt, filt.rev = filt.rev, debug = args$debug, multithread = !(args$no_multithread))
+seqtab <- learn_errors_and_denoise(filt = filt, filt.rev = filt.rev, debug = args$debug, multithread = args$multithread)
 saveRDS(seqtab, "dada2_abundance_table.rds")
 
 # Collect statistics

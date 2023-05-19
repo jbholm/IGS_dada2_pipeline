@@ -56,12 +56,11 @@ use strict;
 use warnings;
 
 use Pod::Usage;
-use English qw( -no_match_vars );
+use English      qw( -no_match_vars );
 use Getopt::Long qw(:config no_ignore_case no_auto_abbrev pass_through);
-use List::Util qw( sum );
+use List::Util   qw( sum );
 use Data::Dumper qw(Dumper);
 use Cwd;
-
 
 $OUTPUT_AUTOFLUSH = 1;
 ####################################################################
@@ -91,7 +90,6 @@ if ($help) {
 }
 
 my @taxNames;
-
 
 if ($silvaFile) {
     print "---Using SILVA taxonomy\n";
@@ -124,7 +122,7 @@ my %pecan;
 my %other;
 my %ez;
 
-foreach (($silvaFile, $homdFile, $ezBioFile, $uniteFile, $otherFile)) {
+foreach ( ( $silvaFile, $homdFile, $ezBioFile, $uniteFile, $otherFile ) ) {
 
 }
 if ($silvaFile) {
@@ -132,7 +130,7 @@ if ($silvaFile) {
     my $silvaCond = "silva_condensed.txt";
     print "---Writing condensed SILVA taxonomy to $silvaCond\n";
     open OUT, ">$silvaCond",
-      or die "Cannot open $silvaCond for writing: $OS_ERROR\n";
+        or die "Cannot open $silvaCond for writing: $OS_ERROR\n";
     foreach my $x ( keys %silva ) {
         print OUT "$x\t$silva{$x}\n";
     }
@@ -144,7 +142,7 @@ if ($homdFile) {
     my $homdCond = "homd_condensed.txt";
     print "---Writing condensed HOMD taxonomy to $homdCond\n";
     open OUT, ">$homdCond",
-      or die "Cannot open $homdCond for writing: $OS_ERROR\n";
+        or die "Cannot open $homdCond for writing: $OS_ERROR\n";
     foreach my $x ( keys %homd ) {
         print OUT "$x\t$homd{$x}\n";
     }
@@ -155,7 +153,8 @@ if ($ezBioFile) {
     %ez = readezBio($ezBioFile);
     my $ezCond = "ezBio_condensed.txt";
     print "---Writing condensed ezBio taxonomy to $ezCond\n";
-    open OUT, ">$ezCond", or die "Cannot open $ezCond for writing: $OS_ERROR\n";
+    open OUT, ">$ezCond",
+        or die "Cannot open $ezCond for writing: $OS_ERROR\n";
     foreach my $x ( keys %ez ) {
         print OUT "$x\t$ez{$x}\n";
     }
@@ -167,7 +166,7 @@ if ($uniteFile) {
     my $uniteCond = "unite_condensed.txt";
     print "---Writing condensed UNITE taxonomy to $uniteCond\n";
     open OUT, ">$uniteCond",
-      or die "Cannot open $uniteCond for writing: $OS_ERROR\n";
+        or die "Cannot open $uniteCond for writing: $OS_ERROR\n";
     foreach my $x ( keys %unite ) {
         print OUT "$x\t$unite{$x}\n";
     }
@@ -176,7 +175,7 @@ if ($uniteFile) {
 if ($pecanFile) {
     %pecan = read2ColTbl($pecanFile);
     print
-"---Using SILVA taxonomy except for Lactobacillus and BV species (PECAN)\n";
+        "---Using SILVA taxonomy except for Lactobacillus and BV species (PECAN)\n";
 }
 if ($otherFile) {
     %other = readOtherTbl($otherFile);
@@ -184,13 +183,14 @@ if ($otherFile) {
     my $otherCond = "other_condensed.txt";
     print "---Writing condensed other taxonomy to $otherCond\n";
     open OUT, ">$otherCond",
-      or die "Cannot open $otherCond for writing: $OS_ERROR\n";
+        or die "Cannot open $otherCond for writing: $OS_ERROR\n";
     if ($otherFile) {
         foreach my $x ( keys %other ) {
             my $tx = "NA";
             if ( $other{$x} ) {
                 print OUT "$x\t$other{$x}\n";
-            } else {
+            }
+            else {
                 print OUT "$x\t$tx\n";
             }
         }
@@ -202,13 +202,13 @@ my %cmbTx;
 my $count = 0;
 
 print "---Combining taxonomic assignments of all source files (includes "
-  . scalar( keys %silva )
-  . " ASVs)\n";
+    . scalar( keys %silva )
+    . " ASVs)\n";
 
 if ( $silvaFile || $homdFile ) {
     if (%homd) {
         %silva = %homd
-          ;   # process homd and silva identically. too lazy to rename variables
+            ; # process homd and silva identically. too lazy to rename variables
     }
     foreach my $x ( keys %silva ) {
         $count++;
@@ -218,10 +218,11 @@ if ( $silvaFile || $homdFile ) {
         $cmbTx{$x} = $tx;
 
         if ($pecanFile) {
-            # If the SILVA annotation is one of these genuses, use PECAN
-            # NB The exact matches that yield species assignments, done during 
-            # assign_taxonomies.R, take precedence over PECAN. They are however,
-            # excluded by these very strict regex patterns
+
+          # If the SILVA annotation is one of these genuses, use PECAN
+          # NB The exact matches that yield species assignments, done during
+          # assign_taxonomies.R, take precedence over PECAN. They are however,
+          # excluded by these very strict regex patterns
             if (   $tx && $tx =~ /^g_Lactobacillus$/
                 || $tx && $tx =~ /^g_Shuttleworthia$/
                 || $tx && $tx =~ /^p_Saccharibacteria$/
@@ -232,7 +233,8 @@ if ( $silvaFile || $homdFile ) {
                 || $tx && $tx =~ /^g_Gardnerella$/
                 || $tx && $tx =~ /^g_Prevotella$/
                 || $tx && $tx =~ /^g_Sneathia$/
-                || $tx && $tx =~ /^g_Atopobium$/ )
+                || $tx && $tx =~ /^g_Atopobium$/
+                || $tx && $tx =~ /^g_Mageeibacillus$/ )
             {
                 #print "The PECAN taxonomy of $x is $pecan{$x}\n";
                 $tx = $pecan{$x};
@@ -262,14 +264,16 @@ if ( $silvaFile || $homdFile ) {
 
     }
 
-} elsif ($ezBioFile) {
+}
+elsif ($ezBioFile) {
     foreach my $x ( keys %ez ) {
         $count++;
         my $tx = $ez{$x};
 
         $cmbTx{$x} = $tx;
     }
-} elsif ($uniteFile) {
+}
+elsif ($uniteFile) {
     foreach my $x ( keys %unite ) {
         $count++;
         my $tx = $unite{$x};
@@ -280,7 +284,7 @@ if ( $silvaFile || $homdFile ) {
 
 my $cmbTblFile = "cmb_tx.txt";
 open OUT, ">$cmbTblFile",
-  or die "Cannot open $cmbTblFile for writing: $OS_ERROR\n";
+    or die "Cannot open $cmbTblFile for writing: $OS_ERROR\n";
 foreach my $x ( keys %cmbTx ) {
     print OUT "$x\t$cmbTx{$x}\n";
 }
@@ -296,7 +300,8 @@ my $cntWtx    = "${Prefix}.${taxString}.asvs+taxa.csv";
 open ALL, ">$cntWtx", or die "Cannot open $cntWtx for writing: $OS_ERROR\n";
 
 my $cnttxon = "${Prefix}.${taxString}.taxa.csv";
-open TXON, ">$cnttxon", or die "Cannot open $cnttxon for writing: $OS_ERROR\n";
+open TXON, ">$cnttxon",
+    or die "Cannot open $cnttxon for writing: $OS_ERROR\n";
 
 my @list1 = get_file_data($countTblFile);
 my $line  = 0;
@@ -316,7 +321,8 @@ foreach my $line1 (@list1) {
             $i++;
             if ( !exists $cmbTx{$asv} ) {
                 print "HD not present: #$i $asv\n";
-            } else {
+            }
+            else {
                 push( @asvs, "$asv" );
                 push( @taxa, "$cmbTx{$asv}" );
             }
@@ -345,16 +351,13 @@ print "TOTAL ASVs: $i\n";
 $Prefix   = basename( $cnttxon, @suffixes );
 my $merged = $Prefix . "-merged.csv";
 
-my $debugParam = $debug ? "--debug" : "";
-my $vParam = $vaginal ? "--vaginal" : "";
+my $debugParam = $debug   ? "--debug"   : "";
+my $vParam     = $vaginal ? "--vaginal" : "";
 
-my $cmd =
-"$scriptsDir/combine_tbl_cols.pl -i $cnttxon -o $merged $debugParam $vParam";
+my $cmd
+    = "$scriptsDir/combine_tbl_cols.pl -i $cnttxon -o $merged $debugParam $vParam";
 print "\tcmd=$cmd\n" if $dryRun || $debug;
-system($cmd) == 0
-    or die "system($cmd) failed with exit code: $?"
-    if !$dryRun;
-
+system($cmd) == 0 or die "system($cmd) failed with exit code: $?" if !$dryRun;
 
 ####################################################################
 ##                               SUBS
@@ -388,42 +391,45 @@ sub readFullTaxonomyTbl {
     my $line = 0;
 
     open IN, "$file" or die "Cannot open $file for reading: $OS_ERROR\n";
-    my @levelHints = ();
+    my @levelHints  = ();
     my @speciesCols = ();
     foreach (<IN>) {
         chomp;
         $line++;
         if ( $line == 1 ) {
-            
-            @levelHints = split( /,/, $_ ); # contains full taxonomic levels
-            @levelHints = @levelHints[1..$#levelHints];
-            @speciesCols = grep { $levelHints[$_] =~ /^species$/i } 0..$#levelHints;
-            
-            # Create taxon level hints that consist of the first leter of the 
+
+            @levelHints = split( /,/, $_ );   # contains full taxonomic levels
+            @levelHints = @levelHints[ 1 .. $#levelHints ];
+            @speciesCols
+                = grep { $levelHints[$_] =~ /^species$/i } 0 .. $#levelHints;
+
+            # Create taxon level hints that consist of the first leter of the
             # level, lowercase, plus an underscore
             foreach (@levelHints) {
-                $_ = lc(substr $_, 0, 1); 
+                $_ = lc( substr $_, 0, 1 );
                 $_ = $_ . "_";
             }
             next;
         }
-        
+
         my ( $asv, @taxa ) = split( /,\s*/, $_ );
         my $t;
-        if (@speciesCols && $taxa[$speciesCols[0]] ne "NA") {
-            my $s = $taxa[$speciesCols[0]];
-            my $g = $taxa[$speciesCols[0] - 1];
+        if ( @speciesCols && $taxa[ $speciesCols[0] ] ne "NA" ) {
+            my $s = $taxa[ $speciesCols[0] ];
+            my $g = $taxa[ $speciesCols[0] - 1 ];
             $t = $g . "_$s";
-        } elsif (@taxa) {
+        }
+        elsif (@taxa) {
             my $taxon = "NA";
             while ( $taxon eq "NA" && scalar @taxa > 0 ) {
                 $taxon = pop @taxa;
             }
-            if(!@taxa) {
+            if ( !@taxa ) {
                 $t = "unclassified";
             }
-            $t = $levelHints[scalar @taxa] . $taxon;
-        } else {
+            $t = $levelHints[ scalar @taxa ] . $taxon;
+        }
+        else {
             $t = "unclassified";
         }
         $tbl{$asv} = $t;
@@ -450,17 +456,23 @@ sub readezBio {
         my $t;
         if ( $s && $s ne "NA" ) {
             $t = "$s";
-        } elsif ( $g ne "NA" ) {
+        }
+        elsif ( $g ne "NA" ) {
             $t = "g_$g";
-        } elsif ( $f ne "NA" ) {
+        }
+        elsif ( $f ne "NA" ) {
             $t = "f_$f";
-        } elsif ( $o ne "NA" ) {
+        }
+        elsif ( $o ne "NA" ) {
             $t = "o_$o";
-        } elsif ( $c ne "NA" ) {
+        }
+        elsif ( $c ne "NA" ) {
             $t = "c_$c";
-        } elsif ( $p ne "NA" ) {
+        }
+        elsif ( $p ne "NA" ) {
             $t = "p_$p";
-        } else {
+        }
+        else {
             $t = "d_$d";
         }
         $tbl{$seq} = $t;
@@ -489,25 +501,32 @@ sub readUNITETbl {
             $s =~ s/s__//g;
             $g =~ s/g__//g;
             $t = "$g" . "_$s";
-        } elsif ( $g ne "NA" ) {
+        }
+        elsif ( $g ne "NA" ) {
             $g =~ s/g__//g;
             $t = "g_$g";
-        } elsif ( $f ne "NA" ) {
+        }
+        elsif ( $f ne "NA" ) {
             $f =~ s/f__//g;
             $t = "f_$f";
-        } elsif ( $o ne "NA" ) {
+        }
+        elsif ( $o ne "NA" ) {
             $o =~ s/o__//g;
             $t = "o_$o";
-        } elsif ( $c ne "NA" ) {
+        }
+        elsif ( $c ne "NA" ) {
             $c =~ s/c__//g;
             $t = "c_$c";
-        } elsif ( $p ne "NA" ) {
+        }
+        elsif ( $p ne "NA" ) {
             $p =~ s/p__//g;
             $t = "p_$p";
-        } elsif ( $k ne "NA" ) {
+        }
+        elsif ( $k ne "NA" ) {
             $k =~ s/k__//g;
             $t = "k_$k";
-        } else {
+        }
+        else {
             $t = "unclassified";
         }
         $tbl{$seq} = $t;
@@ -562,7 +581,8 @@ sub readOtherTbl {
         }
         if ( $count == 7 ) {
             $final = "$t";
-        } else {
+        }
+        else {
             print "No taxonomy for $seq\n";
         }
         $tbl{$seq} = $final;
