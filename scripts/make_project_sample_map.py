@@ -20,7 +20,7 @@ def main(args):
 	blanks = pd.isna(sample_to_gdna["SAMPLE ID"])
 
 	if True in blanks.value_counts().index:
-		print("Removing " + str(blanks.value_counts()[True]) + " wells with no sample. If this is too many, check that the 'SAMPLE ID' column is filled.")
+		print("Removing " + str(blanks.value_counts()[True]) + " wells with no sample. If this is too many, check that the 'SAMPLE ID' column is filled.\n")
 	sample_to_gdna = sample_to_gdna.loc[~blanks, ]
 	if args.debug:
 		print("gDNA-to-barcode plates:")
@@ -28,11 +28,18 @@ def main(args):
 	
 	if(args.manifest):
 		sample_to_gdna = apply_manifest(sample_to_gdna, args.manifest)
-
+		if args.debug: 
+			print("After applying manifest:")
+			print(sample_to_gdna)
+	
 	gdna_to_barcode_plate = get_pooling(args.pooling)
-	project_map = gdna_to_barcode_plate.merge(sample_to_gdna, how="inner")
+	if args.debug: 
+		print("Pooling:")
+		print(gdna_to_barcode_plate)
+	project_map = gdna_to_barcode_plate.merge(sample_to_gdna, how="inner", on=["gDNA plate ID"])
 	if sample_to_gdna.shape[0] > project_map.shape[0]:
-		quit("Lost rows when joining gDNA maps to pooling detail. gDNA plate IDs did not match.")
+		print("gDNA plates not in pooling details: " + ",".join(set(sample_to_gdna["gDNA plate ID"]).difference(set(gdna_to_barcode_plate["gDNA plate ID"]))))
+		quit("Error: Lost rows when joining gDNA maps to pooling detail. gDNA plate IDs did not match.")
 	if args.debug: 
 		print("Joined map:")
 		print(project_map)
@@ -53,6 +60,7 @@ def main(args):
 	counts.index = counts.index.map({False: "Client samples", True: "MSL Controls"})
 	for index in counts.index:
 		print(str(index) + "\t" + str(counts.loc[index]))
+	print()
 
 	project_map = project_map[['RUN.PLATEPOSITION', "sampleID"]]
 	
@@ -70,16 +78,20 @@ def apply_manifest(sample_to_gdna, manifest_file):
 	sample_to_gdna = sample_to_gdna.loc[~ctrls_bool, :]
 
 	not_in_gDNA = ~manifest.index.isin(sample_to_gdna["SAMPLE ID"].values)
-	sample_to_gdna["SAMPLE ID"] = sample_to_gdna.loc[:, "SAMPLE ID"].map(manifest)
+	replacements = sample_to_gdna.loc[:, "SAMPLE ID"].map(manifest) # NaN if not in manifest
+	to_repl = ~replacements.isna()
+	sample_to_gdna.loc[to_repl, "SAMPLE ID"] = replacements[to_repl]
 	if(any(not_in_gDNA)):
-		print("Manifest samples missing from gDNA maps:")
+		print("Error: Manifest samples missing from gDNA maps:")
 		print(manifest.loc[list(not_in_gDNA)])
 		quit()
+	if(not all(to_repl)):
+		print("Warning: gDNA samples not in manifest:")
+		sample_to_gdna.loc[~to_repl, "SAMPLE ID"].apply(print)
+		print("This is okay if these samples were added by MD Genomics.\n")
 
 	sample_to_gdna = pd.concat([sample_to_gdna, ctrls]) # add back the controls
 	return sample_to_gdna
-
-
 
 def get_pooling(indir):
 	# load config from json??
@@ -122,7 +134,7 @@ def get_pooling(indir):
 					pooling_df["RUN.PLATE"] = pooling_df.apply(CONFIG["RUN_PLATE_FORMATTERS"]["Nextera XT"], axis=1, run=run) 
 					pooling_df = pooling_df[["RUN.PLATE", "gDNA plate ID"]]
 			else:
-				msg = "Unable to detect UDI plate configuration from pooling: " + pooling_file
+				msg = "Error: Unable to detect UDI plate configuration from pooling: " + pooling_file
 				msg = msg + """
 					Acceptable configurations:
 						IDT for Illumina: The column left of "Sample Description" has values that match the pattern "^XTR_Plate.*"
@@ -136,7 +148,8 @@ def get_pooling(indir):
 
 def make_unique(x, sep=".", wrap_in_brackets=False):
 	if not all([type(val) is str for val in x]):
-		quit("Input to `make_unique` must be a string iterable.")
+		print(x)
+		quit("Input to `make_unique` must be a string iterable. Got " )
 	x = pd.Series(x, dtype=str)
 	
 	def fun(a):
@@ -196,6 +209,7 @@ if __name__=="__main__":
 	ap.add_argument("--pooling", "-p", type=Path, required=False, default=Path("./pooling"))
 	ap.add_argument("--gdna", "-g", type=Path, required=False, default=Path("./gDNA_maps"), help="Directory containing gDNA plate maps named \"*_<id>.xlsx\"")
 	ap.add_argument("--manifest", "-m", type=Path, required=False)
+	ap.add_argument("--control", type=str, required=False)
 	ap.add_argument("--debug", action="store_true")
 
 	ap.add_argument("--output", "-o", type=Path, required=False, default=Path("./project_map.txt"))
