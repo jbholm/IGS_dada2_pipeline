@@ -34,8 +34,27 @@
     "qsub_pe": "thread 4",
     "qsub_w": "w",
     "qsub_b": "y",
+    "modules": {
+        "pacbio_demux_denoise": {
+            "global": {
+                "file_pattern": ".*-[^-]*?[\\.-](?<sample>.*)\\.ccs\\.fastq(\\.gz)?$"
+            },
+            "full-length": {
+                "dada2_forward_primer": "AGRGTTYGATYMTGGCTCAG",
+                "dada2_reverse_primer": "AAGTCGTAACAAGGTARCY",
+                "dada2_min_length": 1000,
+                "dada2_max_length": 4000
+            },
+            "its": {
+                "file_pattern": ".*-[^-]*?[\\.-](?<sample>.*)\\.ccs\\.fastq(\\.gz)?$",
+                "dada2_forward_primer": "TACACACCGCCCGTCG",
+                "dada2_reverse_primer": "GCATATHANTAAGSGSAGG",
+                "dada2_min_length": 50
+            }
+        }
+    },
     "part1 params": {
-        "demux_map": "./data/UDI_ALL_INDEX_MAP_corrected.txt",
+        "barcodes": "./data/barcodes/XT_IDT_UDI_master_designset_rci7_i5_1-1536.txt",
         "fastqc_limits": "./data/fastqc/limits.txt",
         "extract_barcodes_rev_comp_args": "",
         "split_libraries_args": "",
@@ -50,7 +69,6 @@
     },
     "part1 param profiles": {
         "nextseq": {
-            "demux_map": "./data/XT_IDT_UDI_master_designset_rci7_i5_1-1536.txt",
             "extract_barcodes_rev_comp_args": "--rev_comp_bc2",
             "trim_poly_g": 1,
             "dada2_error_estimation_function": "loessErrfun_monotonic"

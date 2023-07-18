@@ -142,8 +142,8 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         try_assign I2 "$1" "$2"
         shift 2
         ;;
-    -m|--map)
-        try_assign MAP "$1" "$2"
+    --barcodes)
+        try_assign barcodes "$1" "$2"
         shift 2
         ;;
     --extract_barcodes_rev_comp_args*)
@@ -462,12 +462,12 @@ else
 fi
 
 # Validate that mapping file, if given, exists
-if [[ ! -z ${MAP+x} ]]; then
-    if [[ ! -e "$MAP" ]]; then
+if [[ ! -z ${barcodes+x} ]]; then
+    if [[ ! -e "$barcodes" ]]; then
         stop "\tMapping file (-m) does not exist or is inaccessible."
     else
-        printf "MAPPING FILE: $MAP\n"
-        MAP="-m $MAP"
+        printf "MAPPING FILE: $barcodes\n"
+        barcodes="--barcodes $barcodes"
     fi
 fi
 
@@ -760,7 +760,7 @@ module load r/4.0.2 2>/dev/null || true
 log="$SD/${RUN}_16S_pipeline_log.txt"
 
 # Remove extra spaces caused by joining empty arguments with a whitespace
-OPTSARR=("$PARAMS" "$DBG" "$NOSKIP" "$NODELETE" "$VERBOSE" "$MAP" "$TROUBLESHOOT_BARCODES" "$ONESTEP" "$FWD_PRIMER" "$REV_PRIMER" "$TRIM_MAXLENGTH" "$DADA2_TRUNCQ" "$TRIM_LENGTH_FWD" "$TRIM_LENGTH_REV" "$TRIM_POLY_G" "$AMPLICON_LENGTH" "$DADA2_MINLEN" "$DADA2_MINQ" "$DADA2_MAXEE" "$DADA2_RMPHIX" "${DADA2_ERROR_ESTIMATION_FUNCTION}" "$DADA2MEM" "$DRY_RUN" "$EXTRACT_BARCODES_REV_COMP_ARGS" "$EXTRACT_BARCODES_APPEND_ARGS" "$SPLIT_LIBRARIES_ARGS")
+OPTSARR=("$PARAMS" "$DBG" "$NOSKIP" "$NODELETE" "$VERBOSE" "$barcodes" "$TROUBLESHOOT_BARCODES" "$ONESTEP" "$FWD_PRIMER" "$REV_PRIMER" "$TRIM_MAXLENGTH" "$DADA2_TRUNCQ" "$TRIM_LENGTH_FWD" "$TRIM_LENGTH_REV" "$TRIM_POLY_G" "$AMPLICON_LENGTH" "$DADA2_MINLEN" "$DADA2_MINQ" "$DADA2_MAXEE" "$DADA2_RMPHIX" "${DADA2_ERROR_ESTIMATION_FUNCTION}" "$DADA2MEM" "$DRY_RUN" "$EXTRACT_BARCODES_REV_COMP_ARGS" "$EXTRACT_BARCODES_APPEND_ARGS" "$SPLIT_LIBRARIES_ARGS")
 OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 
@@ -873,7 +873,7 @@ appropriate for various PCR protocols, hypervariable regions, and sequencing
 machines. Giving any of the following command-line options will override the
 pre-configured value:
 
-B<--map, --extract_barcodes_rev_comp_args, --split_libraries_args, --fwd_primer,>
+B<--barcodes, --extract_barcodes_rev_comp_args, --split_libraries_args, --fwd_primer,>
 B<--rev_primer, --trim_poly_g, --dada2-truncQ, --dada2-rmPhix, --dada2-minQ,>
 B<--dada2-maxEE, --dada2-minLen, --dada2-truncLen-f, --dada2-truncLen-r, --dada2_error_estimation_function>
 
@@ -1001,9 +1001,12 @@ with B<--1step>. Gzip compression optional.
 Full path to raw index 2 file (I2, or R3 in old naming scheme). Incompatible 
 with B<--1step>. Gzip compression optional.
 
-=item B<--map>, B<-m> file
+=item B<--barcodes>, B<-m> file
 
-The full path to a Qiime-formatted mapping file.
+The full path to a Qiime-formatted barcode mapping file. Default is in the 
+config; use "./data/barcodes/UDI_ALL_INDEX_MAP_corrected.txt" when the ticket or gel 
+images use phrases like "set A" "set B" "set C" "set D" "XT", or 
+"normal APJR4 indices".
 
 =back
 

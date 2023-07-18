@@ -223,6 +223,15 @@ if ( $silvaFile || $homdFile ) {
           # NB The exact matches that yield species assignments, done during
           # assign_taxonomies.R, take precedence over PECAN. They are however,
           # excluded by these very strict regex patterns
+
+           # Why can't we simply look for where genera match between SILVA and
+           # PECAN assignments? Because Saccharibacteria, Saccharimonadia,
+           # Saccharimonadales, Saccharimonadaceae, Candidatus_Saccharimonas,
+           # and Mageeibacillus are not contained in our PECAN models
+
+           # can we log when these are reassigned (uncomment that print statmt
+           # below) so I can see what Saccharibacteria and Mageeibacillus ASVs
+           # are assigned by speciateIT?
             if (   $tx && $tx =~ /^g_Lactobacillus$/
                 || $tx && $tx =~ /^g_Shuttleworthia$/
                 || $tx && $tx =~ /^p_Saccharibacteria$/

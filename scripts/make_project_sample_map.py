@@ -33,12 +33,15 @@ def main(args):
 			print(sample_to_gdna)
 	
 	gdna_to_barcode_plate = get_pooling(args.pooling)
-	if args.debug: 
-		print("Pooling:")
+	if args.debug:
+		print("Pooling detail:")
 		print(gdna_to_barcode_plate)
 	project_map = gdna_to_barcode_plate.merge(sample_to_gdna, how="inner", on=["gDNA plate ID"])
 	if sample_to_gdna.shape[0] > project_map.shape[0]:
-		print("gDNA plates not in pooling details: " + ",".join(set(sample_to_gdna["gDNA plate ID"]).difference(set(gdna_to_barcode_plate["gDNA plate ID"]))))
+		plate_diff = set(sample_to_gdna["gDNA plate ID"]).difference(
+			set(gdna_to_barcode_plate["gDNA plate ID"])
+			)
+		print("gDNA plates not in pooling details: " + ",".join(plate_diff))
 		quit("Error: Lost rows when joining gDNA maps to pooling detail. gDNA plate IDs did not match.")
 	if args.debug: 
 		print("Joined map:")
@@ -72,7 +75,7 @@ def apply_manifest(sample_to_gdna, manifest_file):
 	sample_to_gdna = sample_to_gdna.copy()
 	manifest = get_manifest(manifest_file)["sample_name"]
 
-	# detach controls temporarily
+	# temporarily detach wells where controls are expected
 	ctrls_bool = sample_to_gdna["WELL"].isin(CONFIG["CTRL_WELLS"])
 	ctrls = sample_to_gdna.loc[ctrls_bool, :]
 	sample_to_gdna = sample_to_gdna.loc[~ctrls_bool, :]
@@ -88,6 +91,7 @@ def apply_manifest(sample_to_gdna, manifest_file):
 	if(not all(to_repl)):
 		print("Warning: gDNA samples not in manifest:")
 		sample_to_gdna.loc[~to_repl, "SAMPLE ID"].apply(print)
+		print("(Controls are expected in " + ",".join(CONFIG["CTRL_WELLS"]) + ")")
 		print("This is okay if these samples were added by MD Genomics.\n")
 
 	sample_to_gdna = pd.concat([sample_to_gdna, ctrls]) # add back the controls
@@ -184,15 +188,20 @@ def get_gdna(indir):
 	for gdna_file in indir.iterdir():
 		if gdna_file.suffix == ".xlsx":
 			gdna_df = pd.read_excel(gdna_file, header=0)
-			if args.debug:
-				print(str(gdna_file) + ":")
-				print(gdna_df)
+			if(not all([x in gdna_df.columns for x in ["WELL", "SAMPLE ID"]])):
+				raise ValueError("gDNA map does not contain header columns \"WELL\" and \"SAMPLE ID\": " + gdna_file.name)
+			
 			gdna_plate = str(gdna_file.name)
 			gdna_plate_parts = gdna_plate.split("_")
 			gdna_plate = gdna_plate_parts[len(gdna_plate_parts)-1].split(".")[0]
 			gdna_df["gDNA plate ID"] = gdna_plate
 			gdna_dfs.append(gdna_df)
+			
+			if args.debug:
+				print(str(gdna_file) + ":")
+				print(gdna_df)
 	gdna_df = pd.concat(gdna_dfs)
+
 
 	return gdna_df
 

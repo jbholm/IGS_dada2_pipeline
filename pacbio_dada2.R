@@ -25,7 +25,7 @@ parser$add_argument(
     "--pattern",
     metavar = "GLOB",
     type = "character",
-    help = "Regex pattern that will match all DEMUXED .ccs.fastq.gz files. Use () in place of sample name. Remember to escape regex special characters. For correct bash syntax, enclose the pattern in double quotes."
+    help = "Regex pattern that will match all DEMUXED .ccs.fastq.gz files. The first capture group will be extracted as sample name. Remember to escape regex special characters. For correct bash syntax, enclose the pattern in double quotes."
 )
 parser$add_argument(
     "--wd",
@@ -68,12 +68,6 @@ parser$add_argument(
 	default = T,
     help = "Allow insertions or deletions of bases when matching adapters"
 )
-parser$add_argument(
-    "--min_length",
-	action="store", default=1000,
-    type = "integer",
-	help = "Remove reads with length shorter than min_length. min_length is enforced after quality trimming and truncation."
-)
 # the DADA2 tutorial default for max_length is 1600, but 4000 is the max
 # seq length in our SILVA db
 parser$add_argument(
@@ -81,6 +75,16 @@ parser$add_argument(
 	action="store", default=4000,
     type = "integer",
 	help = "Remove reads with length longer than max_length. max_length is enforced before quality trimming and truncation."
+)
+parser$add_argument(
+    "--min_length",
+	action="store", default=1000,
+    type = "integer",
+	help = "Remove reads with length shorter than min_length. min_length is enforced after quality trimming and truncation."
+)
+parser$add_argument(
+    "--rm.phix",
+    action = "store_true"
 )
 args <- parser$parse_args()
 if (any(is.null(args))) {
@@ -122,12 +126,22 @@ cache_checksums <- function(files, name) {
 }
 run_meta(new_params = list(platform = "PACBIO"))
 
-glob_pattern <- gsub("()", "(.*?)", args$pattern, fixed = T)
-fastqs <- sort(list.files(inPath, pattern = glob_pattern, full.names = T)) # B01\..+\.css\.fastq\.gz
+# glob_pattern <- gsub("()", "(.*?)", args$pattern, fixed = T)
+files <- list.files(inPath, full.names = T)
+fastqs <- sort(files[grepl(args$pattern, files, perl = T)])
 print(fastqs)
-sample.names <- sapply(fastqs, function(filename) {
-    paste(run, sub(glob_pattern, "\\1", basename(filename), perl = T), sep = ".")
-})
+fastqs_basename <- sapply(fastqs, basename)
+
+rex <- regexpr(args$pattern, fastqs_basename, perl=TRUE)
+sample.names <- paste(
+	run, 
+	substr(
+		fastqs_basename, 
+		attr(rex, 'capture.start')[,"sample"], 
+		attr(rex, 'capture.start')[,"sample"] + attr(rex, 'capture.length')[,"sample"] - 1
+	), 
+	sep = "."
+	)
 
 # copy to a local directory regardless of original location, and pre-pend the
 # run name while we're at it
@@ -191,7 +205,9 @@ trim_primers <- function(ins, outs) {
     }, ins = ins, outs = outs)) %>%
         set_rownames(names(ins)) %>%
         set_colnames(c("reads.in", "reads.out"))
-    if(all(prim.stats$reads.out == 0)) {
+		
+	# class(prim.stats) [1] "matrix" "array", so use `[` slicing operator
+    if(all(prim.stats[, "reads.out"] == 0)) {
 		warning("No reads passed the Removing Primers step  (Did you select the right primers?)")
 	}
     
@@ -249,7 +265,7 @@ trim_and_filter <- function(ins, outs) {
         minQ = 0,
         maxN = Inf,
         maxEE = Inf,
-        rm.phix = FALSE, # DADA2 PacBio tutorials did not remove PhiX
+        rm.phix = args$rm.phix,
         compress = TRUE,
         multithread = T,
         verbose = TRUE
@@ -320,7 +336,7 @@ trim_and_filter <- function(ins, outs) {
         truncQ = 2,
         minLen = args$min_length,
         maxLen = args$max_length,
-        rm.phix = FALSE,
+        rm.phix = args$rm.phix,
         compress = TRUE,
         multithread = T,
         verbose = TRUE

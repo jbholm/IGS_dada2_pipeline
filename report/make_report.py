@@ -613,7 +613,7 @@ COPY all images to the appropriate report folder and get their filepaths
 
 def getFastqcLocal(directory):
     ans = {}
-    run = os.path.basename(os.path.dirname(os.path.dirname(directory)))
+    run = os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(directory))))
     imgDir = os.path.join(pw.proj("REPORT"), "FastQC")
 
     # Get the images in this fastqc analysis

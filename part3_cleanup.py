@@ -1054,6 +1054,7 @@ index_contents = """
 *_all_runs_dada2_ASV.fasta: Denoised ASVs (Amplicon Sequence Variants).
 *_DADA2_stats.txt: Table of sample read throughput.
 *_sample_plate_map.txt: Map showing plate position of each sample.
+_REFERENCES.txt - List of citations for all software tools used
 COUNTS_BY_ASV: Read count tables with reads counted by ASV
 COUNTS_BY_TAXON: Read count tables with reads counted by taxon. Corresponding taxonomic assignment files in ./TAXONOMY_FINAL and ./TAXONOMY_INTERMEDIATES.
 FASTQ: Raw reads per sample
@@ -1162,7 +1163,8 @@ CITATION_GROUPS = {
         Step_citations(
             'QC, decontamination, and denoising',
             [
-                'Callahan, B., McMurdie, P., Rosen, M. et al. DADA2: High-resolution sample inference from Illumina amplicon data. Nat Methods 13, 581–583 (2016). https://doi.org/10.1038/nmeth.3869'
+                'Callahan, B., McMurdie, P., Rosen, M. et al. DADA2: High-resolution sample inference from Illumina amplicon data. Nat Methods 13, 581–583 (2016). https://doi.org/10.1038/nmeth.3869',
+                "Callahan BJ, Wong J, Heiner C, Oh S, Theriot CM, Gulati AS, McGill SK, Dougherty MK. High-throughput amplicon sequencing of the full-length 16S rRNA gene with single-nucleotide resolution. Nucleic Acids Res. 2019."
             ],
             3
         ),

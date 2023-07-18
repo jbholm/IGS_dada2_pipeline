@@ -407,7 +407,7 @@ nTrimmed <- filterAndTrim(
 	minLen = 0,
     maxN = Inf,
     truncQ = 0,
-    rm.phix = F,
+    rm.phix = args$rm.phix,
     compress = F,
     multithread = args$multithread,
     verbose = F,

@@ -18,6 +18,10 @@ try_assign()
     return 0
 }
 
+# global params
+source <(python3 $MY_DIR/lib/get_config.py modules pacbio_demux_denoise global)
+# full-length is default
+source <(python3 $MY_DIR/lib/get_config.py modules pacbio_demux_denoise full-length)
 
 while [[ ! "$1" == "--" && "$#" != 0 ]]; do
   case "$1" in
@@ -37,15 +41,15 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         ;;
     --pattern*) 
         if [[ $1 =~ "--pattern=" ]]; then 
-            PATTERN="${1#*=}"
-            if [[ ! -n "$PATTERN" || ! $1 =~ "=" ]]; then  
+            file_pattern="${1#*=}"
+            if [[ ! -n "$file_pattern" || ! $1 =~ "=" ]]; then  
                 MSG="--pattern missing value."
                 MSG+=" --pattern=\"\" and --pattern= are not accepted."
                 stop "$MSG"
             fi
             shift 1
         elif [[ $1 == "--pattern" ]]; then
-            try_assign PATTERN "$1" "$2"
+            try_assign file_pattern "$1" "$2"
             shift 2
         fi
         ;;
@@ -79,63 +83,63 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         ;;
     --dada2_forward_primer*)
         if [[ $1 =~ "--dada2_forward_primer=" ]]; then 
-            DADA2_FORWARD_PRIMER="${1#*=}"
-            if [[ ! -n "$DADA2_FORWARD_PRIMER" || ! $1 =~ "=" ]]; then  
+            dada2_forward_primer="${1#*=}"
+            if [[ ! -n "$dada2_forward_primer" || ! $1 =~ "=" ]]; then  
                 MSG="--dada2_forward_primer missing value."
                 MSG+=" --dada2_forward_primer=\"\" and --dada2_forward_primer= are not accepted."
                 stop "$MSG"
             fi
             shift 1
         elif [[ $1 == "--dada2_forward_primer" ]]; then
-            try_assign DADA2_FORWARD_PRIMER "$1" "$2"
+            try_assign dada2_forward_primer "$1" "$2"
             shift 2
         fi
         ;;
     --dada2_reverse_primer*)
         if [[ $1 =~ "--dada2_reverse_primer=" ]]; then 
-            DADA2_REVERSE_PRIMER="${1#*=}"
-            if [[ ! -n "$DADA2_REVERSE_PRIMER" || ! $1 =~ "=" ]]; then  
+            dada2_reverse_primer="${1#*=}"
+            if [[ ! -n "$dada2_reverse_primer" || ! $1 =~ "=" ]]; then  
                 MSG="--dada2_reverse_primer missing value."
                 MSG+=" --dada2_reverse_primer=\"\" and --dada2_reverse_primer= are not accepted."
                 stop "$MSG"
             fi
             shift 1
         elif [[ $1 == "--dada2_reverse_primer" ]]; then
-            try_assign DADA2_REVERSE_PRIMER "$1" "$2"
+            try_assign dada2_reverse_primer "$1" "$2"
             shift 2
         fi
         ;;
     --dada2_min_length*)
         if [[ $1 =~ "--dada2_min_length=" ]]; then 
-            DADA2_MIN_LENGTH="${1#*=}"
-            if [[ ! -n "$DADA2_MIN_LENGTH" || ! $1 =~ "=" ]]; then  
+            dada2_min_length="${1#*=}"
+            if [[ ! -n "$dada2_min_length" || ! $1 =~ "=" ]]; then  
                 MSG="--dada2_min_length missing value."
                 MSG+=" --dada2_min_length=\"\" and --dada2_min_length= are not accepted."
                 stop "$MSG"
             fi
             shift 1
         elif [[ $1 == "--dada2_min_length" ]]; then
-            try_assign DADA2_MIN_LENGTH "$1" "$2"
+            try_assign dada2_min_length "$1" "$2"
             shift 2
         fi
         ;;
     --dada2_max_length*)
         if [[ $1 =~ "--dada2_max_length=" ]]; then 
-            DADA2_MAX_LENGTH="${1#*=}"
-            if [[ ! -n "$DADA2_MAX_LENGTH" || ! $1 =~ "=" ]]; then  
+            dada2_max_length="${1#*=}"
+            if [[ ! -n "$dada2_max_length" || ! $1 =~ "=" ]]; then  
                 MSG="--dada2_max_length missing value."
                 MSG+=" --dada2_max_length=\"\" and --dada2_max_length= are not accepted."
                 stop "$MSG"
             fi
             shift 1
         elif [[ $1 == "--dada2_max_length" ]]; then
-            try_assign DADA2_MAX_LENGTH "$1" "$2"
-            DADA2_MAX_LENGTH="--max_length=${DADA2_MAX_LENGTH}"
+            try_assign dada2_max_length "$1" "$2"
+            dada2_max_length="--max_length=${dada2_max_length}"
             shift 2
         fi
         ;;
     --its|--ITS)
-        DADA2_MIN_LENGTH="--min_length=50"
+        source <(python3 $MY_DIR/lib/get_config.py modules pacbio_demux_denoise its)
         shift 1
         ;;
     --no-delete|--nodelete|--no_delete)
@@ -246,36 +250,36 @@ if [[ -n "$EMAIL" ]]; then
     QSUB_ARGS="$QSUB_ARGS $EMAIL"
 fi
 
-if [[ ! -n "$PATTERN" ]]; then
-    PATTERN=".*-([^-]*?)(-bc[0-9]{4}){2}\.ccs\.fastq(\.gz)?$"
+if [[ -n "$file_pattern" ]]; then
+    file_pattern="--pattern=\"$file_pattern\""
 fi
 
-if [[ ! -z ${DADA2_FORWARD_PRIMER+x} ]]; then
-    if [[ ${DADA2_FORWARD_PRIMER^^} =~ [^ACTGURYSWKMBVDHN] ]]; then
+if [[ ! -z ${dada2_forward_primer+x} ]]; then
+    if [[ ${dada2_forward_primer^^} =~ [^ACTGURYSWKMBVDHN] ]]; then
         stop "Unrecognized characters in --dada2_forward_primer"
     else
-        DADA2_FORWARD_PRIMER="--forward_primer=$DADA2_FORWARD_PRIMER"
+        dada2_forward_primer="--forward_primer=$dada2_forward_primer"
     fi
 fi
-if [[ ! -z ${DADA2_REVERSE_PRIMER+x} ]]; then
-    if [[ ${DADA2_REVERSE_PRIMER^^} =~ [^ACTGURYSWKMBVDHN] ]]; then
+if [[ ! -z ${dada2_reverse_primer+x} ]]; then
+    if [[ ${dada2_reverse_primer^^} =~ [^ACTGURYSWKMBVDHN] ]]; then
         stop "Unrecognized characters in --dada2_reverse_primer"
     else
-        DADA2_REVERSE_PRIMER="--reverse_primer=$DADA2_REVERSE_PRIMER"
+        dada2_reverse_primer="--reverse_primer=$dada2_reverse_primer"
     fi
 fi
-if [[ ! -z ${DADA2_MIN_LENGTH+x} ]]; then
-    if [[ ${DADA2_MIN_LENGTH} =~ [0-9]+ ]]; then
+if [[ ! -z ${dada2_min_length+x} ]]; then
+    if [[ ! ${dada2_min_length} =~ [0-9]+ ]]; then
         stop "--dada2_min_length must be integer"
     else
-        DADA2_MIN_LENGTH="--min_length=${DADA2_MIN_LENGTH}"
+        dada2_min_length="--min_length=${dada2_min_length}"
     fi
 fi
-if [[ ! -z ${DADA2_MAX_LENGTH+x} ]]; then
-    if [[ ${DADA2_MAX_LENGTH} =~ [0-9]+ ]]; then
+if [[ ! -z ${dada2_max_length+x} ]]; then
+    if [[ ! ${dada2_max_length} =~ [0-9]+ ]]; then
         stop "--dada2_max_length must be integer"
     else
-        DADA2_MAX_LENGTH="--max_length=${DADA2_MAX_LENGTH}"
+        dada2_max_length="--max_length=${dada2_max_length}"
     fi
 fi
 
@@ -298,12 +302,12 @@ log="$SD/${RUN}_16S_pipeline_log.txt"
 
 OPTSARR=("$PARAMS" "$NODELETE")
 OPTS="${OPTSARR[*]}"
-OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
+OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )" # remove excess spaces in above OPTSARR
 R=`cat "$MY_DIR/config.json" | \
     python3 -sc "import sys, json; print(json.load(sys.stdin)['R'])"`
-ARGS=("-l mem_free=128G" "-P" "$QP" "-V" "-N" "MSL_PACBIO" "-o ${SD}/qsub_stdout_logs/pacbio_dada2.R.stdout" "-e ${SD}/qsub_error_logs/pacbio_dada2.R.stderr" "$QSUB_ARGS" "${R}script" "$MY_DIR/pacbio_dada2.R" "$OPTS" "--wd" "$SD" "--pattern" "\"$PATTERN\"" "${DADA2_FORWARD_PRIMER}" "${DADA2_REVERSE_PRIMER}" "${DADA2_MIN_LENGTH}" "${DADA2_MAX_LENGTH}")
+ARGS=("-l mem_free=128G" "-P" "$QP" "-V" "-N" "MSL_PACBIO" "-o ${SD}/qsub_stdout_logs/pacbio_dada2.R.stdout" "-e ${SD}/qsub_error_logs/pacbio_dada2.R.stderr" "$QSUB_ARGS" "${R}script" "$MY_DIR/pacbio_dada2.R" "$OPTS" "--wd" "$SD" "${file_pattern}" "${dada2_forward_primer}" "${dada2_reverse_primer}" "${dada2_min_length}" "${dada2_max_length}" "--rm.phix")
 CMD=()
-for ARG in "${ARGS[@]}"; do
+for ARG in "${ARGS[@]}"; do # remove absent commands from above ARGS
     if [[ -n "$ARG" ]]; then
         CMD+=("$ARG")
     fi
@@ -361,9 +365,9 @@ Path to a directory where demultiplexed FASTQ's will be found.
 =item B<--pattern> REGEX
 
 The regex-like pattern that will be used to find demultiplexed FASTQ's and 
-parse sample names. Use "()" to denote where the sample name should be found 
-(this is where the pattern's function diverges from standard regex). Give the
-pattern as a quoted string on the command line.
+parse sample names. Use a named capture group in the form "(?<sample>...)" to 
+denote where the sample name should be found. Give the pattern as a quoted 
+string on the command line. See the config file for the default pattern.
 
 =item B<-r> RUN
 
