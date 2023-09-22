@@ -86,10 +86,30 @@ parser$add_argument(
     "--rm.phix",
     action = "store_true"
 )
+parser$add_argument(
+	"--memory",
+	type = "integer",
+	default = 128,
+	help = "(GB) Limits the number of threads dada2 functions are allowed to start, based on an internal model of memory used per thread."
+)
+parser$add_argument(
+	"--multithread",
+	default = parallel::detectCores(),
+	action="store",
+	type = "integer",
+	help = "Manually set number of threads."
+)
+
 args <- parser$parse_args()
 if (any(is.null(args))) {
     stop("Some args missing!")
 }
+
+args$multithread <- min(
+	# max(ceiling(max((args$memory - 27), 0) / 2), 1), 
+	parallel::detectCores(),
+	args$multithread
+	) # 27G base memory + 2 * number of dada2::filterAndTrim() threads
 
 setwd(args$wd)
 run <- basename(getwd())
@@ -150,8 +170,9 @@ dir.create(demuxed_path, showWarnings = T)
 demuxed_filepaths <- file.path(
     demuxed_path, paste(sample.names, "fastq.gz", sep = ".")
     )
+targets <- !fastqs %in% list.files(demuxed_filepaths, full.names = T)
 file.copy(
-    fastqs, demuxed_filepaths,
+    fastqs[targets], demuxed_filepaths[targets],
     overwrite = T, copy.mode = TRUE, copy.date = FALSE
 )
 cache_checksums(demuxed_filepaths, "samples")
@@ -166,14 +187,9 @@ trim_primers <- function(ins, outs) {
         return()
     }
 
-    cat("Trimming primers from: \n")
-    if (!is.null(names(ins))) {
-        cat(paste(names(ins), "\n"))
-    } else {
-        cat(paste(ins, "\n"))
-    }
-
 	arg_list <- list(
+		fn = ins,
+		fout = outs,
 		primer.fwd = args$forward_primer,
 		primer.rev = args$reverse_primer,
 		max.mismatch = args$max_mismatch, 
@@ -183,28 +199,33 @@ trim_primers <- function(ins, outs) {
 	print("Executing dada2::removePrimers() with args:")
 	print(arg_list)
 
-    # Remove primers. Discard reads without primers. Write these counts somewhere?
-    prim.stats <- t(mapply(function(ins, outs) {
-        stats <- tryCatch(
-            {
-				suppressWarnings(
+    # Remove primers. Discard reads without primers.
+    prim.stats <- #t(mapply(function(ins, outs) {
+		# not sure why I made this elaborate structure to catch errors
+		# if an error occurs, it should probably stop the pipeline
+        # stats <- tryCatch(
+        #     {
+		# 		suppressWarnings(
                 	do.call(
 						dada2::removePrimers,
-						c(ins, outs, arg_list)
-					)
-				)
-            },
-            error = function(e) {
-                fq <- readFastq(ins)
-                inseqs <- length(fq)
-                ans <- data.frame(reads.in = inseqs, reads.out = 0)
-                return(ans)
-            }
-        )
-        return(stats)
-    }, ins = ins, outs = outs)) %>%
-        set_rownames(names(ins)) %>%
-        set_colnames(c("reads.in", "reads.out"))
+						arg_list
+					) %>%
+					set_rownames(names(ins))
+			# 	)
+            # },
+            # error = function(e) {
+            #     fq <- readFastq(ins)
+            #     inseqs <- length(fq)
+            #     ans <- data.frame(reads.in = inseqs, reads.out = 0)
+            #     return(ans)
+            # }
+        # )
+        # return(stats)
+    # }, ins = ins, 
+	# outs = outs,
+	# SIMPLIFY = F)) %>%
+    #     set_rownames(names(ins)) %>%
+    #     set_colnames(c("reads.in", "reads.out"))
 		
 	# class(prim.stats) [1] "matrix" "array", so use `[` slicing operator
     if(all(prim.stats[, "reads.out"] == 0)) {
@@ -236,12 +257,12 @@ trim_and_filter <- function(ins, outs) {
         cat("No samples to QC")
         return()
     }
-    cat("Quality-trimming and filtering: \n")
-    if (!is.null(names(ins))) {
-        cat(paste(names(ins), "\n"))
-    } else {
-        cat(paste(ins, "\n"))
-    }
+    # cat("Quality-trimming and filtering: \n")
+    # if (!is.null(names(ins))) {
+    #     cat(paste(names(ins), "\n"))
+    # } else {
+    #     cat(paste(ins, "\n"))
+    # }
 
     targets <- if (length(ins) > 5) {
         sample(x = 1:length(ins), size = 5, replace = FALSE)
@@ -257,19 +278,28 @@ trim_and_filter <- function(ins, outs) {
     dev.off()
 
     quality_trimmed <- paste0(outs, ".qtrim.fastq.gz")
-    ## perform quality trimming
-    dada2::filterAndTrim(
-        fwd = ins,
+
+	arg_list <- list(
+		fwd = ins,
         filt = quality_trimmed,
-        truncQ = 3,
+		truncQ = 3,
         minQ = 0,
         maxN = Inf,
         maxEE = Inf,
         rm.phix = args$rm.phix,
         compress = TRUE,
-        multithread = T,
+        multithread = args$multithread,
         verbose = TRUE
-    )
+	)
+
+	print("Executing dada2::filterAndTrim() with args:")
+	print(arg_list)
+
+    ## perform quality trimming
+	do.call(
+		dada2::filterAndTrim,
+		arg_list
+	)
 
     lens.fn <- lapply(quality_trimmed[file.exists(quality_trimmed)], function(fn) {
         nchar(dada2::getSequences(fn))
@@ -338,7 +368,7 @@ trim_and_filter <- function(ins, outs) {
         maxLen = args$max_length,
         rm.phix = args$rm.phix,
         compress = TRUE,
-        multithread = T,
+        multithread = args$multithread,
         verbose = TRUE
     )
     
@@ -368,12 +398,13 @@ denoise <- function(ins) {
 
     set.seed(100)
     # dereplicate
-    drp <- dada2::derepFastq(ins, verbose = TRUE, qualityType = "FastqQuality")
+    drp <- dada2::derepFastq(ins, verbose = TRUE, qualityType = "FastqQuality", n = 5e+05)
     # Learn error rates
     err <- dada2::learnErrors(drp,
-        BAND_SIZE = 32, multithread = TRUE,
+        BAND_SIZE = 32, multithread = args$multithread,
         errorEstimationFunction = dada2:::PacBioErrfun,
-        randomize = TRUE
+        randomize = TRUE,
+		verbose = T
     ) # seconds
 
     png("04_error_profiles.png", height = 1000, width = 1000)
@@ -381,7 +412,7 @@ denoise <- function(ins) {
     dev.off()
 
     # Sample inference
-    dd <- dada2::dada(drp, err = err, multithread = TRUE)
+    dd <- dada2::dada(drp, err = err, multithread = args$multithread)
     rm(drp)
 
     ## Make sequence abundance table
@@ -425,7 +456,7 @@ dir.create(tagcleanedpath, showWarnings = TRUE)
 tcs <- file.path(tagcleanedpath, paste0(sample.names, "_trimmed.fastq.gz"))
 names(tcs) <- sample.names
 samples <- cbind(samples, primer_trimmed = tcs)
-targets <- !tcs %in% list.files(tagcleanedpath, full.names = T)
+targets <- !tcs %in% list.files(tagcleanedpath, full.names = T) & file.exists(samples$CCS)
 # don't process repeats
 
 primer_trim_output <- trim_primers(
@@ -483,7 +514,7 @@ if(! args$nodelete){
 remove_chimeras <- function(args) {
     bim2 <- dada2::isBimeraDenovo(
         seqtab,
-        minFoldParentOverAbundance = 3.5, multithread = TRUE
+        minFoldParentOverAbundance = 3.5, multithread = args$multithread
     )
     table(bim2) # FALSE: 1794; TRUE: 1290
     sum(seqtab[, bim2]) / sum(seqtab) # 0.04069179

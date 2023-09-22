@@ -34,6 +34,7 @@
     "qsub_pe": "thread 4",
     "qsub_w": "w",
     "qsub_b": "y",
+    "qsub_allowed_tries": 5,
     "modules": {
         "pacbio_demux_denoise": {
             "global": {

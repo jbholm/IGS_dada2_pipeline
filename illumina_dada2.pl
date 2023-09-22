@@ -101,8 +101,7 @@ run name will be parsed. The last directory on PATH must be named after the run.
 
 =item B<--qsub-project>=space, B<-qp> space
 
-Indicate which qsub-project space should be used for all qsubmissions. The
-default is jravel-lab.
+Indicate which qsub-project space should be used for all qsubmissions.
 
 =item B<--debug> {barcodes, demux, splitsamples, tagclean, dada2}
 
@@ -395,7 +394,6 @@ GetOptions(
     "dada2-mem:s"                       => \$dada2mem,
     "1Step!"                            => \$oneStep,
     "working-dir|wd=s"                  => \my $wd,
-    "qsub-project|qp=s"                 => \my $qproj,
     "troubleshoot_barcodes!"            => \$tbshtBarcodes,
     "delete!"                           => \$delete,
     )
@@ -565,13 +563,6 @@ my %step2number = (
     "tagcleaned"    => 6,
     "dada2part1out" => 7
 );
-
-if ( !$qproj ) {
-    print
-        "\nqsub-project ID (--qsub-project, -qp) not provided. Using jravel-lab "
-        . " as default\n";
-    $qproj = "jravel-lab";
-}
 
 if ( !-e $GLOBAL_PATHS->part1_error_log() ) {
     mkdir $GLOBAL_PATHS->part1_error_log();
@@ -1381,7 +1372,7 @@ sub demux {
         @cmds = ();
         my $cmd
             = $GLOBAL_PATHS->get_config()->{'executor'}
-            . " -N $step2 -P $qproj -e "
+            . " -N $step2 -e "
             . $paths->part1_error_log() . " -o "
             . $paths->part1_stdout_log()
             . " $script -i $readsForInput -o "
@@ -1393,7 +1384,7 @@ sub demux {
         push @cmds, $cmd;
         $cmd
             = $GLOBAL_PATHS->get_config()->{'executor'}
-            . " -N $step2 -P $qproj -e "
+            . " -N $step2 -e "
             . $paths->part1_error_log() . " -o "
             . $paths->part1_stdout_log()
             . " $script -i $readsRevInput -o "
@@ -1504,7 +1495,7 @@ sub demux {
         @cmds = ();
         push @cmds,
               $GLOBAL_PATHS->get_config()->{'executor'}
-            . " -l mem_free=300M -P $qproj -e "
+            . " -l mem_free=300M -e "
             . $paths->part1_error_log() . " -o "
             . $paths->part1_stdout_log()
             . " $binary --limits "
@@ -1514,7 +1505,7 @@ sub demux {
             . $paths->fwd_library();
         push @cmds,
               $GLOBAL_PATHS->get_config()->{'executor'}
-            . " -l mem_free=300M -P $qproj -e "
+            . " -l mem_free=300M -e "
             . $paths->part1_error_log() . " -o "
             . $paths->part1_stdout_log()
             . " $binary --limits "
@@ -1616,6 +1607,7 @@ if ( !@dbg || grep( /^splitsamples$/, @dbg ) ) {
 
         my $fwd_dir = mkdtemp("demultiplex_XXXXXX");
         my $rev_dir = mkdtemp("demultiplex_XXXXXX");
+
         push @cmds,
               "$script -i "
             . $GLOBAL_PATHS->fwd_library()
@@ -1624,13 +1616,14 @@ if ( !@dbg || grep( /^splitsamples$/, @dbg ) ) {
               " $script -i "
             . $GLOBAL_PATHS->rev_library()
             . " --file_type fastq -o $rev_dir";
+
         execute_and_log(
             cmds    => \@cmds,
             logger  => $GLOBAL_PATHS,
             dry_run => $dryRun,
             msg     => "Splitting $run seqs.fastq " . "files by sample ID\n",
             qsub    => 1,
-            mem     => "5G",
+            mem_GB  => "5",
             name    => $step3,
             paths   => $GLOBAL_PATHS,
             config  => $GLOBAL_PATHS->get_config(),
@@ -1638,10 +1631,18 @@ if ( !@dbg || grep( /^splitsamples$/, @dbg ) ) {
 
         $GLOBAL_PATHS->print("Temp fwd dir: $fwd_dir\n") if $verbose;
         $GLOBAL_PATHS->print("Temp rev dir: $rev_dir\n") if $verbose;
-        my @fwdOutput = glob( catfile( $fwd_dir, "*.fastq" ) );
-        my @revOutput = glob( catfile( $rev_dir, "*.fastq" ) );
-        if ( scalar @fwdOutput != scalar @revOutput ) {
-            die "Unequal numbers of forward and reverse sample FASTQ's output by $step3.\n";
+        my @fwdOutput   = glob( catfile( $fwd_dir, "*.fastq" ) );
+        my @revOutput   = glob( catfile( $rev_dir, "*.fastq" ) );
+        my $msg_printed = 0;
+        while ( scalar @fwdOutput != scalar @revOutput ) {
+            if ( !$msg_printed ) {
+                $GLOBAL_PATHS->print(
+                    "Waiting for all forward and reverse sample FASTQ's to appear in $fwd_dir and $rev_dir.\n"
+                );
+                $msg_printed = 1;
+            }
+            @fwdOutput = glob( catfile( $fwd_dir, "*.fastq" ) );
+            @revOutput = glob( catfile( $rev_dir, "*.fastq" ) );
         }
 
         # Append _R1 or _R2 to each filename
@@ -2667,7 +2668,7 @@ sub gzip_sge {
         dry_run => $dryRun,
         msg     => "Compressing demultiplexed FASTQ's...\n",
         qsub    => 1,
-        mem     => "1G",
+        mem_GB  => "1",
         name    => "gzip",
         paths   => $GLOBAL_PATHS,
         config  => $config,
@@ -2727,7 +2728,7 @@ sub dada2 {
         );
 
         $cmd
-            = "-w w -b y -P jravel-lab -q threaded.q -pe thread 4 -cwd -P $qproj -e ${R_out} -o "
+            = "-e ${R_out} -o "
             . $GLOBAL_PATHS->part1_stdout_log()
             . " -N Rscript \""
             . $GLOBAL_PATHS->get_config()->{R}
@@ -2739,7 +2740,7 @@ sub dada2 {
             msg     =>
                 "Running DADA2 with fastq files in $GLOBAL_PATHS->{'wd'} for $var region...\n",
             qsub   => 1,
-            mem    => "${dada2mem}G",
+            mem_GB => "${dada2mem}",
             config => $config,
             paths  => $paths,
             name   => "R_dada2"
@@ -2848,7 +2849,7 @@ sub execute_and_log {
     my $dryRun   = delete %arg{"dry_run"} // 0;
     my $cuteMsg  = delete %arg{"msg"}     // 0;
     my $qsub     = delete %arg{"qsub"}    // 0;
-    my $mem      = delete %arg{"mem"}     // "1G";
+    my $mem_GB   = delete %arg{"mem_GB"}  // "1";
     my $config   = delete %arg{"config"}  // undef;
     my $paths    = delete %arg{"paths"}   // undef;
     my $name     = delete %arg{"name"}    // "";
@@ -2859,68 +2860,110 @@ sub execute_and_log {
 
     $fh->print("$cuteMsg\n");
 
-    my @pids;
-    my $sge;
     if ($qsub) {
-        $sge = Schedule::SGE->new(
-            -executable => {
-                qsub  => '/usr/local/packages/sge-root/bin/lx24-amd64/qsub',
-                qstat => '/usr/local/packages/sge-root/bin/lx24-amd64/qstat',
-                qacct => '/usr/local/packages/sge-root/bin/lx24-amd64/qacct',
-                qdel  => '/usr/local/packages/sge-root/bin/lx24-amd64/qdel'
-            },
-            -l           => "mem_free=$mem",
-            -use_cwd     => 1,
-            -project     => $config->{"qsub_P"},
-            -name        => $name,
-            -output_file => $paths->part1_stdout_log(),
-            -error_file  => $paths->part1_error_log(),
-            -verbose     => $verbose,
-            -w           => $config->{"qsub_w"},
-            -b           => $config->{"qsub_b"}
-        );
-    }
+        my $l                   = "mem_free=${mem_GB}G";
+        my @allowed_exit_status = (0);
+        my $exit_status         = 1;
+        my $try                 = 0;
+        my $success             = 0;
 
-    foreach my $cmd (@commands) {
-        if ($verbose) {    # print each command
-            $fh->print("\$ $cmd\n");
-        }
-        else {
-            STDOUT->print("\$ $cmd\n");
-        }
+        while ( !grep( /^${exit_status}$/, @allowed_exit_status )
+            && $try < $config->{"qsub_allowed_tries"} )
+        {
+            $try += 1;
+            print STDERR "Try: $try\n";
+            print STDERR "Max: $config->{'qsub_allowed_tries'}\n";
 
-        if ($qsub) {
-            $sge->command($cmd);
-            push @pids, $sge->execute();
-        }
-        else {
-            $fh->print( system($cmd) );
+            my @pids;
+            my $sge = Schedule::SGE->new(
+                -executable => {
+                    qsub =>
+                        '/usr/local/packages/sge-root/bin/lx24-amd64/qsub',
+                    qstat =>
+                        '/usr/local/packages/sge-root/bin/lx24-amd64/qstat',
+                    qacct =>
+                        '/usr/local/packages/sge-root/bin/lx24-amd64/qacct',
+                    qdel => '/usr/local/packages/sge-root/bin/lx24-amd64/qdel'
+                },
+                -l           => "$l",
+                -use_cwd     => 1,
+                -project     => $config->{"qsub_P"},
+                -name        => $name,
+                -output_file => $paths->part1_stdout_log(),
+                -error_file  => $paths->part1_error_log(),
+                -verbose     => $verbose,
+                -w           => $config->{"qsub_w"},
+                -b           => $config->{"qsub_b"}
+            );
 
-            # system($cmd) == 0
-            #   or die "system($cmd) failed with exit code: $?"
-            #   if !$dryRun;
-        }
-
-    }
-
-    if ($qsub) {
-        my $done;
-        while ( !$done ) {
-            $done = 1;
-            $fh->print("Checking PIDs for job status...\n") if $verbose;
-            $sge->status();
-            foreach (@pids) {
-                $fh->print("PID: $_\n") if $verbose;
-                my @job_stats = @{ $sge->brief_job_stats($_) };
-                $fh->print( "Job stats:\n" . Dumper(@job_stats) ) if $verbose;
-                if (@job_stats) {
-                    $done = 0;
-                    last;
+            foreach my $cmd (@commands) {
+                if ($verbose) {    # print each command
+                    $fh->print("\$ $cmd\n");
                 }
+                else {
+                    STDOUT->print("\$ $cmd\n");
+                }
+
+                $sge->command($cmd);
+                push @pids, $sge->execute();
             }
-            sleep 1;
+
+            my $done;
+            while ( !$done ) {
+                $done = 0;
+                $fh->print("Checking PIDs for job status...\n") if $verbose;
+                $sge->status();
+                foreach (@pids) {
+                    $fh->print("PID: $_\n") if $verbose;
+                    my @job_stats = @{ $sge->brief_job_stats($_) };
+                    $fh->print( "Job stats:\n" . Dumper(@job_stats) )
+                        if $verbose;
+                    if (@job_stats) {
+                        last;
+                    }
+                    else {
+                        $done = 1;
+                        my $qacct = $sge->qacct($_);
+                        $exit_status = $qacct->{"exit_status"};
+
+                        if (   $qacct->{"failed"} != "0"
+                            || $exit_status != "0" )
+                        {
+                            print STDERR
+                                "Job $_ failed with exit_status $exit_status. Was try #${try} of the same step.\n";
+                            if ( $exit_status == "139" ) {
+                                $mem_GB *= 2;
+                                $l
+                                    = "$l hostname='!$qacct->{'hostname'}' mem_free=${mem_GB}G";
+                            }
+                        }
+                        else {
+                            $success = 1;
+                        }
+                    }
+                }
+                sleep 1;
+            }
+        }
+
+        if ( !$success ) {
+            die "Reached max retries. Quitting.\n";
         }
     }
+    else {
+
+        foreach my $cmd (@commands) {
+            if ($verbose) {    # print each command
+                $fh->print("\$ $cmd\n");
+            }
+            else {
+                STDOUT->print("\$ $cmd\n");
+            }
+            $fh->print( system($cmd) );
+        }
+
+    }
+
     $fh->print( "Finished " . lcfirst($cuteMsg) . "\n" );
 }
 

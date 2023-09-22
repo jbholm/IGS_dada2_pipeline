@@ -39,6 +39,20 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
             shift 2
         fi
         ;;
+    --args*)
+        if [[ $1 =~ "--args=" ]]; then 
+            OTHER_ARGS="${1#*=}"
+            if [[ ! -n "$OTHER_ARGS" || ! $1 =~ "=" ]]; then  
+                MSG="--args missing value."
+                MSG+=" --args=\"\" and --args= are not accepted."
+                stop "$MSG"
+            fi
+            shift 1
+        elif [[ $1 == "--args" ]]; then
+            try_assign OTHER_ARGS "$1" "$2"
+            shift 2
+        fi
+        ;;
     --pattern*) 
         if [[ $1 =~ "--pattern=" ]]; then 
             file_pattern="${1#*=}"
@@ -305,7 +319,7 @@ OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )" # remove excess spaces in above OPTSARR
 R=`cat "$MY_DIR/config.json" | \
     python3 -sc "import sys, json; print(json.load(sys.stdin)['R'])"`
-ARGS=("-l mem_free=128G" "-P" "$QP" "-V" "-N" "MSL_PACBIO" "-o ${SD}/qsub_stdout_logs/pacbio_dada2.R.stdout" "-e ${SD}/qsub_error_logs/pacbio_dada2.R.stderr" "$QSUB_ARGS" "${R}script" "$MY_DIR/pacbio_dada2.R" "$OPTS" "--wd" "$SD" "${file_pattern}" "${dada2_forward_primer}" "${dada2_reverse_primer}" "${dada2_min_length}" "${dada2_max_length}" "--rm.phix")
+ARGS=("-l mem_free=128G" "-P" "$QP" "-V" "-N" "MSL_PACBIO" "-o ${SD}/qsub_stdout_logs/pacbio_dada2.R.stdout" "-e ${SD}/qsub_error_logs/pacbio_dada2.R.stderr" "$QSUB_ARGS" "${R}script" "$MY_DIR/pacbio_dada2.R" "$OPTS" "--wd" "$SD" "${file_pattern}" "${dada2_forward_primer}" "${dada2_reverse_primer}" "${dada2_min_length}" "${dada2_max_length}" "--rm.phix" "${OTHER_ARGS}")
 CMD=()
 for ARG in "${ARGS[@]}"; do # remove absent commands from above ARGS
     if [[ -n "$ARG" ]]; then

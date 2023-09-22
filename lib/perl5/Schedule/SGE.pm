@@ -22,13 +22,12 @@ package Schedule::SGE;
 use strict;
 
 use Schedule::SGE::Run
-  qw/command execute environment l b name project output_file error_file use_cwd notify mailto job_id/;
-use Schedule::SGE::Status qw/user status brief_job_stats all_jobs/;
+    qw/command execute environment l b name project output_file error_file use_cwd notify mailto job_id/;
+use Schedule::SGE::Status qw/user status brief_job_stats qacct all_jobs/;
 
 #use Schedule::SGE::Control qw/qdel/;
 
-BEGIN
-{
+BEGIN {
 # set some default environment variables. These are default for me, but we'll provide a method to handle them too
 # !$ENV{'SGE_CELL'}         && ($ENV{'SGE_CELL'}         = "orionmulti");
 # !$ENV{'SGE_EXECD_PORT'}   && ($ENV{'SGE_EXECD_PORT'}   = "537");
@@ -50,30 +49,27 @@ my $sge=Schedule::SGE->new(
 
 =cut
 
-sub new
-{
-    my ($class, %args) = @_;
+sub new {
+    my ( $class, %args ) = @_;
     my $self = bless {}, $class;
 
     # just start with verbosity = 0. This avoids an error in the >= checks
     $self->{'verbose'} = 0;
 
     # load up if we know what we have
-    foreach my $key (keys %args)
-    {
+    foreach my $key ( keys %args ) {
         my $nodash = $key;
         $nodash =~ s/^\-//;
-        if ($nodash eq "executable")
-        {
-            $self->executable($args{$key});
-        } elsif ($nodash eq "use_cwd")
-        {
-            $self->use_cwd($args{$key});
-        } elsif ($nodash eq "name")
-        {
-            $self->name($args{$key});
-        } else
-        {
+        if ( $nodash eq "executable" ) {
+            $self->executable( $args{$key} );
+        }
+        elsif ( $nodash eq "use_cwd" ) {
+            $self->use_cwd( $args{$key} );
+        }
+        elsif ( $nodash eq "name" ) {
+            $self->name( $args{$key} );
+        }
+        else {
             $self->{$nodash} = $args{$key};
         }
     }
@@ -86,11 +82,9 @@ Increase the level of error messages that are printed out.
 
 =cut
 
-sub verbose
-{
-    my ($self, $val) = @_;
-    if (defined $val)
-    {
+sub verbose {
+    my ( $self, $val ) = @_;
+    if ( defined $val ) {
         $self->{'verbose'} = $val;
     }
     return $self->{'verbose'};
@@ -126,59 +120,54 @@ qdel
 
 =cut
 
-sub executable
-{
-    my ($self, $exec, $path) = @_;
+sub executable {
+    my ( $self, $exec, $path ) = @_;
 
-    print STDERR "Trying to find $exec\n" if ($exec && $self->{'verbose'} >= 2);
+    print STDERR "Trying to find $exec\n"
+        if ( $exec && $self->{'verbose'} >= 2 );
 
     # these are the executables that we care about:
     my @want = (qw[qsub qstat qacct qdel]);
 
     # first, if it is a reference add it
-    if (ref($exec) eq "HASH")
-    {
-        foreach my $e (@want)
-        {
-            if ($exec->{$e}) {$self->{'execute'}->{$e} = $exec->{$e}}
+    if ( ref($exec) eq "HASH" ) {
+        foreach my $e (@want) {
+            if ( $exec->{$e} ) { $self->{'execute'}->{$e} = $exec->{$e} }
         }
         return $self->{'execute'};
     }
 
     # now if we have both arg/var
-    elsif ($exec && $path)
-    {
+    elsif ( $exec && $path ) {
         $self->{'execute'}->{$exec} = $path;
         return $path;
     }
 
     # now if we only have arg
-    elsif ($exec)
-    {
-        if ($self->{'execute'}->{$exec}) {return $self->{'execute'}->{$exec}}
+    elsif ($exec) {
+        if ( $self->{'execute'}->{$exec} ) {
+            return $self->{'execute'}->{$exec};
+        }
     }
 
     # if we get here we need to guess the locations
-    foreach my $e (@want)
-    {
+    foreach my $e (@want) {
         my $guess = `which $e`;
         chomp($guess);
-        if ($self->{'verbose'} >= 2)
-        {
+        if ( $self->{'verbose'} >= 2 ) {
             print STDERR "Looking for $e and found $guess\n";
         }
 
-        if ($guess)
-        {
+        if ($guess) {
             $self->{'execute'}->{$e} = $guess;
-        } else
-        {
+        }
+        else {
             &_dieout("trying to get $e");
         }
     }
 
-    if   ($exec) {return $self->{'execute'}->{$exec}}
-    else         {return $self->{'execute'}}
+    if   ($exec) { return $self->{'execute'}->{$exec} }
+    else         { return $self->{'execute'} }
 }
 
 1;

@@ -630,6 +630,8 @@ def organize_reads(proj_path, map, run_paths):
                     # first pattern matches paired-end files
                     # second pattern matches unpaired files
                     reads = (
+                        glob.glob(str(run_path / Path("fwdSplit") / Path("split_by_sample_out") / Path(row["RUN.PLATEPOSITION"] + "_R[12].fastq.gz"))) + 
+                        glob.glob(str(run_path / Path("revSplit") / Path("split_by_sample_out") / Path(row["RUN.PLATEPOSITION"] + "_R[12].fastq.gz"))) + 
                         glob.glob(str(run_path / Path("demultiplexed") / Path(row["RUN.PLATEPOSITION"] + "_R[12].fastq.gz"))) + 
                         glob.glob(str(run_path / Path("demultiplexed") / Path(row["RUN.PLATEPOSITION"] + ".fastq.gz")))
                         )
@@ -645,6 +647,7 @@ def organize_reads(proj_path, map, run_paths):
                     print("Expected paths:\n%s \n" % "\n".join(possible_paths))
                     warnings += 1
         
+        # FIXME: For some reason, len(transfers) - warnings is negative sometimes
         print("%s samples will be moved to %s/.\n" % (len(transfers) - warnings, organized_dir))
         print("%s samples were not found.\n" % warnings)
         if warnings > 0:            
