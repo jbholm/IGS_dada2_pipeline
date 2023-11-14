@@ -22,20 +22,23 @@ try_assign()
 source <(python3 $MY_DIR/lib/get_config.py modules pacbio_demux_denoise global)
 # full-length is default
 source <(python3 $MY_DIR/lib/get_config.py modules pacbio_demux_denoise full-length)
+QSUB_ARGS="-pe thread ${cpus}"
 
 while [[ ! "$1" == "--" && "$#" != 0 ]]; do
   case "$1" in
     --qsub*)
         if [[ $1 =~ "--qsub=" ]]; then 
-            QSUB_ARGS="${1#*=}"
+            QSUB_ARGS_temp="${1#*=}"
             if [[ ! -n "$QSUB_ARGS" || ! $1 =~ "=" ]]; then  
                 MSG="--qsub missing value."
                 MSG+=" --qsub=\"\" and --qsub= are not accepted."
                 stop "$MSG"
             fi
+            QSUB_ARGS="${QSUB_ARGS} ${QSUB_ARGS_temp}"
             shift 1
         elif [[ $1 == "--qsub" ]]; then
-            try_assign QSUB_ARGS "$1" "$2"
+            try_assign QSUB_ARGS_temp "$1" "$2"
+            QSUB_ARGS="${QSUB_ARGS} ${QSUB_ARGS_temp}"
             shift 2
         fi
         ;;
@@ -182,11 +185,14 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         perldoc -F "${0}"
         exit 0
         ;;
-    *) # preserve positional arguments even if they fall between other params
-    # note that options and their operands will be separate elements of $PARAMS
-      PARAMS="$PARAMS $1"
-      shift 1
-      ;;
+    -*)  # unknown options and their operands will be separate elements of $PARAMS and passed through to the R script
+        PARAMS="$PARAMS $1"
+        shift 1
+        ;;
+    *) # script meant to be run with one positional argument, the directory of input files
+        POSITIONAL="$1"
+        shift 1
+        ;;
   esac
 done
 
@@ -209,6 +215,17 @@ else
 fi
 SD=$(readlink -f "$SD/$RUN")
 printf "%b" "WORKING DIRECTORY: $SD\n"
+
+if [[ ! -n "$POSITIONAL" ]]; then
+    stop "Input directory must be given!\n"
+elif [[ ! -d "$POSITIONAL" ]]; then
+    stop "$POSITIONAL does not exist or is not a directory!\n" # The input directory must exist
+else
+    INPUT="${POSITIONAL%\/}" # Remove any trailing slash and get abs path
+fi
+INPUT_SIZE=`du -b $INPUT | cut -f1`
+MEMORY=`echo "${INPUT_SIZE} * 7 / 1000000000 + 23" | bc`
+QSUB_ARGS="${QSUB_ARGS} -l mem_free=${MEMORY}G"
 
 # get user to confirm overwrite if the run directory already exists
 if [[ -d "$SD" ]]; then
@@ -250,9 +267,13 @@ mkdir -p "$SD/qsub_error_logs/"
 mkdir -p "$SD/qsub_stdout_logs/"
 cd $SD
 
+SD_DEFAULT=$(readlink -f "$SD_DEFAULT")
+
+P_DEFAULT=`cat "$MY_DIR/config.json" | \
+    python3 -c "import sys, json; print(json.load(sys.stdin)['qsub_P'])"`
 if [[ ! -n "$QP" ]]; then
-    printf "qsub-project ID (--qsub-project) not provided. Using jravel-lab as default\n"
-    QP="jravel-lab"
+    printf "qsub-project ID (--qsub-project) not provided. Using ${P_DEFAULT} as default\n"
+    QP="${P_DEFAULT}"
 fi
 
 if [[ -n "$NODELETE" ]]; then
@@ -319,7 +340,8 @@ OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )" # remove excess spaces in above OPTSARR
 R=`cat "$MY_DIR/config.json" | \
     python3 -sc "import sys, json; print(json.load(sys.stdin)['R'])"`
-ARGS=("-l mem_free=128G" "-P" "$QP" "-V" "-N" "MSL_PACBIO" "-o ${SD}/qsub_stdout_logs/pacbio_dada2.R.stdout" "-e ${SD}/qsub_error_logs/pacbio_dada2.R.stderr" "$QSUB_ARGS" "${R}script" "$MY_DIR/pacbio_dada2.R" "$OPTS" "--wd" "$SD" "${file_pattern}" "${dada2_forward_primer}" "${dada2_reverse_primer}" "${dada2_min_length}" "${dada2_max_length}" "--rm.phix" "${OTHER_ARGS}")
+# PLEASE bundle a lot of these into QSUB_ARGS above, so it's just ARGS=("${QSUB_ARGS}" "${R}script" ... )
+ARGS=("-P" "$QP" "-V" "-N" "MSL_PACBIO" "-o ${SD}/qsub_stdout_logs/pacbio_dada2.R.stdout" "-e ${SD}/qsub_error_logs/pacbio_dada2.R.stderr" "$QSUB_ARGS" "${R}script" "$MY_DIR/pacbio_dada2.R" "$INPUT" "$OPTS" "--wd" "$SD" "${file_pattern}" "${dada2_forward_primer}" "${dada2_reverse_primer}" "${dada2_min_length}" "${dada2_max_length}" "--rm.phix" "--memory ${MEMORY}" "--multithread ${cpus}" "${OTHER_ARGS}")
 CMD=()
 for ARG in "${ARGS[@]}"; do # remove absent commands from above ARGS
     if [[ -n "$ARG" ]]; then
@@ -334,8 +356,18 @@ EXECUTOR=`cat "$MY_DIR/config.json" | \
     python3 -sc "import sys, json; print(json.load(sys.stdin)['executor'])"`
 
 printf "$ $EXECUTOR $QSUB_CMD\n"
-printf "$ $EXECUTOR $QSUB_CMD\n" >> $log
-$EXECUTOR $QSUB_CMD
+select yn in 'Execute' 'Cancel'; do 
+    case "$yn" in 
+        "Execute")  
+            printf "$ $EXECUTOR $QSUB_CMD\n" >> $log
+            $EXECUTOR $QSUB_CMD
+            break
+            ;;
+        "Cancel")
+            stop
+            ;;
+    esac;
+done
 
 : <<=cut
 =pod
@@ -374,7 +406,8 @@ part1.sh <INPUT DIRECTORY> --pattern=<REGEX> -r <RUN> [<options>]
 
 =item B<INPUT DIRECTORY>
 
-Path to a directory where demultiplexed FASTQ's will be found.
+Path to a directory where demultiplexed FASTQ's will be found. Only run with one
+input directory
 
 =item B<--pattern> REGEX
 

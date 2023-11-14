@@ -89,27 +89,25 @@ parser$add_argument(
 parser$add_argument(
 	"--memory",
 	type = "integer",
-	default = 128,
-	help = "(GB) Limits the number of threads dada2 functions are allowed to start, based on an internal model of memory used per thread."
+	default = 64,
+	help = "(GB) Limits the number of threads dada2 functions are allowed to start, based on an internal model of memory used per thread. The default is sufficient for PacBio Sequel II runs."
 )
 parser$add_argument(
 	"--multithread",
 	default = parallel::detectCores(),
 	action="store",
 	type = "integer",
-	help = "Manually set number of threads."
+	help = "Manually set number of threads. This parameter will be overridden if parallel::detectCores() finds fewer cores."
 )
+# the command line options are responsible for telling this script what
+# resources are /available/. This script then decides how much of those 
+# resources to use.
 
 args <- parser$parse_args()
 if (any(is.null(args))) {
     stop("Some args missing!")
 }
-
-args$multithread <- min(
-	# max(ceiling(max((args$memory - 27), 0) / 2), 1), 
-	parallel::detectCores(),
-	args$multithread
-	) # 27G base memory + 2 * number of dada2::filterAndTrim() threads
+args$multithread <- max(min(parallel::detectCores(), args$multithread), 1)
 
 setwd(args$wd)
 run <- basename(getwd())
@@ -163,6 +161,8 @@ sample.names <- paste(
 	sep = "."
 	)
 
+input_size <- sum(file.size(fastqs)) # bytes
+
 # copy to a local directory regardless of original location, and pre-pend the
 # run name while we're at it
 demuxed_path <- file.path("demultiplexed")
@@ -177,13 +177,12 @@ file.copy(
 )
 cache_checksums(demuxed_filepaths, "samples")
 
-
 names(demuxed_filepaths) <- sample.names
 samples <- data.frame(CCS = demuxed_filepaths)
 
 trim_primers <- function(ins, outs) {
     if (length(ins) == 0) {
-        cat("No samples to trim primers from")
+        cat("No samples to trim primers from\n")
         return()
     }
 
@@ -200,37 +199,17 @@ trim_primers <- function(ins, outs) {
 	print(arg_list)
 
     # Remove primers. Discard reads without primers.
-    prim.stats <- #t(mapply(function(ins, outs) {
-		# not sure why I made this elaborate structure to catch errors
-		# if an error occurs, it should probably stop the pipeline
-        # stats <- tryCatch(
-        #     {
-		# 		suppressWarnings(
-                	do.call(
+    prim.stats <- do.call(
 						dada2::removePrimers,
 						arg_list
 					) %>%
 					set_rownames(names(ins))
-			# 	)
-            # },
-            # error = function(e) {
-            #     fq <- readFastq(ins)
-            #     inseqs <- length(fq)
-            #     ans <- data.frame(reads.in = inseqs, reads.out = 0)
-            #     return(ans)
-            # }
-        # )
-        # return(stats)
-    # }, ins = ins, 
-	# outs = outs,
-	# SIMPLIFY = F)) %>%
-    #     set_rownames(names(ins)) %>%
-    #     set_colnames(c("reads.in", "reads.out"))
-		
+	
 	# class(prim.stats) [1] "matrix" "array", so use `[` slicing operator
     if(all(prim.stats[, "reads.out"] == 0)) {
 		warning("No reads passed the Removing Primers step  (Did you select the right primers?)")
 	}
+	print("")
     
 	# get stats AND delete the output file if removePrimers reports no reads passing
     samples <- lapply(seq_along(ins), function(s) {
@@ -238,7 +217,7 @@ trim_primers <- function(ins, outs) {
 		if (prim.stats[fastq, "reads.out"] == 0 && file.exists(outs[[s]])) {
 			file.remove(outs[s])
 		}
-        # filterAndTrim() returns a matrix with rows named by its fwd argument
+        # removePrimers returns a matrix with rows named by its fwd argument
         trimmed_file <- if (prim.stats[fastq, "reads.out"] == 0) NULL else outs[[s]]
         ans <- list(
             raw = ins[[s]],
@@ -279,73 +258,42 @@ trim_and_filter <- function(ins, outs) {
 
     quality_trimmed <- paste0(outs, ".qtrim.fastq.gz")
 
+	input_size <- sum(file.size(ins))
+	mt <- max(
+		min(
+			args$multithread, 
+			floor((args$memory-12.7) / (3.61 * input_size/1E9 -2.6))
+		), 
+		1
+	)
+
 	arg_list <- list(
 		fwd = ins,
         filt = quality_trimmed,
-		truncQ = 3,
+		truncQ = 2,
         minQ = 0,
         maxN = Inf,
         maxEE = Inf,
+		minLen = 0,
         rm.phix = args$rm.phix,
         compress = TRUE,
-        multithread = args$multithread,
+        multithread = mt,
         verbose = TRUE
 	)
 
 	print("Executing dada2::filterAndTrim() with args:")
 	print(arg_list)
 
-    ## perform quality trimming
-	do.call(
-		dada2::filterAndTrim,
-		arg_list
-	)
+	gc()
+
+    ## just count read lengths after trimming N's
+	do.call(dada2::filterAndTrim, arg_list)
 
     lens.fn <- lapply(quality_trimmed[file.exists(quality_trimmed)], function(fn) {
         nchar(dada2::getSequences(fn))
     })
     lens <- do.call(c, lens.fn)
 
-    # min_length <- 0
-    # max_length <- max(lens)
-    # min_length_chosen <- max_length_chosen <- F
-    # prev_thresh <- 0
-    # auto_thresh <- -1
-    # current_lens <- lens
-    # bad_thresh <- F
-    # while (!min_length_chosen && !max_length_chosen && !bad_thresh) {
-
-    #     auto_thresh <- autothresholdr::auto_thresh(current_lens, "Renyi")[1] # 1589bp
-    #     if (auto_thresh > min(current_lens) && auto_thresh < 1200) {
-    #     # SILVA tells us there are 16S genes as short as 1200. Be open to novel
-    #     # sequences
-    #     min_length_chosen <- T
-    #     min_length <- auto_thresh
-    #     bad_thresh <- F
-    #     } else if (auto_thresh > 1600 && auto_thresh < max(current_lens)) {
-    #     # 1600 is B Callahan's default. SILVA tells us there are even longer ones
-    #     # out there
-    #     max_length_chosen <- T
-    #     max_length <- auto_thresh
-    #     bad_thresh <- F
-    #     } else {
-    #     bad_thresh <- T
-    #     }
-    #     current_lens <- current_lens[current_lens >= min_length & current_lens <= max_length]
-    # }
-    # if (!min_length_chosen) {
-    #     min_length <- 1000
-    # } else {
-    #     warning(paste0("Minimum read length decreased from 1000 to ", min_length))
-    # }
-    # if (!max_length_chosen) {
-    #     max_length <- 1600 # defaults in Pacbio tutorials
-    # } else {
-    #     warning(paste0("Maximum read length increased from 1600 to ", auto_thresh))
-    # }
-
-	cat(paste("Trimming with min length:", args$min_length))
-	cat(paste("Trimming with max length:", args$max_length))
     png("03_quality_trimmed_sample_lens.png",
         width = 4743,
         height = 400
@@ -356,21 +304,16 @@ trim_and_filter <- function(ins, outs) {
     abline(h = 0)
     dev.off()
 
+	arg_list$filt <- outs
+	arg_list$maxLen <- args$max_length
+	arg_list$minQ <- 3
+	arg_list$maxEE <- 2
+	arg_list$minLen <- args$min_length
+	cat(paste("Filtering with max pre-trim length:", args$max_length, "\n"))
+	cat(paste("Filtering with min post-trim length:", args$min_length, "\n"))
+
     # redo filter and trim, this time with length filtering
-    filter_in_out_counts <- dada2::filterAndTrim(
-        fwd = ins,
-        filt = outs,
-        minQ = 3,
-        maxN = 0,
-        maxEE = 2,
-        truncQ = 2,
-        minLen = args$min_length,
-        maxLen = args$max_length,
-        rm.phix = args$rm.phix,
-        compress = TRUE,
-        multithread = args$multithread,
-        verbose = TRUE
-    )
+    filter_in_out_counts <-	do.call(dada2::filterAndTrim, arg_list)
     
     samples <- lapply(seq_along(ins), function(s) {
         # filterAndTrim() returns a matrix with rows named by its fwd argument
@@ -397,23 +340,44 @@ denoise <- function(ins) {
     cat("Denoising all samples... \n")
 
     set.seed(100)
-    # dereplicate
-    drp <- dada2::derepFastq(ins, verbose = TRUE, qualityType = "FastqQuality", n = 5e+05)
-    # Learn error rates
-    err <- dada2::learnErrors(drp,
-        BAND_SIZE = 32, multithread = args$multithread,
-        errorEstimationFunction = dada2:::PacBioErrfun,
-        randomize = TRUE,
-		verbose = T
-    ) # seconds
 
+    # dereplicate
+	arg_list <- list(
+		fls = ins,
+		qualityType = "FastqQuality",
+		n = 5e+05,
+		verbose = T
+	)
+	print("Executing dada2::derepFastq() with args:")
+	print(arg_list)
+    drp <- do.call(dada2::derepFastq, arg_list)
+	
+    # Learn error rates
+	arg_list <- list(
+		BAND_SIZE = 32,
+		multithread = args$multithread,
+		errorEstimationFunction = dada2:::PacBioErrfun,
+        randomize = T,
+		verbose = T
+	)
+	print("Executing dada2::learnErrors() with args:")
+	print(arg_list)
+	err <- do.call(dada2::learnErrors, c(list(fls = drp), arg_list))
+	
     png("04_error_profiles.png", height = 1000, width = 1000)
     dada2::plotErrors(err)
     dev.off()
 
     # Sample inference
-    dd <- dada2::dada(drp, err = err, multithread = args$multithread)
+	arg_list <- list(
+	)
+    print("Executing dada2::dada() with args:")
+	print(arg_list)
+	dd <- do.call(dada2::dada, c(list(derep = drp, err = err), arg_list))
+	
     rm(drp)
+
+	print("")
 
     ## Make sequence abundance table
     return(dada2::makeSequenceTable(dd))

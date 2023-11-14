@@ -313,11 +313,6 @@ if ($notVaginal) {
 else {
     $logTee->print("VAGINAL: YES\n");
 }
-if ($pacbio) {
-    $region = "FULL-LENGTH";
-    $logTee->print(
-        "Targeting FULL-LENGTH 16S because the run uses PacBio platform.\n");
-}
 if ( !$region ) {
     die
         "Please provide a variable region (-v), V3V4, V4, ITS, or FULL-LENGTH\n";

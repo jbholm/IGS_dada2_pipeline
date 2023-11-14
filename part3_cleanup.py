@@ -1,6 +1,6 @@
 #! /local/projects-t3/MSL/pipelines/packages/miniconda3/envs/interactive/bin/python3
 
-import argparse, sys, os, glob, re, shlex, json, shutil, gzip, getpass, stat, tempfile, time, csv
+import argparse, sys, os, glob, re, shlex, json, shutil, gzip, getpass, stat, tempfile, time, csv, linecache
 from pathlib import Path # Use of Paths as os.pathlike objects requires Python3.6
 import PyInquirer  # MUST USE PYTHON3.6 FOUND IN interactive TO USE THIS
 import examples
@@ -623,40 +623,61 @@ def organize_reads(proj_path, map, run_paths):
             for row in dr:
                 run_platepos = row["RUN.PLATEPOSITION"]
                 sample = row["sampleID"]
+
                 possible_paths = []
+                transfers[sample] = []
                 for run_name, run_path in run_paths_dict.items():
-                    patt = str(run_path / Path("demultiplexed") / Path(row["RUN.PLATEPOSITION"] + "*"))
-                    possible_paths.append(str(run_path / Path("demultiplexed") / Path(row["RUN.PLATEPOSITION"] + "(_R[12])?.fastq.gz")))
-                    # first pattern matches paired-end files
-                    # second pattern matches unpaired files
-                    reads = (
-                        glob.glob(str(run_path / Path("fwdSplit") / Path("split_by_sample_out") / Path(row["RUN.PLATEPOSITION"] + "_R[12].fastq.gz"))) + 
-                        glob.glob(str(run_path / Path("revSplit") / Path("split_by_sample_out") / Path(row["RUN.PLATEPOSITION"] + "_R[12].fastq.gz"))) + 
-                        glob.glob(str(run_path / Path("demultiplexed") / Path(row["RUN.PLATEPOSITION"] + "_R[12].fastq.gz"))) + 
-                        glob.glob(str(run_path / Path("demultiplexed") / Path(row["RUN.PLATEPOSITION"] + ".fastq.gz")))
+                    possible_paths_run = {}
+                    if (run_path / Path("fwdSplit")).exists():
+                        # first one in pair: pre-2023 format, already renamed. Second one in pair: pre-2023 format, not renamed
+                        possible_paths_run.update({
+                            str(run_path / Path("fwdSplit") / Path("split_by_sample_out")): [re.escape(sample) + "(_R1)?\.fastq(\.gz)?", re.escape(run_platepos) + "(_R1)?\.fastq(\.gz)?"],
+                            str(run_path / Path("revSplit") / Path("split_by_sample_out")): [re.escape(sample) + "(_R2)?\.fastq(\.gz)?", re.escape(run_platepos) + "(_R2)?\.fastq(\.gz)?"]
+                        }
                         )
+                        if "." in sample:
+                            #  also pre-2023 format, already renamed 
+                            possible_paths_run[str(run_path / Path("fwdSplit") / Path("split_by_sample_out"))].append(".*" + re.escape(sample.split(".")[1]) + "(_R[12])?\.fastq(\.gz)?") # these are both found in fwdSplit??
+                     #  current format, paired-end or unpaired
+                    if (run_path / Path("demultiplexed")).exists():
+                        possible_paths_run[str(run_path / Path("demultiplexed"))] = [re.escape(run_platepos) + "(_R[12])?\.fastq.gz"]
+
+                    # do regex search (we need regex functionality that isn't in glob.glob)
+                    reads = []
+                    for rootdir in possible_paths_run.keys():
+                        possible_paths += [os.path.join(rootdir, patt) for patt in possible_paths_run[rootdir]]
+                        for patt in possible_paths_run[rootdir]:
+                            regex = re.compile(patt)
+                            for root, dirs, files in os.walk(rootdir):
+                                for file in files:
+                                    if regex.match(file):
+                                        reads.append(os.path.join(root, file))
+
                     # R1 and R2 files for Illumina, just one file for PacBio
                     if(len(reads) > 0):
-                        transfers[sample] = {"srcs": reads, "run": run_name}
-                
-                if sample not in transfers.keys(): 
+                        # If the same sample is found in multiple runs, only gets the files from the last run (not sure what the desired behavior is here)
+                        transfers[sample].append({"srcs": reads, "run": run_name})
+
+                if len(transfers[sample]) == 0: 
                     format_msg = ("WARNING: No read files for sample %s with plate position \n" +
                         "%s could be found. This is probably a sample that didn't\n" +
                         "pass demux; if expected, please continue.\n")
                     print(format_msg % (sample, run_platepos))
-                    print("Expected paths:\n%s \n" % "\n".join(possible_paths))
+                    print("Search patterns:\n%s \n" % "\n".join(possible_paths))
                     warnings += 1
+        if warnings > 0:
+            print("These are probably samples that didn't pass demux; if expected, please continue.\n")
         
-        # FIXME: For some reason, len(transfers) - warnings is negative sometimes
         print("%s samples will be moved to %s/.\n" % (len(transfers) - warnings, organized_dir))
         print("%s samples were not found.\n" % warnings)
         if warnings > 0:            
             if not ask_continue():
                 return False
         
-        if len(transfers) > 0:
+        samples_to_transfer = [len(run_matches) > 0 for run_matches in transfers.values()]
+        nSamples = sum(samples_to_transfer)
+        if any(samples_to_transfer):
             make_for_contents(organized_dir)
-            nFiles = len(transfers.keys())
         else:
             raise Exception(f"Skipping creation of {organized_dir} (no demuxed reads found)")
         for run_path in run_paths_dict.values():
@@ -669,30 +690,38 @@ def organize_reads(proj_path, map, run_paths):
         if confirm("Use executor to transfer large files? (Choose yes if not using screen or tmux)", default=True):
             external_exec = True
         if external_exec:
-            print(f"Using executor to copy raw read files for {nFiles} samples to {subdir_destination}.\n")
+            print(f"Using executor to copy raw read files for {nSamples} samples to {subdir_destination}.\n")
             print("\nRemember to delete any stray STDOUT and STDERR files from the working directory.\n")
             time.sleep(5)
         else:
-            print(f"Copying raw read files for {nFiles} samples to {subdir_destination}.")
+            print(f"Copying raw read files for {nSamples} samples to {subdir_destination}.")
 
         for sample, data in transfers.items():
-            run_dir_name = data["run"]
-            for source in data["srcs"]:
-                if source.endswith("_R1.fastq.gz"):
-                    ext = "_R1.fastq.gz" 
-                elif source.endswith("_R2.fastq.gz"):
-                    ext = "_R2.fastq.gz" 
-                elif source.endswith(".fastq.gz"):
-                    ext = ".fastq.gz"
-                dest = str(Path(organized_dir) / run_dir_name / Path(sample + ext))
+            if len(data) > 0:
+                for run_files in data:
+                    run_dir_name = run_files["run"]
+                    for source in run_files["srcs"]:
+                        if source.endswith("_R1.fastq.gz"):
+                            ext = "_R1.fastq.gz"
+                        elif source.endswith("_R2.fastq.gz"):
+                            ext = "_R2.fastq.gz"
+                        elif re.search("fwdSplit", source):
+                            ext = "_R1.fastq.gz"
+                        elif re.search("revSplit", source):
+                            ext = "_R2.fastq.gz"
+                        elif source.endswith(".fastq.gz"):
+                            ext = ".fastq.gz"
+                        else:
+                            ext = os.path.splitext(source)[1]
+                        dest = str(Path(organized_dir) / run_dir_name / Path(sample + ext))
 
-                if external_exec:
-                    cmd = "module load sge && " + executor + " -N copy -V \'cp -f %s %s\'"
-                    this_cmd = cmd % (source, dest)
-                    print(this_cmd)
-                    run(this_cmd, shell=True)
-                else:
-                    shutil.copy2(source, dest)
+                        if external_exec:
+                            cmd = "module load sge && " + executor + " -N copy -V \'cp -f %s %s\'"
+                            this_cmd = cmd % (source, dest)
+                            print(this_cmd)
+                            run(this_cmd, shell=True)
+                        else:
+                            shutil.copy2(source, dest)
 
         # gzip all if needed
         for f in Path(subdir_destination).iterdir():
@@ -700,7 +729,8 @@ def organize_reads(proj_path, map, run_paths):
                 gz(str(f))
 
     except Exception as e:
-        print(str(type(e)) + ": " + str(e))
+        PrintException()
+        # print(str(type(e)) + ": " + str(e))
         if not ask_continue():
             return False
 
@@ -1042,6 +1072,16 @@ def remove_trash(proj_path, run_paths):
             return False
 
     return True
+
+def PrintException():
+    exc_type, exc_obj, tb = sys.exc_info()
+    f = tb.tb_frame
+    lineno = tb.tb_lineno
+    filename = f.f_code.co_filename
+    linecache.checkcache(filename)
+    line = linecache.getline(filename, lineno, f.f_globals)
+    print('EXCEPTION IN ({}, LINE {} "{}"): {}'.format(filename, lineno, line.strip(), exc_obj))
+
 
 # def share_project(proj_path):
 #     try:

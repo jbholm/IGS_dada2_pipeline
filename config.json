@@ -38,6 +38,7 @@
     "modules": {
         "pacbio_demux_denoise": {
             "global": {
+                "cpus": 12,
                 "file_pattern": ".*-[^-]*?[\\.-](?<sample>.*)\\.ccs\\.fastq(\\.gz)?$"
             },
             "full-length": {

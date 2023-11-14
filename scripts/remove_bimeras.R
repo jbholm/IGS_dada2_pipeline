@@ -130,20 +130,34 @@ stats <- counts_and_stats$stats
 if (!is.null(args$map)) {
     message("Reading in project map")
 
-    map <- suppress_if_not_verbose({
-        read_tsv(
-            args$map,
-            quote = "",
-            na = "",
-            trim_ws = T,
-            col_types = cols_only(
-                RUN.PLATEPOSITION = col_character(), sampleID = col_character()
-            )
-        )
-    })
+    map <- tryCatch({
+		read_tsv(
+		args$map,
+		quote = "",
+		na = "",
+		trim_ws = T,
+		col_types = cols_only(
+			RUN.PLATEPOSITION = col_character(), sampleID = col_character()
+			)
+		)
+	},
+	warning = function(w) {
+		if(grepl(x=w, "The following named parsers don't match the column names")) {
+			stop(
+				paste(
+					as.character(w), 
+					"Try running dos2unix on the project sample map file.\n"
+					)
+				)
+		} else{
+			warning(w)
+		}
+	})
+
+
 
 	map <- map %>% mutate(
-		sampleID.unique = make.unique(sampleID)
+		sampleID.unique = make.names(sampleID, unique = T) # I hate using make.names instead of make.unique here, but sometimes it's needed
 	)
 	message("Writing final project map")
     write_tsv(map, args$map)
