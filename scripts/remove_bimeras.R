@@ -24,6 +24,13 @@ parser$add_argument("runs",
 )
 parser$add_argument("--verbose", action = "store_true", help = "Enables all STDERR from R functions.")
 parser$add_argument("--log", type = "character", help = "Redirect messages and warnings to a file instead of STDERR")
+parser$add_argument(
+	"--multithread",
+	default = parallel::detectCores(),
+	action="store",
+	type = "integer",
+	help = "Manually set number of threads. This parameter will be overridden if parallel::detectCores() finds fewer cores."
+)
 
 args <- parser$parse_args()
 if (is.null(args$seq)) {
@@ -39,6 +46,7 @@ if (!is.null(args$log)) {
     con <- file(args$log, open = "a")
     sink(con, append = TRUE, type = "message")
 }
+args$multithread <- max(min(parallel::detectCores(), args$multithread), 1)
 
 suppress_if_not_verbose({
     library("Biostrings")
@@ -199,7 +207,7 @@ message("Removing chimeras")
 arg_list <- list(method = "consensus")
 arg_list <- c(arg_list, as.list(formals(isBimeraDenovoTable)))
 arg_list$minFoldParentOverAbundance <- if (args$seq == "ILLUMINA") formals(isBimeraDenovoTable)$minFoldParentOverAbundance else 3.5
-arg_list$multithread <- T
+arg_list$multithread <- args$multithread
 arg_list$seqtab <- NULL
 message("dada2::removeBimeraDenovo() parameters:")
 sink(file = stderr(), type = "output")

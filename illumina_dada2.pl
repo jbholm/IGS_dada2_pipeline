@@ -1955,7 +1955,8 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
             amplicon_length => $amplicon_length,
             dada2mem        => $dada2mem,
             config          => $GLOBAL_PATHS->get_config(),
-            paths           => $GLOBAL_PATHS
+            paths           => $GLOBAL_PATHS,
+            multithread => 32
         );
 
 ###### EVALUATING DADA2 OUTPUT ##########
@@ -2689,6 +2690,7 @@ sub dada2 {
     my $dada2mem                  = delete %arg{"dada2mem"};
     my $config                    = delete %arg{"config"};
     my $paths                     = delete %arg{"paths"};
+    my $multithread               = delete %arg{"multithread"} // undef;
 
     $dada2mem =~ s/[a-zA-Z]//g;
 
@@ -2696,6 +2698,7 @@ sub dada2 {
         = catfile( $pipelineDir, "scripts", "filter_and_denoise_illumina.R" );
     my $args = "--maxN=0 --maxEE=$maxEE --truncQ=$truncQ --memory=$dada2mem";
     $args .= " --rm.phix" if ($rm_phix);
+    $args .= " --multithread $multithread" if ($multithread);
     $args .= " --error_estimation_function=$error_estimation_function"
         if ($error_estimation_function);
     if ( $truncLenL && $truncLenR ) {
