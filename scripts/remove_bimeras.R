@@ -102,6 +102,9 @@ counts_and_stats <- (function(runs) {
 
     message("Combining stats")
     stats <- bind_rows(lapply(run_lists, function(run_list) run_list$stats))
+	desired_colnames <- c("Input", "Trimmed", "Filtered", "Denoised", "Nonchimeric")
+	final_colnames <- desired_colnames[desired_colnames %in% colnames(stats)]
+	stats <- stats[, final_colnames]
 
     message("Recording metadata from runs")
     samples <- do.call(c, lapply(names(runs), function(run_name) {

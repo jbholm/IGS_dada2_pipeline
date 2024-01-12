@@ -1371,11 +1371,7 @@ sub demux {
 
         @cmds = ();
         my $cmd
-            = $GLOBAL_PATHS->get_config()->{'executor'}
-            . " -N $step2 -e "
-            . $paths->part1_error_log() . " -o "
-            . $paths->part1_stdout_log()
-            . " $script -i $readsForInput -o "
+            = "$script -i $readsForInput -o "
             . $paths->fwd_demux_dir()
             . " -b $barcodes -m "
             . $paths->part1_local_map()
@@ -1383,11 +1379,7 @@ sub demux {
         $cmd = join( " ", $cmd, $append_args );
         push @cmds, $cmd;
         $cmd
-            = $GLOBAL_PATHS->get_config()->{'executor'}
-            . " -N $step2 -e "
-            . $paths->part1_error_log() . " -o "
-            . $paths->part1_stdout_log()
-            . " $script -i $readsRevInput -o "
+            = "$script -i $readsRevInput -o "
             . $paths->rev_demux_dir()
             . " -b $barcodes -m "
             . $paths->part1_local_map()
@@ -1399,22 +1391,34 @@ sub demux {
             cmds    => \@cmds,
             logger  => $paths,
             dry_run => $dryRun,
-            msg     => "Demultiplexing to get the run library...\n"
+            msg     => "Demultiplexing to get the run library...\n",
+            qsub    => 1,
+            mem_GB  => "4",
+            name    => $step2,
+            paths   => $GLOBAL_PATHS,
+            config  => $GLOBAL_PATHS->get_config(),
         );
 
-        $paths->print(
-            "---Waiting for fwd and rev seqs.fastq to complete....\n");
-        $paths->print("---Monitoring $step2 error logs....\n");
-        $paths->check_error_log( prefix => $step2 );
-        while (!( -e $paths->fwd_library() )
-            || !( -e $paths->rev_library() ) )
-        {
-            sleep 1;
+# after patching the execute_and_log() and the SGE interface code, maybe we don't need this anymore
+# $paths->print(
+#     "---Waiting for fwd and rev seqs.fastq to complete....\n");
+# $paths->print("---Monitoring $step2 error logs....\n");
+# $paths->check_error_log( prefix => $step2 );
+# while (!( -e $paths->fwd_library() )
+#     || !( -e $paths->rev_library() ) )
+# {
+#     if ( !( -e $paths->fwd_library() ) ) {
+#         $paths->print( $paths->fwd_library() . " does not exist" );
+#     }
+#     elsif ( !( -e $paths->rev_library() ) ) {
+#         $paths->print( $paths->rev_library() . " does not exist" );
+#     }
+#     sleep 1;
 
-            # check_error_log allows pipeline to terminate if the qsubbed
-            # split_libraries_fastq.py prints error
-            $paths->check_error_log( prefix => $step2 );
-        }
+        #     # check_error_log allows pipeline to terminate if the qsubbed
+        #     # split_libraries_fastq.py prints error
+        #     $paths->check_error_log( prefix => $step2 );
+        # }
         my $duration = time - $start;
         $paths->print(
             "---Duration of fwd and rev seqs.fastq production: $duration s\n"
@@ -1956,7 +1960,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
             dada2mem        => $dada2mem,
             config          => $GLOBAL_PATHS->get_config(),
             paths           => $GLOBAL_PATHS,
-            multithread => 32
+            multithread     => 32
         );
 
 ###### EVALUATING DADA2 OUTPUT ##########
@@ -2697,7 +2701,7 @@ sub dada2 {
     my $Rscript
         = catfile( $pipelineDir, "scripts", "filter_and_denoise_illumina.R" );
     my $args = "--maxN=0 --maxEE=$maxEE --truncQ=$truncQ --memory=$dada2mem";
-    $args .= " --rm.phix" if ($rm_phix);
+    $args .= " --rm.phix"                  if ($rm_phix);
     $args .= " --multithread $multithread" if ($multithread);
     $args .= " --error_estimation_function=$error_estimation_function"
         if ($error_estimation_function);
@@ -2870,7 +2874,7 @@ sub execute_and_log {
         my $try                 = 0;
         my $success             = 0;
 
-        while ( !grep( /^${exit_status}$/, @allowed_exit_status )
+        while ( !$success
             && $try < $config->{"qsub_allowed_tries"} )
         {
             $try += 1;
@@ -2911,41 +2915,71 @@ sub execute_and_log {
                 push @pids, $sge->execute();
             }
 
-            my $done;
-            while ( !$done ) {
-                $done = 0;
+            my $any_in_progress = 1;
+            while ($any_in_progress) {
                 $fh->print("Checking PIDs for job status...\n") if $verbose;
                 $sge->status();
+                $any_in_progress = 0;
                 foreach (@pids) {
                     $fh->print("PID: $_\n") if $verbose;
                     my @job_stats = @{ $sge->brief_job_stats($_) };
                     $fh->print( "Job stats:\n" . Dumper(@job_stats) )
                         if $verbose;
-                    if (@job_stats) {
+                    if (@job_stats)
+                    {    # if qstat brings up the job, it still is in progress
+                        $any_in_progress = 1;
                         last;
-                    }
-                    else {
-                        $done = 1;
-                        my $qacct = $sge->qacct($_);
-                        $exit_status = $qacct->{"exit_status"};
-
-                        if (   $qacct->{"failed"} != "0"
-                            || $exit_status != "0" )
-                        {
-                            print STDERR
-                                "Job $_ failed with exit_status $exit_status. Was try #${try} of the same step.\n";
-                            if ( $exit_status == "139" ) {
-                                $mem_GB *= 2;
-                                $l
-                                    = "$l hostname='!$qacct->{'hostname'}' mem_free=${mem_GB}G";
-                            }
-                        }
-                        else {
-                            $success = 1;
-                        }
                     }
                 }
                 sleep 1;
+            }
+
+            # all jobs finished
+
+            my $any_not_updated = 1;
+            my $any_fail        = 0;
+            while ($any_not_updated) {
+                $any_not_updated = 0;
+                foreach (@pids) {
+
+                    # get qacct info
+                    my $qacct = eval { $sge->qacct($_) };
+                    if ( $@ =~ /error: job id [0-9]* not found/ ) {
+                        $any_not_updated = 1;
+                        last;   # the qacct file takes a few seconds to appear
+                    }
+                    elsif ($@) {
+                        die "Qacct returned this unexpected message:\n$@";
+                    }
+                    elsif (
+                        !(     exists $qacct->{"exit_status"}
+                            && exists $qacct->{"failed"}
+                        )
+                        )
+                    {
+                        die
+                            "Qacct did not return \"exit_status\" and \"failed\" values.";
+                    }
+
+                    $exit_status = $qacct->{"exit_status"};
+
+                    if ( $qacct->{"failed"} != "0"
+                        || !grep( /^${exit_status}$/, @allowed_exit_status ) )
+                    {
+                        print STDERR
+                            "Job $_ failed with exit_status $exit_status. Was try #${try} of the same step.\n";
+                        if ( $exit_status == "139" ) {
+                            $mem_GB *= 2;
+                            $l
+                                = "$l hostname='!$qacct->{'hostname'}' mem_free=${mem_GB}G";
+                        }
+                        $any_fail = 1;
+                        last;
+                    }
+                }
+            }
+            if ( !$any_fail ) {
+                $success = 1;
             }
         }
 

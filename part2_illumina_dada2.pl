@@ -156,12 +156,13 @@ $OUTPUT_AUTOFLUSH = 1;
 ####################################################################
 my $config_hashref = config();
 
-my $region   = "V3V4";
-my $csts     = 1;
-my $pacbio   = 0;
-my $report   = 1;
-my $map_file = "";
-my $run_path = $config_hashref->{"run_storage_path"};
+my $region      = "V3V4";
+my $csts        = 1;
+my $pacbio      = 0;
+my $report      = 1;
+my $map_file    = "";
+my $run_path    = $config_hashref->{"run_storage_path"};
+my $multithread = 1;
 
 # this is the way it is only to preserve the interface of --notVaginal. In the future, please change to --no-vaginal
 my $vaginal    = 1;
@@ -181,7 +182,8 @@ GetOptions(
     "oral"                                       => \my $oral,
     "csts!"                                      => \$csts,
     "pacbio!"                                    => \$pacbio,
-    "report!"                                    => \$report
+    "report!"                                    => \$report,
+    "multithread=i"                              => \$multithread
     )
 
     or pod2usage( verbose => 0, exitstatus => 1 );
@@ -206,7 +208,7 @@ if ( !-d $yeardir ) {
 $project =~ s/_/-/g;
 $project = $t->strftime("\%y\%m\%d") . "_$project";
 my $projDir = catdir( $yeardir, $project );
-system("install -g igs -m 2770 -d $projDir")
+system( "install -g igs -m 2770 -d " . "\"$projDir\"" )
     or print "Didn't create $projDir directory, $!";
 
 $run_path = abs_path($run_path) or die "Can't find run storage path.\n$!";
@@ -444,7 +446,7 @@ my ( $abundRds, $abund, $stats, $fasta ) = (
 if ( List::Util::any { !-e $_ } ( $abundRds, $abund, $fasta, $stats ) ) {
     print $logTee "Combining runs and removing bimeras.\n";
     ( $abundRds, $abund, $fasta, $stats )
-        = dada2_combine( $pacbio, \@runs, $map_file );
+        = dada2_combine( $pacbio, \@runs, $map_file, $multithread );
 
     ( $abundRds, $abund, $fasta, $stats )
         = map { move_to_project( $project, $$_ ) }
@@ -464,7 +466,13 @@ else {
 my $run_info_hash = combine_run_metadata(@runs);
 
 # Give ASV's unique and easy-to-look-up IDs
-$cmd = "$python2 $scriptsDir/rename_asvs.py $fasta -p $project";
+$cmd = join(
+    " ",
+    (   "$python2",   "\"$scriptsDir/rename_asvs.py\"",
+        "\"$fasta\"", "-p",
+        "\"$project\""
+    )
+);
 execute_and_log( $cmd, $logTee, $dryRun,
     "\n---Renaming ASVs in FASTA, abundance tables, and classification key(s)."
 );
@@ -493,7 +501,8 @@ if ( scalar @dada2_taxonomy_list > 0 ) {
         print $logTee join( ",", @dada2_taxonomy_list ) . "\n";
 
         @dada2Output
-            = dada2_classify( $fasta, \@dada2_taxonomy_list );    # assignment
+            = dada2_classify( $fasta, \@dada2_taxonomy_list, $multithread )
+            ;    # assignment
         ### @dada2Output now has every file that needs to be renamed
         print $logTee "---Renaming dada2 output files for project...\n";
         @dada2Output = map { move_to_project( $project, $_ ) } @dada2Output;
@@ -511,11 +520,15 @@ if ( scalar @dada2_taxonomy_list > 0 ) {
 my $pecanFile = "MC_order7_results.clean.txt";
 if ( $taxonomy_flags{PECAN} ) {
     if ( !-e $pecanFile ) {
-        my $cmd
-            = $config_hashref->{"python3.9"}
-            . " -s $scriptsDir/pecan_wrapper.py -d "
-            . $config_hashref->{"pecan_models"}
-            . " -i $fasta -o . $vopt";
+        my $cmd = join(
+            " ",
+            (   "\"$config_hashref->{'python3.9'}\"",    "-s",
+                "\"$scriptsDir/pecan_wrapper.py\"",      "-d",
+                "\"$config_hashref->{'pecan_models'}\"", "-i",
+                "\"$fasta\"",                            "-o",
+                $vopt
+            )
+        );
         execute_and_log( $cmd, $logTee, 0,
                   "---Classifying ASVs with $region PECAN models (located in "
                 . $config_hashref->{"pecan_models"}
@@ -545,20 +558,36 @@ foreach (@full_classif_csvs) {
     my $db;
     if ( $_ =~ /SILVA138forPB/ ) {
         $db  = "SILVA138forPB";
-        $cmd = "$scriptsDir/combine_tx_for_ASV.pl -s $_ -c $abund $vopt";
+        $cmd = join( " ",
+            "\"$scriptsDir/combine_tx_for_ASV.pl\"",
+            "-s", "\"$_\"", "-c", "\"$abund\"", $vopt );
     }
     elsif ( $_ =~ /(SILVA[^\.]*)\.classification/ ) {
         $db  = $1;
-        $cmd = "$scriptsDir/combine_tx_for_ASV.pl -s $_ -c $abund $vopt";
+        $cmd = join(
+            " ",
+            (   "\"$scriptsDir/combine_tx_for_ASV.pl\"",
+                "-s", "\"$_\"", "-c", "\"$abund\"", $vopt
+            )
+        );
     }
     elsif ( $_ =~ /HOMD/ ) {
-        $db = "HOMD";
-        $cmd
-            = "$scriptsDir/combine_tx_for_ASV.pl --homd-file $_ -c $abund $vopt";
+        $db  = "HOMD";
+        $cmd = join(
+            " ",
+            (   "\"$scriptsDir/combine_tx_for_ASV.pl\"",
+                "--homd-file", "\"$_\"", "-c", "\"$abund\"", $vopt
+            )
+        );
     }
     elsif ( $_ =~ /UNITE/ ) {
         $db  = "UNITE";
-        $cmd = "$scriptsDir/combine_tx_for_ASV.pl -u $_ -c $abund $vopt";
+        $cmd = join(
+            " ",
+            (   "\"$scriptsDir/combine_tx_for_ASV.pl\"",
+                "-u", "\"$_\"", "-c", "\"$abund\"", $vopt
+            )
+        );
     }
     my $outfile = join( "_",
         ( $project, basename( $abund, ".csv" ), $db, "taxa-merged.csv" ) );
@@ -579,8 +608,12 @@ foreach (@two_col_classifs) {
     my $outfile = join( "_",
         ( $project, basename( $abund, ".csv" ), $db, "taxa-merged.csv" ) );
     if ( !-e $outfile ) {
-        my $cmd
-            = "$scriptsDir/PECAN_tx_for_ASV.pl -p $_ -c $abund -t $db $vopt";
+        my $cmd = join(
+            " ",
+            (   "\"$scriptsDir/PECAN_tx_for_ASV.pl\"",
+                "-p", "\"$_\"", "-c", "\"$abund\"", "-t", "\"$db\"", $vopt
+            )
+        );
 
         my $msg = "---Labeling count table with $db taxa.";
         execute_and_log( $cmd, $logTee, $dryRun, $msg );
@@ -604,8 +637,14 @@ if ( grep ( /^PECAN-SILVA$/, @schemes ) ) {
         die "Can't find SILVA classification table from among:\n"
             . join( "\n", @full_classif_csvs ) . "\n";
     }
-    $cmd
-        = "$scriptsDir/combine_tx_for_ASV.pl -p $pecanFile -s $silvaFile -c $abund $vopt";
+    $cmd = join(
+        " ",
+        (   "\"$scriptsDir/combine_tx_for_ASV.pl\"", "-p",
+            "\"$pecanFile\"",                        "-s",
+            "\"$silvaFile\"",                        "-c",
+            "\"$abund\"",                            $vopt
+        )
+    );
     execute_and_log( $cmd, $logTee, $dryRun, $msg );
 }
 rename_temps("");
@@ -643,8 +682,13 @@ unlink glob "*.taxa.csv";
 my $final_ASV_taxa = glob("*.asvs+taxa.csv");
 $final_ASV_taxa = defined $final_ASV_taxa ? $final_ASV_taxa : "(none)";
 
-$cmd
-    = "$pipelineDir/report/report16s.sh '$projDir' --map $map_file --runs @runs --project $project";
+$cmd = join(
+    " ",
+    (   "\"$pipelineDir/report/report16s.sh\"",
+        "\"$projDir\"", "--map", "\"$map_file\"", "--runs", "@runs",
+        "--project",    "\"$project\""
+    )
+);
 execute_and_log( $cmd, $logTee, $dryRun, "Creating report..." );
 print $logTee "---Final files succesfully produced!\n";
 print $logTee
@@ -837,16 +881,17 @@ sub R {
 # Returns the names of the three output file: abundance table (as RDS), abundance table (as
 #   CSV), and stats
 sub dada2_combine {
-    my $pacbio   = shift;
-    my $rundirs  = shift;
-    my $map_file = shift;
-    my @rundirs  = @$rundirs;
+    my $pacbio      = shift;
+    my $rundirs     = shift;
+    my $map_file    = shift;
+    my $multithread = shift;
+    my @rundirs     = @$rundirs;
 
     my $sequencer = $pacbio ? "PACBIO" : "ILLUMINA";
 
     my $script = catfile( $pipelineDir, "scripts", "remove_bimeras.R" );
 
-    my $args = "--seq=$sequencer --map $map_file";
+    my $args = "--seq=$sequencer --map $map_file --multithread $multithread";
     if ($verbose) {
         $args .= " --verbose";
     }
@@ -856,8 +901,9 @@ sub dada2_combine {
 }
 
 sub dada2_classify {
-    my $fasta      = shift;
-    my $taxonomies = shift;
+    my $fasta       = shift;
+    my $taxonomies  = shift;
+    my $multithread = shift;
 
     my @taxonomies = @$taxonomies;
     @taxonomies = map {"--tax=$_"} @taxonomies;
@@ -866,7 +912,7 @@ sub dada2_classify {
     my $script = catfile( $pipelineDir, "scripts", "assign_taxonomies.R" );
 
 # The way this script is written, it writes to log instead of .stdout and .stderr . Can we tee to both?
-    my $args = "$fasta $taxonomies --log $log";
+    my $args = "$fasta $taxonomies --log $log --multithread $multithread";
     if ($verbose) {
         $args .= " --verbose";
     }
@@ -948,7 +994,7 @@ sub move_to_project {
     my $base = fileparse($file);
     my $dest = File::Spec->catfile( $projDir, $proj . "_$base" );
 
-    my $cmd = "mv $file $dest";
+    my $cmd = join( " ", ( "mv", "\"$file\"", "\"$dest\"" ) );
     $logTee->print($cmd) if $verbose;
 
     if ( !$dryRun ) {
@@ -964,7 +1010,7 @@ sub copy_to_project {
 
     my $base = fileparse($file);
     my $dest = File::Spec->catfile( $projDir, $proj . "_$base" );
-    my $cmd  = "cp $file $dest";
+    my $cmd  = join( " ", ( "cp", "\"$file\"", "\"$dest\"" ) );
     execute_and_log( $cmd, undef, 0, "" );
     return $dest;
 }

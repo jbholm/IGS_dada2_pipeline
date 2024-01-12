@@ -39,6 +39,13 @@ parser$add_argument(
     "--verbose",
     required = F, action = "store_true", help = "Enables all STDERR from R functions."
 )
+parser$add_argument(
+    "--multithread",
+	default = parallel::detectCores(),
+	action="store",
+	type = "integer",
+	help = "Manually set number of threads. This parameter will be overridden if parallel::detectCores() finds fewer cores."
+)
 parser$add_argument("--log", type = "character", help = "Redirect messages and warnings to a file instead of STDERR")
 
 args <- parser$parse_args()
@@ -46,6 +53,7 @@ if (!is.null(args$log)) {
     con <- file(args$log, open = "a")
     sink(con, append = TRUE, type = "message")
 }
+args$multithread <- max(min(parallel::detectCores(), args$multithread), 1)
 
 # if (is.null(args$input)) {
 #   stop("Please provide an ASV table stored in an RDS.\n")
@@ -107,7 +115,7 @@ stdout <- lapply(args$tax, function(taxonomy) {
             taxtab <- dada2::assignTaxonomy(
                 seqs,
                 db,
-                multithread = TRUE,
+                multithread = args$multithread,
                 taxLevels = taxLevels,
                 outputBootstraps = TRUE,
                 minBoot = args$minBoot,
