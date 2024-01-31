@@ -67,20 +67,24 @@ parser$add_argument(
 	help = "Use extremely small sample sizes to find errors. Do NOT use this in production execution. Also forces --no-multithread."
 )
 parser$add_argument(
-	"--no-multithread",
-	action="store_true",
-	help = "Use to speed up small test runs where multithreading would actually slow down execution"
+	"--multithread",
+	default = 1,
+	action="store",
+	type = "integer",
+	help = "Manually set number of threads. This parameter will be overridden if parallel::detectCores() finds fewer cores."
 )
 
 args <- parser$parse_args()
 args$maxEE <- as.numeric(args$maxEE)
 if(args$debug) { args$no_multithread <- T }
-args$multithread <- if(args$no_multithread) {
-	! args$no_multithread
-} else {
-	min(max(ceiling(max((args$memory - 27), 0) / 2), 1), parallel::detectCores()) # 27G base memory + 2 * number of dada2::filterAndTrim() threads
-}
-args$no_multithread <- NULL
+args$multithread <- max(
+	min(
+		parallel::detectCores(), 
+		args$multithread, 
+		ceiling(max((args$memory - 27), 0) / 2)
+	), 
+	1
+)
 
 library(dplyr)
 library("dada2")

@@ -185,6 +185,10 @@ sub qacct {
         chomp $line;
         $line =~ s/^\s+|\s+$//g;
         next if ( $line =~ /^=+$/ );
+        if ( $line =~ /error: job id [0-9]* not found/ ) {
+            die $line;
+        }
+
         my @spl = split( ' ', $line, 2 );
         if ( scalar @spl == 2 ) {
             $allstats->{ $spl[0] } = $spl[1];
@@ -193,7 +197,6 @@ sub qacct {
             print STDERR "We don't know how to parse |$line|\n";
         }
     }
-
     return $allstats;
 }
 

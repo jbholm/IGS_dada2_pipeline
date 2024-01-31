@@ -88,23 +88,23 @@ while [[ ! "$1" == "--" && "$#" != 0 ]]; do
         EMAIL="-m ea"
         shift 1
         ;;
-    -qp|--qsub-project*)
-        if [[ $1 =~ "--qsub-project=" ]]; then 
-            QP="${1#*=}"
-            if [[ ! -n "$QP" || ! $1 =~ "=" ]]; then  
-                MSG="--qsub-project missing value."
-                MSG+=" --qsub-project=\"\" and --qsub-project= are not accepted."
-                stop "$MSG"
-            fi
-            shift 1
-        elif [[ $1 == "--qsub-project" || $1 == "-qp" ]]; then
-            try_assign QP "$1" "$2"
-            shift 2
-        else
-            PARAMS="$PARAMS $1"
-            shift 1
-        fi
-        ;;
+    # -qp|--qsub-project*)
+    #     if [[ $1 =~ "--qsub-project=" ]]; then 
+    #         QP="${1#*=}"
+    #         if [[ ! -n "$QP" || ! $1 =~ "=" ]]; then  
+    #             MSG="--qsub-project missing value."
+    #             MSG+=" --qsub-project=\"\" and --qsub-project= are not accepted."
+    #             stop "$MSG"
+    #         fi
+    #         shift 1
+    #     elif [[ $1 == "--qsub-project" || $1 == "-qp" ]]; then
+    #         try_assign QP "$1" "$2"
+    #         shift 2
+    #     else
+    #         PARAMS="$PARAMS $1"
+    #         shift 1
+    #     fi
+    #     ;;
     --qsub*)
         if [[ $1 =~ "--qsub=" ]]; then 
             QSUB_ARGS="${1#*=}"
@@ -657,12 +657,11 @@ fi
 mkdir -p "$SD/qsub_error_logs/"
 mkdir -p "$SD/qsub_stdout_logs/"
 
-if [[ ! -n "$QP" ]]; then
-    printf "qsub-project ID (--qp) not provided. Using jravel-lab as default\n"
-    QP=""
-else
-    QP="-P $QP"
-fi
+# if [[ ! -n "$QP" ]]; then
+#     QP=""
+# else
+#     QP="-P $QP"
+# fi
 
 # validate -dbg flags
 if [[ -n "$DBG" ]]; then # if dbg is non-empty string
@@ -764,7 +763,7 @@ OPTSARR=("$PARAMS" "$DBG" "$NOSKIP" "$NODELETE" "$VERBOSE" "$barcodes" "$TROUBLE
 OPTS="${OPTSARR[*]}"
 OPTS="$( echo "$OPTS" | awk '{$1=$1;print}' )"
 
-ARGS=("-l mem_free=8G" "-V" "$QP" "-N" "MSL_$RUN" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "$QSUB_ARGS" "${MY_DIR}/illumina_dada2.pl" "$INPUT" "-wd" "$SD" "-v" "$VAR" "$OPTS")
+ARGS=("-l mem_free=8G" "-V" "-N" "MSL_$RUN" "-o ${SD}/qsub_stdout_logs/illumina_dada2.pl.stdout" "-e ${SD}/qsub_error_logs/illumina_dada2.pl.stderr" "$QSUB_ARGS" "${MY_DIR}/illumina_dada2.pl" "$INPUT" "-wd" "$SD" "-v" "$VAR" "$OPTS")
 CMD=()
 for ARG in "${ARGS[@]}"; do
     if [[ -n "$ARG" ]]; then
@@ -916,7 +915,6 @@ Runs the specified section of the pipeline. Multiple --debug options can be give
 to run multiple consecutive parts of the pipeline, provided that the input to
 the earliest requested step is present. Any non-consecutive steps will be 
 ignored.
-default is jravel-lab.
 
 =item B<--no-skip|--noskip>
 
@@ -934,25 +932,15 @@ outermost qsub call. Compatible with --qsub.
 
 =item B<--qsub-project>, B<-qp> space
 
-Indicate which qsub-project space should be used for all qsubmissions. The
+Indicate which qsub-project space should be used for all qsubmissions.
 
 =item B<--qsub>="options"
 
-Adds options to the outermost qsub call. By default, qsub is called with the
-following options:
+Appends options to the outermost qsub call. Most of these are able to override 
+default values given by the "executor" option in the pipeline config file.
 
-    -cwd
-    -b y
-    -l mem_free=200M 
-    -P jravel-lab 
-    -q threaded.q 
-    -pe thread 4 
-    -V
-    -o <path auto-generated from -sd, -p, and -r>
-    -e <from auto-generated path -sd, -p, and -r>
-
-Most options will override the defaults shown above. The qsub options must be 
-specified as a single string surrounded by double quotes (\"), as shown below.
+The qsub options must be specified as a single string surrounded by double 
+quotes (\"), as shown below.
 
     part1.sh --qsub="-m ea -l excl=true" ...
 
