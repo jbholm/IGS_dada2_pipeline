@@ -639,8 +639,16 @@ def organize_reads(proj_path, map, run_paths):
                         #     #  also pre-2023 format, already renamed 
                         #     possible_paths_run[str(run_path / Path("fwdSplit") / Path("split_by_sample_out"))].append(".*" + re.escape(sample.split(".")[1]) + "(_R[12])?\.fastq(\.gz)?") # these are both found in fwdSplit??
                      #  current format, paired-end or unpaired
-                    if (run_path / Path("demultiplexed")).exists():
+                    elif (run_path / Path("R1split")).exists():
+                        possible_paths_run.update({
+                            str(run_path / Path("R1split") / Path("split_by_sample_out")): [re.escape(sample) + "(_R1)?\.fastq(\.gz)?", re.escape(run_platepos) + "(_R1)?\.fastq(\.gz)?"],
+                            str(run_path / Path("R4split") / Path("split_by_sample_out")): [re.escape(sample) + "(_R2)?\.fastq(\.gz)?", re.escape(run_platepos) + "(_R2)?\.fastq(\.gz)?"]
+                        }
+                        )
+                    elif (run_path / Path("demultiplexed")).exists():
                         possible_paths_run[str(run_path / Path("demultiplexed"))] = [re.escape(run_platepos) + "(_R[12])?\.fastq.gz"]
+                    else:
+                        print(f"Couldn't find demultiplexed files directory for run {run_path}")
 
                     # do regex search (we need regex functionality that isn't in glob.glob)
                     reads = []
@@ -674,7 +682,6 @@ def organize_reads(proj_path, map, run_paths):
         if warnings > 0:            
             if not ask_continue():
                 return False
-        
         samples_to_transfer = [len(run_matches) > 0 for run_matches in transfers.values()]
         nSamples = sum(samples_to_transfer)
         if any(samples_to_transfer):

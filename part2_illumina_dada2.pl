@@ -526,7 +526,7 @@ if ( $taxonomy_flags{PECAN} ) {
                 "\"$scriptsDir/pecan_wrapper.py\"",      "-d",
                 "\"$config_hashref->{'pecan_models'}\"", "-i",
                 "\"$fasta\"",                            "-o",
-                $vopt
+                ".",                                     $vopt
             )
         );
         execute_and_log( $cmd, $logTee, 0,

@@ -247,8 +247,8 @@ sub trimmed_files {
     my $self = shift;
 
     my @exts    = ( "fastq", "fastq.gz" );
-    my @globs_f = map { catfile( $self->{'wd'}, "R1_tc.$_" ) } @exts;
-    my @globs_r = map { catfile( $self->{'wd'}, "R2_tc.$_" ) } @exts;
+    my @globs_f = map { catfile( $self->{'wd'}, "*R1_tc.$_" ) } @exts;
+    my @globs_r = map { catfile( $self->{'wd'}, "*R2_tc.$_" ) } @exts;
 
     my @result = glob( join " ", ( @globs_f, @globs_r ) );
     return @result;
