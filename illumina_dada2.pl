@@ -860,8 +860,16 @@ if (   !@dbg
             msg     => "Validating map from "
                 . $GLOBAL_PATHS->get_param("barcodes") . "\n"
         );
+
+        # Get filepaths of validate_mapping_file.py output
+        my ( $basename, $dir, $ext )
+            = fileparse( $GLOBAL_PATHS->part1_local_map(), qr{\.txt} );
+        my $name = fileparse( $basename, qr{\.txt} );
         my $mappingError
-            = glob( $GLOBAL_PATHS->part1_error_log() . "/*.log" );
+            = catfile( $GLOBAL_PATHS->part1_error_log(), "$name.log" );
+        my $corrected = catfile( $GLOBAL_PATHS->part1_error_log(),
+            $name . "_corrected.txt" );
+
         if ($mappingError) {
             open MAPERROR, "<$mappingError"
                 or die "Cannot open $mappingError for "
@@ -900,8 +908,9 @@ if (   !@dbg
             die
                 "validate_mapping_file.py terminated but did not signal success. Normally a success message is printed in its error file.";
         }
-        File::Copy::move( $GLOBAL_PATHS->part1_local_map() . "_corrected.txt",
-            $GLOBAL_PATHS->part1_local_map() );
+
+        File::Copy::move( $corrected, $GLOBAL_PATHS->part1_local_map() )
+            or die "Move failed: $!";
         project_metadata( metadata =>
                 { "map" => { "file" => $GLOBAL_PATHS->part1_local_map() } } );
 
@@ -1311,6 +1320,8 @@ sub barcodes {
 ###### BEGIN SPLIT LIBRARIES ##########
 #######################################
 
+# If $die_on_fail, then die if all samples drop out
+#   If not, return 0 if all samples drop out, return 1 otherwise
 sub demux {
     my %arg         = @_;
     my $paths       = delete $arg{pathfinder}  // $GLOBAL_PATHS;
@@ -1388,15 +1399,16 @@ sub demux {
         push @cmds, $cmd;
 
         execute_and_log(
-            cmds    => \@cmds,
-            logger  => $paths,
-            dry_run => $dryRun,
-            msg     => "Demultiplexing to get the run library...\n",
-            qsub    => 1,
-            mem_GB  => "4",
-            name    => $step2,
-            paths   => $GLOBAL_PATHS,
-            config  => $GLOBAL_PATHS->get_config(),
+            cmds         => \@cmds,
+            logger       => $paths,
+            dry_run      => $dryRun,
+            msg          => "Demultiplexing to get the run library...\n",
+            qsub         => 1,
+            mem_GB       => "4",
+            name         => $step2,
+            paths        => $GLOBAL_PATHS,
+            config       => $GLOBAL_PATHS->get_config(),
+            wait_latency => 5
         );
 
 # after patching the execute_and_log() and the SGE interface code, maybe we don't need this anymore
@@ -1960,7 +1972,7 @@ if ( ( !@dbg ) || grep( /^dada2$/, @dbg ) ) {
             dada2mem        => $dada2mem,
             config          => $GLOBAL_PATHS->get_config(),
             paths           => $GLOBAL_PATHS,
-            multithread     => 32
+            multithread     => 4
         );
 
 ###### EVALUATING DADA2 OUTPUT ##########
@@ -2735,9 +2747,7 @@ sub dada2 {
         );
 
         $cmd
-            = "-e ${R_out} -o "
-            . $GLOBAL_PATHS->part1_stdout_log()
-            . " -N Rscript \""
+            = " -N Rscript \""
             . $GLOBAL_PATHS->get_config()->{R}
             . "script $Rscript $args\"";
         execute_and_log(
@@ -2746,11 +2756,12 @@ sub dada2 {
             dry_run => $dryRun,
             msg     =>
                 "Running DADA2 with fastq files in $GLOBAL_PATHS->{'wd'} for $var region...\n",
-            qsub   => 1,
-            mem_GB => "${dada2mem}",
-            config => $config,
-            paths  => $paths,
-            name   => "R_dada2"
+            qsub        => 1,
+            mem_GB      => "${dada2mem}",
+            config      => $config,
+            paths       => $paths,
+            name        => "R_dada2",
+            multithread => $multithread
         );
 
         if ( -e "dada2_part1_stats.txt" ) {    # sign of success
@@ -2849,17 +2860,19 @@ sub source {
 # par 5: true if commands are to be qsubbed (causes return value to be array of SGE job IDs)
 # Remaining args: cmds to be run through system()
 sub execute_and_log {
-    my %arg      = @_;
-    my $cmds     = delete %arg{"cmds"};
-    my @commands = @$cmds;
-    my $fh       = delete %arg{"logger"}  // $GLOBAL_PATHS;
-    my $dryRun   = delete %arg{"dry_run"} // 0;
-    my $cuteMsg  = delete %arg{"msg"}     // 0;
-    my $qsub     = delete %arg{"qsub"}    // 0;
-    my $mem_GB   = delete %arg{"mem_GB"}  // "1";
-    my $config   = delete %arg{"config"}  // undef;
-    my $paths    = delete %arg{"paths"}   // undef;
-    my $name     = delete %arg{"name"}    // "";
+    my %arg          = @_;
+    my $cmds         = delete %arg{"cmds"};
+    my @commands     = @$cmds;
+    my $fh           = delete %arg{"logger"}       // $GLOBAL_PATHS;
+    my $dryRun       = delete %arg{"dry_run"}      // 0;
+    my $cuteMsg      = delete %arg{"msg"}          // 0;
+    my $qsub         = delete %arg{"qsub"}         // 0;
+    my $mem_GB       = delete %arg{"mem_GB"}       // "1";
+    my $config       = delete %arg{"config"}       // undef;
+    my $paths        = delete %arg{"paths"}        // undef;
+    my $name         = delete %arg{"name"}         // "";
+    my $multithread  = delete %arg{"multithread"}  // undef;
+    my $wait_latency = delete %arg{"wait_latency"} // 0;
 
     if ( !@commands ) {
         warn "execute_and_log() called with no commands\n";
@@ -2882,6 +2895,9 @@ sub execute_and_log {
             print STDERR "Max: $config->{'qsub_allowed_tries'}\n";
 
             my @pids;
+            my $qsub_pe
+                = defined $multithread ? "thread $multithread" : undef;
+            STDERR->print("pe is $qsub_pe\n");
             my $sge = Schedule::SGE->new(
                 -executable => {
                     qsub =>
@@ -2900,7 +2916,8 @@ sub execute_and_log {
                 -error_file  => $paths->part1_error_log(),
                 -verbose     => $verbose,
                 -w           => $config->{"qsub_w"},
-                -b           => $config->{"qsub_b"}
+                -b           => $config->{"qsub_b"},
+                -pe          => $qsub_pe
             );
 
             foreach my $cmd (@commands) {
@@ -2963,7 +2980,7 @@ sub execute_and_log {
 
                     $exit_status = $qacct->{"exit_status"};
 
-                    if ( $qacct->{"failed"} != "0"
+                    if ( $qacct->{"failed"} ne "0"
                         || !grep( /^${exit_status}$/, @allowed_exit_status ) )
                     {
                         print STDERR
@@ -3000,6 +3017,7 @@ sub execute_and_log {
         }
 
     }
+    sleep $wait_latency;
 
     $fh->print( "Finished " . lcfirst($cuteMsg) . "\n" );
 }

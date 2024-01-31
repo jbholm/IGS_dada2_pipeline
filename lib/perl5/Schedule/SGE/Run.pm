@@ -20,8 +20,8 @@ use Exporter;
 
 use vars qw(@ISA @EXPORT_OK);
 @ISA = qw(Schedule::SGE Exporter);
-@EXPORT_OK =
-  qw(command execute environment l b name project output_file error_file use_cwd notify mailto job_id);
+@EXPORT_OK
+    = qw(command execute environment l b name project output_file error_file use_cwd notify mailto job_id);
 our $VERSION = '0.01';
 
 =head2 command()
@@ -30,11 +30,9 @@ Get or set the command that will be queued to by run
 
 =cut
 
-sub command
-{
-    my ($self, @jobs) = @_;
-    if ($jobs[0])
-    {
+sub command {
+    my ( $self, @jobs ) = @_;
+    if ( $jobs[0] ) {
         $self->{'command'} = join " ", @jobs;
         $self->{'ran'}     = 0;
     }
@@ -49,8 +47,7 @@ The queue number is the location of the job in the queue, and you can cehck on t
 
 =cut
 
-sub execute
-{
+sub execute {
     my ($self) = @_;
 
     #return $self::Run->_run();
@@ -69,13 +66,11 @@ my $hashref=$sge->environment(\%vars);
 
 =cut
 
-sub environment
-{
-    my ($self, $hash) = @_;
+sub environment {
+    my ( $self, $hash ) = @_;
     my $return;
-    foreach my $var (qw[SGE_CELL SGE_EXECD_PORT SGE_QMASTER_PORT SGE_ROOT])
-    {
-        if ($hash->{$var}) {$ENV{$var} = $hash->{$var}}
+    foreach my $var (qw[SGE_CELL SGE_EXECD_PORT SGE_QMASTER_PORT SGE_ROOT]) {
+        if ( $hash->{$var} ) { $ENV{$var} = $hash->{$var} }
         $return->{$var} = $ENV{$var};
     }
     return $return;
@@ -87,25 +82,21 @@ Get or set the name of the job used by Schedule::SGE.
 
 =cut
 
-sub name
-{
-    my ($self, $val) = @_;
-    if ($val)
-    {
-        unless ($val =~ /^[a-zA-Z]/)
-        {
+sub name {
+    my ( $self, $val ) = @_;
+    if ($val) {
+        unless ( $val =~ /^[a-zA-Z]/ ) {
             print STDERR "Name must start with a letter. Name is now a$val\n";
             $val = "a" . $val;
         }
-        if ($val =~ / /)
-        {
+        if ( $val =~ / / ) {
             $val =~ s/ /_/g;
             print STDERR "Name can not have spaces in it. Name is now $val\n";
         }
-        if (length($val) > 10)
-        {
-            $val = substr($val, 0, 10);
-            print STDERR "Name is truncated to 10 letters. Name is now $val\n";
+        if ( length($val) > 10 ) {
+            $val = substr( $val, 0, 10 );
+            print STDERR
+                "Name is truncated to 10 letters. Name is now $val\n";
         }
         $self->{'name'} = $val;
     }
@@ -118,11 +109,9 @@ Get or set the project used by Schedule::SGE.
 
 =cut
 
-sub project
-{
-    my ($self, $val) = @_;
-    if ($val)
-    {
+sub project {
+    my ( $self, $val ) = @_;
+    if ($val) {
         $val =~ s/ /_/g;
         $self->{'project'} = $val;
     }
@@ -135,11 +124,9 @@ Get or set the filename that will be used for the STDOUT
 
 =cut
 
-sub output_file
-{
-    my ($self, $val) = @_;
-    if ($val)
-    {
+sub output_file {
+    my ( $self, $val ) = @_;
+    if ($val) {
         $self->{'output_file'} = $val;
     }
     return $self->{'output_file'};
@@ -151,24 +138,21 @@ Get or set the filename that will be used for the STDERR
 
 =cut
 
-sub error_file
-{
-    my ($self, $val) = @_;
-    if ($val)
-    {
+sub error_file {
+    my ( $self, $val ) = @_;
+    if ($val) {
         $self->{'error_file'} = $val;
     }
     return $self->{'error_file'};
 }
 
-sub l
-{
-    my ($self, $val) = @_;
-    if ($val)
-    {
+sub l {
+    my ( $self, $val ) = @_;
+    if ($val) {
         $self->{'l'} = $val;
     }
     return $self->{'l'};
+
     # if (!defined $self->{'l'}) {$self->{'l'} = []}
     # if ($val)
     # {
@@ -177,11 +161,9 @@ sub l
     # return " ".join(@{$self->{'l'}});
 }
 
-sub b
-{
-    my ($self, $val) = @_;
-    if ($val)
-    {
+sub b {
+    my ( $self, $val ) = @_;
+    if ($val) {
         $self->{'b'} = $val;
     }
     return $self->{'b'};
@@ -193,12 +175,10 @@ Boolean whether to set the cwd directory. NOTE: By default this is set to true, 
 
 =cut
 
-sub use_cwd
-{
-    my ($self, $val) = @_;
-    if (!defined $self->{'cwd'}) {$self->{'cwd'} = 1}
-    if (defined $val)
-    {
+sub use_cwd {
+    my ( $self, $val ) = @_;
+    if ( !defined $self->{'cwd'} ) { $self->{'cwd'} = 1 }
+    if ( defined $val ) {
         $self->{'cwd'} = $val;
     }
     return $self->{'cwd'};
@@ -210,11 +190,9 @@ Get or set whether the notify flag is set
 
 =cut
 
-sub notify
-{
-    my ($self, $val) = @_;
-    if (defined $val)
-    {
+sub notify {
+    my ( $self, $val ) = @_;
+    if ( defined $val ) {
         $self->{'notify'} = $val;
     }
     return $self->{'notify'};
@@ -226,11 +204,9 @@ Email address to send the notify mail to
 
 =cut
 
-sub mailto
-{
-    my ($self, $val) = @_;
-    if ($val)
-    {
+sub mailto {
+    my ( $self, $val ) = @_;
+    if ($val) {
         $self->{'mailto'} = 1;
     }
     return $self->{'cwd'};
@@ -242,8 +218,7 @@ The ID of the job that is submitted. This is only available after the command ha
 
 =cut
 
-sub job_id
-{
+sub job_id {
     my ($self) = @_;
     return $self->{'job_id'};
 }
@@ -254,30 +229,32 @@ An internal method to execute the command
 
 =cut
 
-sub _run
-{
+sub _run {
     my ($self) = @_;
-    return if ($self->{'ran'});    # we already run
+    return if ( $self->{'ran'} );    # we already run
     $self->{'ran'} = 1;
 
     my $pipe = $self->executable('qsub');
-    &_dieout('qsub') unless ($pipe);
-    &_dieout('command') unless ($self->{'command'});
+    &_dieout('qsub')    unless ($pipe);
+    &_dieout('command') unless ( $self->{'command'} );
 
-     my %tags=(
-      'name' 	=> ' -N ',
-      'project'	=> ' -P ',
-      'mailto'	=> ' -M ',
-      'output_file'	=> ' -o ',
-      'error_file'	=> ' -e ',
-      'l'           => ' -l ',
-      'w'           => ' -w ',
-      'b'           => ' -b '
-     );
+    my %tags = (
+        'name'        => ' -N ',
+        'project'     => ' -P ',
+        'mailto'      => ' -M ',
+        'output_file' => ' -o ',
+        'error_file'  => ' -e ',
+        'l'           => ' -l ',
+        'w'           => ' -w ',
+        'b'           => ' -b ',
+        'pe'          => ' -pe ',
+    );
 
-    foreach my $tag (keys %tags) {if ($self->{$tag}) {$pipe .= $tags{$tag} . $self->{$tag}}}
-     if ($self->use_cwd) 		{$pipe .= " -cwd"}
-     if ($self->notify)		{$pipe .= " -notify"}
+    foreach my $tag ( keys %tags ) {
+        if ( $self->{$tag} ) { $pipe .= $tags{$tag} . $self->{$tag} }
+    }
+    if ( $self->use_cwd ) { $pipe .= " -cwd" }
+    if ( $self->notify )  { $pipe .= " -notify" }
 
     my $command = $self->{'command'};
 
@@ -286,44 +263,41 @@ sub _run
 #  print QSUB $command, "\n";
 #  close QSUB;
     $command = "$pipe $command > ./$$.out 2>&1";
-    if ($self->{'verbose'}) {
+    if ( $self->{'verbose'} ) {
         print "$command\n";
     }
     `$command`;
 
-    if ($?)
-    {
-        open(IN, "./$$.out")
-          || die
-          "Can't open ./$$.out even though everything appeared to work fine";
+    if ($?) {
+        open( IN, "./$$.out" )
+            || die
+            "Can't open ./$$.out even though everything appeared to work fine";
         my $error = "";
-        while (my $line = <IN>)
-        {
+        while ( my $line = <IN> ) {
             $error .= $line;
         }
         close IN;
         die $error;
     }
 
-    open(IN, "./$$.out")
-      || die "Can't open ./$$.out even though everything appeared to work fine";
+    open( IN, "./$$.out" )
+        || die
+        "Can't open ./$$.out even though everything appeared to work fine";
     my $line;
-    while ($line = <IN>)
-    {
+    while ( $line = <IN> ) {
         last if $line =~ /^Your job/i;
     }
     close IN;
     $line =~ /^Your job\D*(\d+)/i;
     my $jobnumber = $1;
 
-    if ($jobnumber)
-    {
+    if ($jobnumber) {
         print "Job ID: $jobnumber\n";
         unlink("./$$.out");
         $self->{'job_id'} = $jobnumber;
         return $jobnumber;
-    } else
-    {
+    }
+    else {
         die "WARNING: No job number. This message was received:\n$line";
     }
 }
@@ -334,25 +308,23 @@ Die nicely, with some kind of warning
 
 =cut
 
-sub _dieout
-{
-    my ($self, $val) = @_;
-    if ($val eq "command")
-    {
+sub _dieout {
+    my ( $self, $val ) = @_;
+    if ( $val eq "command" ) {
         print STDERR <<EOF;
 
   You did not specify a command to run and so we are cowardly quitting.
 
 EOF
-    } elsif ($val eq "qsub")
-    {
+    }
+    elsif ( $val eq "qsub" ) {
         print STDERR <<EOF;
 
   $0 could not find a $val executable. Please check to make sure that it is in your path, and you are running SGE.
 
 EOF
-    } else
-    {
+    }
+    else {
         print STDERR <<EOF;
 
   $0 died out for an unexplained reason. Sorry.
