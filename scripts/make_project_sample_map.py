@@ -29,73 +29,117 @@ def main(args):
 		pd.set_option('display.max_rows', None)
 		pd.set_option('display.width', 2000)
 		pd.set_option('display.max_colwidth', None)
+
+	# In canonical ILLUMINA mode: MANIFEST joins to GDNA MAP joins to POOLING DETAIL
+	# If args.manifest_format is PLATES, then ./gdna_maps/ is REQUIRED
+	# If args.manifest_format is TUBES and ./gdna_maps/ DOESN"T EXIST, then MANIFEST IS ALREADY (MANIFEST joined to GDNA MAP)
+	# If platform is PACBIO, then the MANIFEST joins to DEMUX MAPS
 	
-	# main columns: ["PLATE ID, "WELL", "SAMPLE ID"]
-	if args.platform == "illumina":
-		sample_to_plate_wells = get_gdna(args.gdna)
-		run_plate_name = "PLATE ID"
-
-		if args.verbose:
-			print("gDNA-to-barcode plates:")
-			print(sample_to_plate_wells)
-			print("")
-
-		# Pooling will have "RUN.PLATE", "plate ID", "run"
-		gdna_to_run_barcode_plate = get_pooling(args.pooling, args.platform)
-		if args.verbose:
-			print("Pooling detail:")
-			print(gdna_to_run_barcode_plate)
-			print("")
-		project_map = gdna_to_run_barcode_plate.merge(sample_to_plate_wells, how="inner", left_on="gDNA plate ID", right_on="PLATE ID")
-		if sample_to_plate_wells.shape[0] > project_map.shape[0]:
-			print(sample_to_plate_wells["PLATE ID"].dtype)
-			plate_diff = set(sample_to_plate_wells["PLATE ID"]).difference(
-				set(gdna_to_run_barcode_plate["gDNA plate ID"])
-				)
-			print([type(x) for x in plate_diff])
-			print(plate_diff)
-			print("gDNA plates not in pooling details: " + ",".join(plate_diff))
-			quit("Error: Lost rows when joining gDNA maps to pooling detail. gDNA plate IDs did not match.")
-		if args.verbose: 
-			print("Joined map:")
-			print(project_map)
-			print("")
-
-	else:
-		# pacbio demux map already links the run and plate positions to the tube ID
-		# main columns: "RUN ID", "well", "sample ID" (sample ID is ignored if client manifest provided and in plate format)
-		# in doing this, the run name will be picked up from the filename, and the plate position columns concatenated
-		if args.pooling and args.pooling.exists():
-			print("PacBio demux maps in use. Ignoring pooling file.\n")
-
-		project_map = get_pacbio_demux_maps(args.pb_demux_maps)
-		project_map["RUN.PLATE"] = project_map["RUN"] # artifact of conforming PacBio to Illumina pipeline
-
-	# if args.assigned_labels:
-	# 	project_map = apply_assigned_labels(
-	# 		project_map, 
-	# 		args.assigned_labels
-	# 		)
-
 	if args.manifest:
 		validate_manifest(args)
-		project_map = apply_manifest(
-			project_map, 
+		manifest = read_manifest( 
 			manifest_file = args.manifest, 
 			manifest_type = args.manifest_format,
 			tubeid_col = args.manifest_tubeid_column, 
-			sampleid_col = args.manifest_samplename_column,
 			plateid_col = args.manifest_plateid_column,
 			plate_row_column = args.manifest_platerow_column,
-			plate_remap = args.manifest_plate_remap
+			plate_remap = args.manifest_plate_remap)
+		# main columns: 
+		# TUBES: tubeid_column, samplename_column
+		# PLATES: plateid_col, "WELL", samplename_column
+
+	# main columns: ["PLATE ID, "WELL", "SAMPLE ID"]
+	
+	sample_to_plate_wells = None
+	if args.manifest_format == Manifest_type.TUBES and not args.gdna.exists():
+		raise FileNotFoundError(str(args.gdna) + " does not exist")
+	
+	elif args.platform == "illumina" and args.gdna.exists():
+		print("Platform = Illumina and gDNA maps found, so getting gDNA maps...")
+		sample_to_plate_wells = get_gdna(args.gdna)
+		# main columns: ["PLATE ID", "WELL", "SAMPLE ID"]
+		
+	elif args.platform == "pacbio" and args.pb_demux_maps.exists():
+		# main columns: "RUN ID", "well", "sample ID" (sample ID is ignored if client manifest provided and in plate format)
+		# in doing this, the run name will be picked up from the filename, and the plate position columns concatenated
+		sample_to_plate_wells = (get_pacbio_demux_maps(args.pb_demux_maps)
+						   .rename(columns={"RUN": "PLATE ID"}) # not actually, just an artifact of fitting in with the ILLUMINA pipeline
+		)
+	if args.verbose and not sample_to_plate_wells is None:
+		print("gDNA-to-barcode plates:")
+		print(sample_to_plate_wells)
+		print("")
+	
+	if not sample_to_plate_wells is None:
+		if args.manifest_format == Manifest_type.TUBES:
+			# the manifest replaces tube names with sample names
+			# resulting main columns: ["PLATE ID", "WELL", "SAMPLE ID"]
+			project_map = join_manifest_gdna(
+				sample_to_plate_wells,
+				manifest, 
+				manifest_on = args.manifest_tubeid_column, 
+				gdna_on = "SAMPLE ID",
+				sampleid_col = args.manifest_samplename_column,
+				plateid_col = args.manifest_plateid_column,
 			)
-		if args.verbose: 
-			print("After applying manifest:")
-			print(project_map)
-			print("")
+
+		if args.manifest_format == Manifest_type.PLATES:
+			# Sierra's scenario 3: we have plate manifest, but some controls were added by us during extraction...Very similar to above, but not yet implemented. See code in apply_manifest
+			 project_map = join_manifest_gdna(
+				sample_to_plate_wells,
+				manifest, 
+				manifest_on = [args.manifest_plateid_column, "WELL"], 
+				gdna_on = ["PLATE ID", "WELL"],
+				sampleid_col = args.manifest_samplename_column,
+				plateid_col = args.manifest_plateid_column
+			)
+		
+	elif args.manifest_format == Manifest_type.PLATES:
+		# Manifest gives plate id, well position, and sample name
+		# columns: plateid_col, "WELL", samplename_column
+		# rename plateid_col to "PLATE ID", samplename_column to "SAMPLE ID"
+		project_map = manifest.rename(
+			columns = {
+				args.manifest_samplename_column: "SAMPLE ID",
+				args.manifest_plateid_column: "PLATE ID"
+			}
+		)
+	else:
+		# no manifest, and no gDNA maps available
+		raise FileNotFoundError("Nothing to join with pooling detail")
+	
+	if args.verbose:
+		print("sample-to-plate-wells:")
+		print(project_map)
+		print("")
+
+	# Pooling will have "RUN.PLATE", "plate ID", "run"
+	gdna_to_run_barcode_plate = get_pooling(args.pooling, args.platform)
+	if args.verbose:
+		print("Pooling detail:")
+		print(gdna_to_run_barcode_plate)
+		print("")
+	
+	old_plates = set(project_map["PLATE ID"])
+	project_map = gdna_to_run_barcode_plate.merge(
+		project_map, 
+		how="inner", 
+		left_on="gDNA plate ID", 
+		right_on="PLATE ID"
+		)
+	if len(old_plates) > project_map.shape[0]:
+		plate_diff = old_plates.difference(
+			set(gdna_to_run_barcode_plate["gDNA plate ID"])
+			)
+		print("gDNA plates not in pooling details: " + ",".join(plate_diff))
+		quit("Error: Lost rows when joining gDNA maps to pooling detail. gDNA plate IDs did not match.")
+	if args.verbose: 
+		print("Joined map:")
+		print(project_map)
+		print("")
 
 	project_map.loc[:, "RUN.PLATEPOSITION"] = project_map.apply(
-		lambda row: ".".join([row["RUN.PLATE"], row["WELL"]]), 
+		lambda row: ".".join([row["RUN.PLATE"], row["WELL"]]),
 		axis=1
 		)
 
@@ -131,7 +175,7 @@ def get_gdna(indir):
 	gdna_dfs = []
 
 	for gdna_file in indir.iterdir():
-		if gdna_file.suffix == ".xlsx":
+		if gdna_file.suffix in [".xlsx", ".xls"]:
 			gdna_df = (pd.read_excel(gdna_file, header=0, dtype=str)
 				.rename(str.upper, axis='columns'))
 			if not all([x in gdna_df.columns for x in CONFIG["gDNA_COLUMNS"]]):
@@ -246,37 +290,33 @@ def get_pacbio_demux_maps(indir):
 
 	return demux_df
 
-# def try_override_ctrls(gDNA_map, pacbio_demux_map):
-# 	# demux_maps have run name but gDNA_maps have plate id. what to do? Wait until after merging with pooling?
-
-
 # def apply_assigned_labels(sample_map, label_file):
-# 	label_df = pd.read_excel(label_file, header=0, index_col=None, dtype=str)
-# 	label_df = label_df.set_index(label_df.columns[1])
-# 	if args.verbose: 
-# 		print("Labels assigned to client tubes:")
-# 		print(label_df)
-# 		print("")
-# 	replacements = sample_map["SAMPLE ID"].map(label_df.iloc[:, 0])
-# 	if not all(replacements.isna()):
-# 		to_repl = ~replacements.isna()
-# 		sample_map.loc[to_repl, "SAMPLE ID"] = replacements[to_repl]
-# 	else:
-# 		print("Failed to assign client sample names from the second column of \"assigned labels\" spreadsheet. Trying inverse column order...")
-# 		label_df = pd.read_excel(label_file, header=0, index_col=None, dtype=str)
-# 		label_df = label_df.set_index(label_df.columns[0])
-# 		if args.verbose: 
-# 			print("Labels assigned to client tubes:")
-# 			print(label_df)
-# 			print("")
-# 		replacements = sample_map["SAMPLE ID"].map(label_df.iloc[:, 0])
-# 		to_repl = ~replacements.isna()
-# 		sample_map.loc[to_repl, "SAMPLE ID"] = replacements[to_repl]
-# 	if args.verbose: 
-# 		print("With client sample names:")
-# 		print(sample_map)
-# 		print("")
-# 	return(sample_map)
+#      label_df = pd.read_excel(label_file, header=0, index_col=None, dtype=str)
+#      label_df = label_df.set_index(label_df.columns[1])
+#      if args.verbose:
+#              print("Labels assigned to client tubes:")
+#              print(label_df)
+#              print("")
+#      replacements = sample_map["SAMPLE ID"].map(label_df.iloc[:, 0])
+#      if not all(replacements.isna()):
+#              to_repl = ~replacements.isna()
+#              sample_map.loc[to_repl, "SAMPLE ID"] = replacements[to_repl]
+#      else:
+#              print("Failed to assign client sample names from the second column of \"assigned labels\" spreadsheet. Trying inverse column order...")
+#              label_df = pd.read_excel(label_file, header=0, index_col=None, dtype=str)
+#              label_df = label_df.set_index(label_df.columns[0])
+#              if args.verbose:
+#                      print("Labels assigned to client tubes:")
+#                      print(label_df)
+#                      print("")
+#              replacements = sample_map["SAMPLE ID"].map(label_df.iloc[:, 0])
+#              to_repl = ~replacements.isna()
+#              sample_map.loc[to_repl, "SAMPLE ID"] = replacements[to_repl]
+#      if args.verbose:
+#              print("With client sample names:")
+#              print(sample_map)
+#              print("")
+#      return(sample_map)
 
 def validate_manifest(args):
 	manifest = pd.read_excel(args.manifest, skiprows=14, header=0, index_col=None, dtype=str)
@@ -292,25 +332,20 @@ def validate_manifest(args):
 				raise KeyError("\"%s\" (which may be given by --%s) not in %s" \
 		   			% (getattr(args, argname), argname, str(args.manifest)))
 
-def apply_manifest(sample_to_gdna, manifest_file, manifest_type, tubeid_col, sampleid_col, plateid_col, plate_row_column, plate_remap):
-
-	sample_to_gdna = sample_to_gdna.copy() # idk why
-	run_plate_name = "PLATE ID" if "PLATE ID" in sample_to_gdna.columns else "RUN"
-	
+def read_manifest(manifest_file, manifest_type, tubeid_col, plateid_col, plate_row_column, plate_remap):
 	manifest = pd.read_excel(manifest_file, skiprows=14, header=0, index_col=None, dtype=str)
 	# remove empty cols
 	manifest = manifest.loc[:, [any(-pd.isna(manifest[col])) for col in manifest.columns]]
 
-	# temporarily detach wells where controls are expected
-	ctrls_bool = sample_to_gdna["WELL"].isin(CONFIG["CTRL_WELLS"].keys())
-	ctrls = sample_to_gdna.loc[ctrls_bool, :]
-	sample_to_gdna = sample_to_gdna.loc[~ctrls_bool, :]
-
+	# this is nice for viewing on command line, but makes it really confusing to write
+	# other code
+	# set index appropriately 
 	if manifest_type == Manifest_type.TUBES:
-		manifest = manifest.set_index(tubeid_col)
-
-		left_on = "SAMPLE ID"
-	elif manifest_type == Manifest_type.PLATES:
+	# 	# manifest = manifest.set_index(tubeid_col)
+		pass
+	else:
+		# use plate_remap arguments, if provided, to replace CLIENT's plate names with 
+		# OUR plate names
 		plate_remap_series = pd.Series(dtype=str)
 		if plate_remap:
 			for pair in plate_remap:
@@ -320,31 +355,43 @@ def apply_manifest(sample_to_gdna, manifest_file, manifest_type, tubeid_col, sam
 		replacements = manifest[plateid_col].map(plate_remap_series)
 		to_repl = ~replacements.isna()
 		manifest.loc[to_repl, plateid_col] = replacements[to_repl]
+
+		# Identify manifest columns that give well position
 		row_col = manifest.columns.get_loc(plate_row_column)
 		manifest["WELL"] = manifest.apply(lambda row: row.iloc[row_col] + row.iloc[row_col + 1], axis=1)
-		manifest = manifest.set_index([plateid_col, "WELL"])
 
-		left_on = [run_plate_name, "WELL"]
+		# manifest = manifest.set_index([plateid_col, "WELL"])
+
+	return manifest
+
+def join_manifest_gdna(sample_to_gdna, manifest, manifest_on, gdna_on, sampleid_col, plateid_col):
+	sample_to_gdna = sample_to_gdna.copy() # idk why
+
+	# temporarily detach wells where MSL controls are expected
+	ctrls_bool = sample_to_gdna["WELL"].isin(CONFIG["CTRL_WELLS"].keys())
+	ctrls = sample_to_gdna.loc[ctrls_bool, :]
+	sample_to_gdna = sample_to_gdna.loc[~ctrls_bool, :]
+
+	# if manifest_type == Manifest_type.TUBES:
+	manifest = manifest.set_index(manifest_on)
+	# elif manifest_type == Manifest_type.PLATES:
+	# manifest = manifest.set_index([plateid_col, "WELL"])
+	# left_on =
 	
-	if args.verbose:
-		print(str(manifest_file) + ":")
-		print(manifest)
-		print("")
-	
-	not_in_gDNA = manifest.index.difference(pd.Index(sample_to_gdna[left_on]))
+	not_in_gDNA = manifest.index.difference(pd.Index(sample_to_gdna[gdna_on]))
 	if any(not_in_gDNA):
 		print("Error: Manifest samples missing from gDNA maps:")
 		print(manifest.loc[not_in_gDNA])
 		quit()
 
-	# merge(how="left"...) yields NaN in manifest columns if not in gDNA plates
-	merged = sample_to_gdna.merge(manifest, how="left", left_on=left_on, right_index=True, suffixes=(None, "_y"))
+	merged = sample_to_gdna.merge(manifest, how="left", left_on=gdna_on, right_index=True, suffixes=(None, "_y"))
+	# manifest sample names override those on the gDNA map. 
 	if sampleid_col + "_y" in merged.columns:
 		sampleid_col = sampleid_col + "_y"
 	
-	
-	# replace the names of samples found in the manifest; leave the rest untouched
-	to_repl = ~merged[sampleid_col].isna()
+	# BUT, samples on the gDNA map but not on the manifest are likely controls added by 
+	# us. Keep those too and report.
+	to_repl = ~merged[sampleid_col].isna() # NA if not on manifest
 	merged.loc[to_repl, "SAMPLE ID"] = merged.loc[to_repl, sampleid_col]
 	
 	merged = merged[sample_to_gdna.columns]
@@ -356,6 +403,11 @@ def apply_manifest(sample_to_gdna, manifest_file, manifest_type, tubeid_col, sam
 		print("This is okay if these samples were added by MD Genomics.\n")
 
 	merged = pd.concat([merged, ctrls]) # add back the controls
+
+	if args.verbose: 
+		print("After applying manifest:")
+		print(merged)
+		print("")
 	return merged
 
 def get_pooling(indir, platform):
@@ -366,9 +418,6 @@ def get_pooling(indir, platform):
 	for pooling_file in indir.iterdir():
 		if pooling_file.suffix == ".xlsx":
 			# get gDNA plate IDs, IDT plate numbers, and run name
-			
-			# "124 Ill_2step_XTR_16S PCR MSL_NS_124 Pooling detail 1-11-2023.xlsx"
-			# "/local/projects-t3/MSL/pipelines/test/pooling_detail/118 Ill_2step XT_16S PCR MSL_MS_118 Pooling detail 10-20-2022.xlsx"
 			pooling_df = pd.read_excel(pooling_file, skiprows=1, header=None, dtype=str)
 
 			# could also get run name from the "Illumina 16S PCR pool ID" column (column 11)
@@ -381,8 +430,10 @@ def get_pooling(indir, platform):
 			pooling_df.columns = pooling_df.iloc[0, :]
 			pooling_df = pooling_df.iloc[1:, :]
 			
-			pooling_df = (pooling_df.iloc[np.arange(int(pooling_df.shape[0] / 2)) * 2, :] # remove odd rows
-				.loc[-pd.isna(pooling_df["gDNA plate ID"]), :]) # remove rows with empty field
+			pooling_df = pooling_df.iloc[np.arange(int(pooling_df.shape[0] / 2)) * 2, :] # remove odd rows
+			to_repl = pooling_df["gDNA plate ID"].isna()
+			pooling_df.loc[to_repl, "gDNA plate ID"] = pooling_df.loc[to_repl, "Sample Description"] # These two columns reflect that a plate might have come to us without passing through our gDNA extraction protocol
+			pooling_df = pooling_df.loc[-pd.isna(pooling_df["gDNA plate ID"]), :] # remove rows with empty field
 			
 			pooling_df["RUN"] = run
 
@@ -497,6 +548,7 @@ if __name__=="__main__":
 	ap.add_argument("--output", "-o", type=Path, required=False, default=Path("./project_map.txt"))
 
 	args = ap.parse_args()
+
 	if args.manifest:
 		if not args.manifest_format:
 			if re.search("plates.xlsx$", str.lower(args.manifest.name)):
@@ -514,5 +566,18 @@ if __name__=="__main__":
 		      args.manifest_plate_remap or args.manifest_platerow_column
 		):
 			print("--manifest not given, so ignoring all other --manifest* options.")
-			
+	plate_map = False
+	if args.platform == "illumina" and args.gdna.exists():
+		plate_map = True
+	if args.platform == "pacbio" and args.pb_demux_maps.exists():
+		plate_map = True
+	if not plate_map and ( args.manifest is None or args.manifest_format != Manifest_type.PLATES ):
+		if args.manifest is None:
+			raise(ValueError(str(args.gdna) + " did not exist and no manifest given either. No source of sample names."))
+		if args.manifest_format != Manifest_type.PLATES:
+			raise(ValueError("Manifest format was TUBES but " + str(args.gdna) + " did not exist. No source of plate well positions."))
+	if args.platform == "pacbio" and ( args.pooling or args.pooling.exists() ):
+		# pacbio demux map already links the run and plate positions to the tube ID
+		print("PacBio demux maps in use. Ignoring pooling file.\n")
+	
 	main(args)
