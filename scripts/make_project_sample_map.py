@@ -82,8 +82,7 @@ def main(args):
 				sampleid_col = args.manifest_samplename_column,
 				plateid_col = args.manifest_plateid_column,
 			)
-
-		if args.manifest_format == Manifest_type.PLATES:
+		elif args.manifest_format == Manifest_type.PLATES:
 			# Sierra's scenario 3: we have plate manifest, but some controls were added by us during extraction...Very similar to above, but not yet implemented. See code in apply_manifest
 			 project_map = join_manifest_gdna(
 				sample_to_plate_wells,
@@ -93,7 +92,8 @@ def main(args):
 				sampleid_col = args.manifest_samplename_column,
 				plateid_col = args.manifest_plateid_column
 			)
-		
+		else:
+			project_map = sample_to_plate_wells
 	elif args.manifest_format == Manifest_type.PLATES:
 		# Manifest gives plate id, well position, and sample name
 		# columns: plateid_col, "WELL", samplename_column
@@ -428,7 +428,7 @@ def get_pooling(indir, platform):
 			pooling_df = pooling_df.iloc[3:, 1:]
 			# get header
 			pooling_df.columns = pooling_df.iloc[0, :]
-			pooling_df = pooling_df.iloc[1:, :]
+			pooling_df = pooling_df.iloc[3:, :] # 1st row is the header, 2nd 2 rows are the ladder
 			
 			pooling_df = pooling_df.iloc[np.arange(int(pooling_df.shape[0] / 2)) * 2, :] # remove odd rows
 			to_repl = pooling_df["gDNA plate ID"].isna()
@@ -457,7 +457,7 @@ def get_pooling(indir, platform):
 						pooling_df["RUN.PLATE"] = pooling_df.apply(CONFIG["RUN_PLATE_FORMATTERS"]["Nextera XT"], axis=1, run=run) 
 						
 				else:
-					msg = "Error: Unable to detect UDI plate configuration from pooling: " + pooling_file
+					msg = "Error: Unable to detect UDI plate configuration from pooling: " + str(pooling_file)
 					msg = msg + """
 						Acceptable configurations:
 							IDT for Illumina: The column left of "Sample Description" has values that match the pattern "^XTR_Plate.*"

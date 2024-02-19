@@ -2917,7 +2917,8 @@ sub execute_and_log {
                 -verbose     => $verbose,
                 -w           => $config->{"qsub_w"},
                 -b           => $config->{"qsub_b"},
-                -pe          => $qsub_pe
+                -pe          => $qsub_pe,
+                -q           => $config->{"qsub_q"}
             );
 
             foreach my $cmd (@commands) {

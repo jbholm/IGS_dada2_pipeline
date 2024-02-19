@@ -248,6 +248,7 @@ sub _run {
         'w'           => ' -w ',
         'b'           => ' -b ',
         'pe'          => ' -pe ',
+        'q'           => ' -q '
     );
 
     foreach my $tag ( keys %tags ) {
